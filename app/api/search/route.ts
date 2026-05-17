@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { filterChannels, PLAN_LIMITS } from '@/lib/data'
+export const dynamic = 'force-dynamic'
 
 const SUBS_VALUES = [1000, 10000, 50000, 100000, 500000, 1000000, 5000000]
 
