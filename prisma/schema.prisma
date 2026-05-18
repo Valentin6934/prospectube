@@ -3,41 +3,42 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
-  id                 String   @id @default(cuid())
-  name               String?
-  email              String   @unique
-  password           String
-  plan               String   @default("Gratuit")
-  searchesRemaining  Int      @default(5)
-  createdAt          DateTime @default(now())
-  searches           Search[]
-  emailsSent         EmailSent[]
+  id                String   @id @default(cuid())
+  name              String?
+  email             String   @unique
+  password          String
+  plan              String   @default("Gratuit")
+  searchesRemaining Int      @default(5)
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  searches          Search[]
+  emailsSent        EmailSent[]
 }
 
 model Search {
   id        String   @id @default(cuid())
   userId    String
+  user      User     @relation(fields: [userId], references: [id])
   niche     String
   language  String
   subsMin   String
   subsMax   String
   results   String
   createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
 }
 
 model EmailSent {
   id           String   @id @default(cuid())
   userId       String
+  user         User     @relation(fields: [userId], references: [id])
   channelName  String
   channelEmail String
   content      String
   status       String   @default("Envoyé")
   createdAt    DateTime @default(now())
-  user         User     @relation(fields: [userId], references: [id])
 }
