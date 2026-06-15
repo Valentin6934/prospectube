@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,5 +9,88 @@
 }
 
 * { box-sizing: border-box; }
-body { font-family: 'DM Sans', sans-serif; background: #0A0812; color: #F0EDF8; }
-h1, h2, h3, .font-display { font-family: 'Syne', sans-serif; }
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: #0A0812;
+  color: #F0EDF8;
+  font-family: var(--font-dm-sans), sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-syne), sans-serif;
+}
+
+.grad-text {
+  background: linear-gradient(135deg, #533AB7, #7B63D3);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #533AB7, #7B63D3);
+  color: white;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 20px rgba(83, 58, 183, 0.4);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(83, 58, 183, 0.5);
+}
+
+.card {
+  background: rgba(18, 15, 30, 0.95);
+  border: 1px solid rgba(83, 58, 183, 0.25);
+  border-radius: 16px;
+}
+
+input, select {
+  background-color: #15101F !important;
+  border: 1px solid rgba(83, 58, 183, 0.3);
+  color: #F0EDF8 !important;
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  width: 100%;
+  font-family: var(--font-dm-sans), sans-serif;
+  transition: border-color 0.2s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: #533AB7;
+}
+
+input::placeholder { color: #6B5F96; }
+
+select option {
+  background-color: #15101F;
+  color: #F0EDF8;
+}
+
+/* Fix autofill blanc du navigateur */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #F0EDF8 !important;
+  -webkit-box-shadow: 0 0 0px 1000px #15101F inset !important;
+  caret-color: #F0EDF8;
+  border: 1px solid rgba(83, 58, 183, 0.3);
+}
+
+input[type="range"] {
+  background: transparent !important;
+  border: none;
+  padding: 0;
+}
