@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { filterChannels, PLAN_LIMITS } from '@/lib/data'
+import { PLAN_LIMITS, filterChannels } from '@/lib/data'
+import { searchYouTubeChannels } from '@/lib/youtube'
+
 export const dynamic = 'force-dynamic'
 
 const SUBS_VALUES = [1000, 10000, 50000, 100000, 500000, 1000000, 5000000]
@@ -29,8 +31,16 @@ export async function POST(req: NextRequest) {
   const minVal = SUBS_VALUES[parseInt(subsMin)] || 0
   const maxVal = SUBS_VALUES[parseInt(subsMax)] || 5000000
 
-  const allResults = filterChannels(niche, lang, minVal, maxVal)
-  const results = allResults.slice(0, limits.results)
+  let results: any[] = []
+  let source = 'youtube'
+
+  try {
+    results = await searchYouTubeChannels(niche, lang, minVal, maxVal, limits.results)
+  } catch (err: any) {
+    source = 'demo'
+    const allResults = filterChannels(niche, lang, minVal, maxVal)
+    results = allResults.slice(0, limits.results)
+  }
 
   await prisma.search.create({
     data: {
@@ -50,6 +60,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     results,
+    source,
     searchesRemaining: user.searchesRemaining - 1,
     plan: user.plan,
     canGenerateEmail: limits.emailAI,
