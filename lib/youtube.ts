@@ -81,7 +81,7 @@ export async function searchYouTubeChannels(niche: string, lang: string, subsMin
   const searchData = await searchRes.json()
   if (searchData.error) throw new Error(searchData.error.message || 'Erreur API YouTube')
 
-  const channelIds = [...new Set((searchData.items || []).map((item: any) => item.snippet.channelId).filter(Boolean))]
+  const channelIds = Array.from(new Set((searchData.items || []).map((item: any) => item.snippet.channelId).filter(Boolean)))
   if (channelIds.length === 0) return []
 
   // 2. Stats des chaînes
