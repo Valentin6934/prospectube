@@ -95,19 +95,30 @@ export async function searchYouTubeChannels(
   const query = `${BASE_NICHE_QUERIES[niche] || niche || 'youtube'} ${LANGUAGE_QUERIES[lang] || ''}`.trim()
   const relevanceLanguage = LANG_CODES[lang] || 'fr'
 
-  const searchUrl =
-    `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}` +
-    `&relevanceLanguage=${relevanceLanguage}&maxResults=50&key=${apiKey}`
+  let allItems: any[] = []
+  let nextPageToken = ''
 
-  const searchRes = await fetch(searchUrl)
-  const searchData = await searchRes.json()
+  for (let i = 0; i < 3; i++) {
+    const searchUrl =
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}` +
+      `&relevanceLanguage=${relevanceLanguage}&maxResults=50&key=${apiKey}` +
+      `${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`
 
-  if (searchData.error) {
-    throw new Error(searchData.error.message || 'Erreur YouTube Search API')
+    const searchRes = await fetch(searchUrl)
+    const searchData = await searchRes.json()
+
+    if (searchData.error) {
+      throw new Error(searchData.error.message || 'Erreur YouTube Search API')
+    }
+
+    allItems.push(...(searchData.items || []))
+
+    if (!searchData.nextPageToken) break
+    nextPageToken = searchData.nextPageToken
   }
 
   const channelIds = Array.from(
-    new Set((searchData.items || []).map((item: any) => item.snippet?.channelId).filter(Boolean))
+    new Set(allItems.map((item: any) => item.snippet?.channelId).filter(Boolean))
   )
 
   if (channelIds.length === 0) return []
