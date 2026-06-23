@@ -122,9 +122,14 @@ export async function searchYouTubeChannels(
 
   if (channelIds.length === 0) return []
 
+  let allChannels: any[] = []
+
+for (let i = 0; i < channelIds.length; i += 50) {
+  const batchIds = channelIds.slice(i, i + 50)
+
   const channelsUrl =
     `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails` +
-    `&id=${channelIds.join(',')}&key=${apiKey}`
+    `&id=${batchIds.join(',')}&key=${apiKey}`
 
   const channelsRes = await fetch(channelsUrl)
   const channelsData = await channelsRes.json()
@@ -133,7 +138,10 @@ export async function searchYouTubeChannels(
     throw new Error(channelsData.error.message || 'Erreur YouTube Channels API')
   }
 
-  return (channelsData.items || [])
+  allChannels.push(...(channelsData.items || []))
+}
+
+return allChannels
     .map((ch: any) => {
       const subsNum = Number(ch.statistics?.subscriberCount || 0)
       const fullDesc = ch.snippet?.description || ''
