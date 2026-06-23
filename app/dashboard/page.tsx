@@ -29,6 +29,8 @@ export default function Dashboard() {
   const [emailData, setEmailData] = useState<{ subject: string; body: string } | null>(null)
   const [sendStatus, setSendStatus] = useState('')
 
+  const isPro = plan !== 'Gratuit'
+
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
     if (session?.user) {
@@ -37,22 +39,60 @@ export default function Dashboard() {
     }
   }, [status, session, router])
 
+  const copyEmail = async (email: string) => {
+    await navigator.clipboard.writeText(email)
+    alert('Email copié !')
+  }
+
+  const exportCSV = () => {
+    if (!isPro) return alert('Export CSV disponible avec le plan Pro.')
+
+    const headers = ['Nom', 'Abonnés', 'Score', 'Email', 'YouTube', 'Instagram', 'TikTok', 'Twitch', 'Site web']
+    const rows = results.map(ch => [
+      ch.name || '',
+      ch.subs || '',
+      ch.score || '',
+      ch.email || '',
+      ch.channelUrl || '',
+      ch.instagram || '',
+      ch.tiktok || '',
+      ch.twitch || '',
+      ch.website || '',
+    ])
+
+    const csv = [headers, ...rows]
+      .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'prospectube-results.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleSearch = async () => {
     if (!niche) return alert('Choisis une niche !')
     if (!editorEmail) return alert('Entre ton email de contact !')
     setLoading(true)
     setSearched(false)
+
     const res = await fetch('/api/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ niche, lang, subsMin: String(subsMin), subsMax: String(subsMax) }),
     })
+
     const data = await res.json()
     setLoading(false)
+
     if (!res.ok) {
       if (data.upgrade) return alert('Quota épuisé ! Passe au plan Pro.')
       return alert(data.error)
     }
+
     setResults(data.results)
     setCanEmail(data.canGenerateEmail)
     setSearchesLeft(data.searchesRemaining)
@@ -62,21 +102,26 @@ export default function Dashboard() {
 
   const generateEmail = async (channel: any) => {
     if (!canEmail) return alert('Le plan Pro est requis pour générer des messages IA.')
+
     setEmailModal(channel)
     setEmailLoading(true)
     setEmailData(null)
     setSendStatus('')
+
     const res = await fetch('/api/generate-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ channel, editorEmail }),
     })
+
     const data = await res.json()
     setEmailLoading(false)
+
     if (!res.ok) {
       if (data.upgrade) return alert('Plan Pro requis pour les messages IA.')
       return alert(data.error)
     }
+
     setEmailData(data)
   }
 
@@ -88,13 +133,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#0A0812' }}>
-      <nav style={{
-        position: 'sticky', top: 0, zIndex: 100,
-        background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid rgba(83,58,183,0.2)',
-        padding: '0 2rem', display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', height: '60px'
-      }}>
+      <nav style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
         <Link href="/" style={{ textDecoration: 'none' }}>
           <div className="font-display" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#F0EDF8' }}>
             Prospect<span className="grad-text">Tube</span>
@@ -118,7 +157,7 @@ export default function Dashboard() {
       <div style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem 1.5rem' }}>
         {plan === 'Gratuit' && (
           <div style={{ background: 'rgba(83,58,183,0.15)', border: '1px solid rgba(83,58,183,0.4)', borderRadius: '12px', padding: '1rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-            <p style={{ color: '#a78bfa', fontSize: '0.9rem' }}>🔒 Passe au plan Pro pour débloquer Instagram, TikTok, Twitch, site web, messages IA et plus de résultats</p>
+            <p style={{ color: '#a78bfa', fontSize: '0.9rem' }}>🔒 Passe au plan Pro pour débloquer Instagram, TikTok, Twitch, site web, messages IA, export CSV et plus de résultats</p>
             <Link href="/#pricing">
               <button className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}>Voir les plans →</button>
             </Link>
@@ -168,11 +207,16 @@ export default function Dashboard() {
 
         {searched && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
               <h3 className="font-display" style={{ fontWeight: 600, fontSize: '1rem' }}>
                 {results.length} chaîne{results.length !== 1 ? 's' : ''} trouvée{results.length !== 1 ? 's' : ''}
               </h3>
-              <span style={{ fontSize: '0.8rem', color: '#6B5F96' }}>{niche} · {lang}</span>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', color: '#6B5F96' }}>{niche} · {lang}</span>
+                <button onClick={exportCSV} style={{ background: isPro ? 'rgba(83,58,183,0.25)' : 'rgba(83,58,183,0.10)', border: '1px solid rgba(83,58,183,0.35)', color: isPro ? '#a78bfa' : '#6B5F96', padding: '0.35rem 0.75rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem' }}>
+                  {isPro ? '📥 Export CSV' : '🔒 CSV Pro'}
+                </button>
+              </div>
             </div>
 
             {results.length === 0 ? (
@@ -188,6 +232,20 @@ export default function Dashboard() {
 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.2rem' }}>{ch.name}</div>
+
+                    <div style={{
+                      display: 'inline-block',
+                      marginBottom: '0.5rem',
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '999px',
+                      background: (ch.score || 0) >= 80 ? 'rgba(34,197,94,0.15)' : (ch.score || 0) >= 60 ? 'rgba(234,179,8,0.15)' : 'rgba(239,68,68,0.15)',
+                      color: (ch.score || 0) >= 80 ? '#22c55e' : (ch.score || 0) >= 60 ? '#eab308' : '#ef4444',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                    }}>
+                      🎯 Score prospect : {ch.score || 0}/100
+                    </div>
+
                     <div style={{ fontSize: '0.82rem', color: '#A89FCC', marginBottom: '0.6rem' }}>{ch.subs} abonnés · {ch.desc}</div>
 
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
@@ -198,9 +256,14 @@ export default function Dashboard() {
 
                     <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8rem' }}>
                       {ch.email ? (
-                        <a href={`mailto:${ch.email}`} style={{ color: '#22c55e', textDecoration: 'none' }}>
-                          📧 {ch.email}
-                        </a>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <a href={`mailto:${ch.email}`} style={{ color: '#22c55e', textDecoration: 'none' }}>
+                            📧 {ch.email}
+                          </a>
+                          <button onClick={() => copyEmail(ch.email)} style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '6px', padding: '0.15rem 0.45rem', cursor: 'pointer', fontSize: '0.72rem' }}>
+                            Copier
+                          </button>
+                        </div>
                       ) : (
                         <div style={{ color: '#6B5F96' }}>📭 Email non trouvé</div>
                       )}
@@ -257,13 +320,7 @@ export default function Dashboard() {
                   </div>
 
                   <div style={{ flexShrink: 0 }}>
-                    <button onClick={() => generateEmail(ch)} style={{
-                      background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)',
-                      color: canEmail ? 'white' : '#6B5F96',
-                      border: 'none', padding: '0.5rem 1rem', borderRadius: '8px',
-                      fontSize: '0.82rem', cursor: canEmail ? 'pointer' : 'not-allowed', fontWeight: 500,
-                      whiteSpace: 'nowrap'
-                    }}>
+                    <button onClick={() => generateEmail(ch)} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.82rem', cursor: canEmail ? 'pointer' : 'not-allowed', fontWeight: 500, whiteSpace: 'nowrap' }}>
                       {canEmail ? '✨ Message IA' : '🔒 IA Pro'}
                     </button>
                   </div>
