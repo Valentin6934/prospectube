@@ -1,11 +1,3 @@
-const LANG_CODES: Record<string, string> = {
-  'Français': 'fr',
-  'Anglais': 'en',
-  'Espagnol': 'es',
-  'Portugais': 'pt',
-  'Allemand': 'de',
-}
-
 const BASE_NICHE_QUERIES: Record<string, string> = {
   'Gaming': 'gaming gameplay streamer',
   'Finance & Business': 'finance business investing entrepreneur',
@@ -181,7 +173,6 @@ export async function searchYouTubeChannels(
   if (!apiKey) throw new Error('YOUTUBE_API_KEY manquante')
 
   const queries = buildQueries(niche, lang)
-  const relevanceLanguage = LANG_CODES[lang] || undefined
 
   let allItems: any[] = []
 
@@ -192,7 +183,6 @@ export async function searchYouTubeChannels(
       const searchUrl =
         `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}` +
         `&maxResults=50&key=${apiKey}` +
-        `${relevanceLanguage ? `&relevanceLanguage=${relevanceLanguage}` : ''}` +
         `${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`
 
       const searchRes = await fetch(searchUrl)
