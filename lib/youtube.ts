@@ -44,14 +44,16 @@ function normalizeUrl(url: string | null): string | null {
 function extractSocialLinks(text: string) {
   const instagram = text.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/[A-Za-z0-9._-]+/i)?.[0] || null
   const tiktok = text.match(/(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[A-Za-z0-9._-]+/i)?.[0] || null
+  const twitch = text.match(/(?:https?:\/\/)?(?:www\.)?twitch\.tv\/[A-Za-z0-9_]+/i)?.[0] || null
 
   const website =
-    text.match(/https?:\/\/(?!.*(?:instagram|tiktok|youtube|youtu\.be|facebook|twitter|x\.com))[^\s)]+/i)?.[0] ||
+    text.match(/https?:\/\/(?!.*(?:instagram|tiktok|twitch|youtube|youtu\.be|facebook|twitter|x\.com))[^\s)]+/i)?.[0] ||
     null
 
   return {
     instagram: normalizeUrl(instagram),
     tiktok: normalizeUrl(tiktok),
+    twitch: normalizeUrl(twitch),
     website: normalizeUrl(website),
   }
 }
@@ -117,6 +119,7 @@ export async function searchYouTubeChannels(
         email,
         instagram: socials.instagram,
         tiktok: socials.tiktok,
+        twitch: socials.twitch,
         website: socials.website,
         channelUrl: `https://www.youtube.com/channel/${ch.id}`,
         desc,
