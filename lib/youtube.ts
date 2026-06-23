@@ -93,16 +93,15 @@ export async function searchYouTubeChannels(
   if (!apiKey) throw new Error('YOUTUBE_API_KEY manquante')
 
   const query = `${BASE_NICHE_QUERIES[niche] || niche || 'youtube'} ${LANGUAGE_QUERIES[lang] || ''}`.trim()
-  const relevanceLanguage = LANG_CODES[lang] || 'fr'
 
   let allItems: any[] = []
   let nextPageToken = ''
 
   for (let i = 0; i < 3; i++) {
     const searchUrl =
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}` +
-      `&relevanceLanguage=${relevanceLanguage}&maxResults=50&key=${apiKey}` +
-      `${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`
+  `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}` +
+  `&maxResults=50&key=${apiKey}` +
+  `${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`
 
     const searchRes = await fetch(searchUrl)
     const searchData = await searchRes.json()
