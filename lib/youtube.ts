@@ -31,6 +31,31 @@ function looksFrench(text: string): boolean {
   return words.some(w => t.includes(w))
 }
 
+function extractEmail(text: string): string | null {
+  const match = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
+  return match ? match[0] : null
+}
+
+function normalizeUrl(url: string | null): string | null {
+  if (!url) return null
+  return url.startsWith('http') ? url : `https://${url}`
+}
+
+function extractSocialLinks(text: string) {
+  const instagram = text.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/[A-Za-z0-9._-]+/i)?.[0] || null
+  const tiktok = text.match(/(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[A-Za-z0-9._-]+/i)?.[0] || null
+
+  const website =
+    text.match(/https?:\/\/(?!.*(?:instagram|tiktok|youtube|youtu\.be|facebook|twitter|x\.com))[^\s)]+/i)?.[0] ||
+    null
+
+  return {
+    instagram: normalizeUrl(instagram),
+    tiktok: normalizeUrl(tiktok),
+    website: normalizeUrl(website),
+  }
+}
+
 export async function searchYouTubeChannels(
   niche: string,
   lang: string,
@@ -76,7 +101,10 @@ export async function searchYouTubeChannels(
   return (channelsData.items || [])
     .map((ch: any) => {
       const subsNum = Number(ch.statistics?.subscriberCount || 0)
-      const desc = (ch.snippet?.description || 'Pas de description disponible.').slice(0, 160)
+      const fullDesc = ch.snippet?.description || ''
+      const desc = (fullDesc || 'Pas de description disponible.').slice(0, 160)
+      const email = extractEmail(fullDesc)
+      const socials = extractSocialLinks(fullDesc)
 
       return {
         id: ch.id,
@@ -86,7 +114,11 @@ export async function searchYouTubeChannels(
         niche,
         lang,
         freq: 'Inconnu',
-        email: null,
+        email,
+        instagram: socials.instagram,
+        tiktok: socials.tiktok,
+        website: socials.website,
+        channelUrl: `https://www.youtube.com/channel/${ch.id}`,
         desc,
         avatar: (ch.snippet?.title || 'YT').slice(0, 2).toUpperCase(),
         color: '#533AB7',
