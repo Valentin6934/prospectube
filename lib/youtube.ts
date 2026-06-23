@@ -58,6 +58,24 @@ function extractSocialLinks(text: string) {
   }
 }
 
+function getProspectScore(channel: any): number {
+  let score = 30
+
+  if (channel.email) score += 20
+  if (channel.instagram) score += 10
+  if (channel.tiktok) score += 10
+  if (channel.twitch) score += 10
+  if (channel.website) score += 10
+
+  if (channel.subsNum >= 10000 && channel.subsNum <= 500000) score += 20
+  else if (channel.subsNum > 500000 && channel.subsNum <= 2000000) score += 10
+
+  if (channel.desc && channel.desc.length > 80) score += 10
+  if (channel.lang === 'Français') score += 10
+
+  return Math.min(score, 100)
+}
+
 export async function searchYouTubeChannels(
   niche: string,
   lang: string,
@@ -108,7 +126,7 @@ export async function searchYouTubeChannels(
       const email = extractEmail(fullDesc)
       const socials = extractSocialLinks(fullDesc)
 
-      return {
+      const channel = {
         id: ch.id,
         name: ch.snippet?.title || 'Chaîne inconnue',
         subs: formatSubs(subsNum),
@@ -126,6 +144,11 @@ export async function searchYouTubeChannels(
         avatar: (ch.snippet?.title || 'YT').slice(0, 2).toUpperCase(),
         color: '#533AB7',
         thumbnail: ch.snippet?.thumbnails?.default?.url || null,
+      }
+
+      return {
+        ...channel,
+        score: getProspectScore(channel),
       }
     })
     .filter((ch: any) => {
