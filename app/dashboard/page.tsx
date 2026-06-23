@@ -35,7 +35,7 @@ export default function Dashboard() {
       setPlan((session.user as any).plan || 'Gratuit')
       setSearchesLeft((session.user as any).searchesRemaining ?? 5)
     }
-  }, [status, session])
+  }, [status, session, router])
 
   const handleSearch = async () => {
     if (!niche) return alert('Choisis une niche !')
@@ -61,7 +61,7 @@ export default function Dashboard() {
   }
 
   const generateEmail = async (channel: any) => {
-    if (!canEmail) return alert('Le plan Pro est requis pour générer des emails IA.')
+    if (!canEmail) return alert('Le plan Pro est requis pour générer des messages IA.')
     setEmailModal(channel)
     setEmailLoading(true)
     setEmailData(null)
@@ -74,7 +74,7 @@ export default function Dashboard() {
     const data = await res.json()
     setEmailLoading(false)
     if (!res.ok) {
-      if (data.upgrade) return alert('Plan Pro requis pour les emails IA.')
+      if (data.upgrade) return alert('Plan Pro requis pour les messages IA.')
       return alert(data.error)
     }
     setEmailData(data)
@@ -120,7 +120,7 @@ export default function Dashboard() {
         {/* UPGRADE BANNER */}
         {plan === 'Gratuit' && (
           <div style={{ background: 'rgba(83,58,183,0.15)', border: '1px solid rgba(83,58,183,0.4)', borderRadius: '12px', padding: '1rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-            <p style={{ color: '#a78bfa', fontSize: '0.9rem' }}>🔒 Passe au plan Pro pour débloquer les emails IA et 20 résultats par recherche</p>
+            <p style={{ color: '#a78bfa', fontSize: '0.9rem' }}>🔒 Passe au plan Pro pour débloquer Instagram, TikTok, site web, messages IA et plus de résultats</p>
             <Link href="/#pricing">
               <button className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}>Voir les plans →</button>
             </Link>
@@ -192,27 +192,67 @@ export default function Dashboard() {
                         <span key={tag} style={{ fontSize: '0.75rem', padding: '0.15rem 0.6rem', borderRadius: '20px', background: 'rgba(83,58,183,0.15)', border: '1px solid rgba(83,58,183,0.3)', color: '#a78bfa' }}>{tag}</span>
                       ))}
                     </div>
-                    {ch.email ? (
-                      <div style={{ fontSize: '0.8rem', color: '#22c55e', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
-                        {ch.email}
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '0.8rem', color: '#6B5F96' }}>📭 Email non trouvé</div>
-                    )}
+
+                    <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8rem' }}>
+                      {ch.email ? (
+                        <a href={`mailto:${ch.email}`} style={{ color: '#22c55e', textDecoration: 'none' }}>
+                          📧 {ch.email}
+                        </a>
+                      ) : (
+                        <div style={{ color: '#6B5F96' }}>📭 Email non trouvé</div>
+                      )}
+
+                      {ch.channelUrl && (
+                        <a href={ch.channelUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', textDecoration: 'none' }}>
+                          🎥 Voir la chaîne YouTube
+                        </a>
+                      )}
+
+                      {plan === 'Gratuit' ? (
+                        <>
+                          <div style={{ color: '#6B5F96' }}>🔒 Instagram disponible en Pro</div>
+                          <div style={{ color: '#6B5F96' }}>🔒 TikTok disponible en Pro</div>
+                          <div style={{ color: '#6B5F96' }}>🔒 Site web disponible en Pro</div>
+                        </>
+                      ) : (
+                        <>
+                          {ch.instagram ? (
+                            <a href={ch.instagram} target="_blank" rel="noopener noreferrer" style={{ color: '#e879f9', textDecoration: 'none' }}>
+                              📷 Instagram
+                            </a>
+                          ) : (
+                            <div style={{ color: '#6B5F96' }}>📷 Instagram non trouvé</div>
+                          )}
+
+                          {ch.tiktok ? (
+                            <a href={ch.tiktok} target="_blank" rel="noopener noreferrer" style={{ color: '#f472b6', textDecoration: 'none' }}>
+                              🎵 TikTok
+                            </a>
+                          ) : (
+                            <div style={{ color: '#6B5F96' }}>🎵 TikTok non trouvé</div>
+                          )}
+
+                          {ch.website ? (
+                            <a href={ch.website} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>
+                              🌐 Site web
+                            </a>
+                          ) : (
+                            <div style={{ color: '#6B5F96' }}>🌐 Site web non trouvé</div>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div style={{ flexShrink: 0 }}>
-                    {ch.email && (
-                      <button onClick={() => generateEmail(ch)} style={{
-                        background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)',
-                        color: canEmail ? 'white' : '#6B5F96',
-                        border: 'none', padding: '0.5rem 1rem', borderRadius: '8px',
-                        fontSize: '0.82rem', cursor: canEmail ? 'pointer' : 'not-allowed', fontWeight: 500,
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {canEmail ? '✉️ Email IA' : '🔒 Pro'}
-                      </button>
-                    )}
+                    <button onClick={() => generateEmail(ch)} style={{
+                      background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)',
+                      color: canEmail ? 'white' : '#6B5F96',
+                      border: 'none', padding: '0.5rem 1rem', borderRadius: '8px',
+                      fontSize: '0.82rem', cursor: canEmail ? 'pointer' : 'not-allowed', fontWeight: 500,
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {canEmail ? '✨ Message IA' : '🔒 IA Pro'}
+                    </button>
                   </div>
                 </div>
               ))
@@ -226,19 +266,19 @@ export default function Dashboard() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
           <div className="card" style={{ width: '100%', maxWidth: '560px', padding: '1.75rem', position: 'relative' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 className="font-display" style={{ fontWeight: 700 }}>Email généré par IA ✨</h3>
+              <h3 className="font-display" style={{ fontWeight: 700 }}>Message généré par IA ✨</h3>
               <button onClick={() => { setEmailModal(null); setEmailData(null); setSendStatus('') }} style={{ background: 'none', border: 'none', color: '#A89FCC', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
             </div>
             {emailLoading ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: '#A89FCC' }}>
                 <div style={{ marginBottom: '0.75rem', fontSize: '1.5rem' }}>⏳</div>
-                Génération de l'email par IA...
+                Génération du message par IA...
               </div>
             ) : emailData ? (
               <>
                 <div style={{ background: 'rgba(83,58,183,0.08)', border: '1px solid rgba(83,58,183,0.2)', borderRadius: '10px', padding: '1.25rem', marginBottom: '1rem' }}>
                   <div style={{ fontSize: '0.75rem', color: '#6B5F96', marginBottom: '0.5rem' }}>
-                    De : {editorEmail} → À : {emailModal.email}
+                    De : {editorEmail} → À : {emailModal.email || emailModal.name}
                   </div>
                   <div style={{ fontWeight: 600, marginBottom: '0.75rem', fontSize: '0.9rem' }}>
                     Objet : {emailData.subject}
@@ -249,10 +289,10 @@ export default function Dashboard() {
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                   <button className="btn-primary" onClick={() => {
-                    setSendStatus('✓ Email copié dans le presse-papiers !')
+                    setSendStatus('✓ Message copié dans le presse-papiers !')
                     navigator.clipboard.writeText(`Objet: ${emailData.subject}\n\n${emailData.body}`)
                   }} style={{ flex: 1, padding: '0.75rem', fontSize: '0.9rem' }}>
-                    📋 Copier l'email
+                    📋 Copier le message
                   </button>
                   <button onClick={() => generateEmail(emailModal)} style={{ background: 'none', border: '1px solid rgba(83,58,183,0.4)', color: '#A89FCC', padding: '0.75rem 1rem', borderRadius: '10px', cursor: 'pointer', fontSize: '0.85rem' }}>
                     🔄 Régénérer
