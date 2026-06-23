@@ -1,5 +1,5 @@
 const LANG_CODES: Record<string, string> = {
-  'FranÃ§ais': 'fr',
+  'Français': 'fr',
   'Anglais': 'en',
   'Espagnol': 'es',
   'Portugais': 'pt',
@@ -10,27 +10,64 @@ const BASE_NICHE_QUERIES: Record<string, string> = {
   'Gaming': 'gaming gameplay streamer',
   'Finance & Business': 'finance business investing entrepreneur',
   'Tech & Programmation': 'tech programming coding',
-  'Fitness & SantÃ©': 'fitness health workout',
+  'Fitness & Santé': 'fitness health workout',
   'Lifestyle & Vlog': 'lifestyle vlog',
   'Cuisine': 'cooking recipe',
   'Musique': 'music',
-  'Ã‰ducation': 'education tutorial',
+  'Éducation': 'education tutorial',
   'Voyage': 'travel',
-  'BeautÃ© & Mode': 'beauty fashion',
+  'Beauté & Mode': 'beauty fashion',
 }
 
-const LANGUAGE_QUERIES: Record<string, string> = {
-  'FranÃ§ais': 'franÃ§ais france',
-  'Anglais': 'english usa uk',
-  'Espagnol': 'espaÃ±ol espaÃ±a mexico',
-  'Portugais': 'portuguÃªs brasil',
-  'Allemand': 'deutsch deutschland',
+const LANGUAGE_QUERIES: Record<string, string[]> = {
+  'Français': ['français', 'france', 'chaîne française', 'youtubeur français'],
+  'Anglais': ['english', 'usa', 'uk', 'english channel'],
+  'Espagnol': ['español', 'españa', 'mexico', 'canal español'],
+  'Portugais': ['português', 'brasil', 'canal português'],
+  'Allemand': ['deutsch', 'deutschland', 'deutscher kanal'],
+}
+
+const SMALL_CREATOR_QUERIES: Record<string, string[]> = {
+  'Gaming': ['petit youtubeur', 'gaming fr', 'gameplay fr', 'streamer fr', 'nouvelle chaîne gaming'],
+  'Finance & Business': ['investissement débutant', 'business français', 'entrepreneur français'],
+  'Tech & Programmation': ['développeur français', 'programmation français', 'coding français'],
+  'Fitness & Santé': ['fitness français', 'musculation français', 'coach sportif français'],
+  'Lifestyle & Vlog': ['vlog français', 'lifestyle français'],
+  'Cuisine': ['recette française', 'cuisine maison'],
+  'Musique': ['musicien français', 'beatmaker français'],
+  'Éducation': ['tutoriel français', 'formation français'],
+  'Voyage': ['vlog voyage français', 'voyage français'],
+  'Beauté & Mode': ['mode française', 'beauté française'],
+}
+
+function buildQueries(niche: string, lang: string): string[] {
+  const base = BASE_NICHE_QUERIES[niche] || niche || 'youtube'
+  const langTerms = LANGUAGE_QUERIES[lang] || [lang]
+  const smallTerms = SMALL_CREATOR_QUERIES[niche] || []
+
+  const queries = [
+    `${base} ${langTerms[0] || ''}`,
+    `${base} ${langTerms[1] || ''}`,
+    `${base} ${langTerms[2] || ''}`,
+    ...smallTerms,
+  ]
+
+  return Array.from(new Set(queries.map(q => q.trim()).filter(Boolean))).slice(0, 5)
 }
 
 function formatSubs(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1).replace('.0', '')}M`
   if (n >= 1000) return `${Math.round(n / 1000)}K`
   return String(n)
+}
+
+function decodeHtml(text: string): string {
+  return text
+    .replace(/\\u0026/g, '&')
+    .replace(/\\\//g, '/')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
 }
 
 function extractEmail(text: string): string | null {
@@ -43,15 +80,6 @@ function normalizeUrl(url: string | null): string | null {
   if (!url) return null
   const cleaned = url.replace(/\\u0026/g, '&').replace(/&amp;/g, '&')
   return cleaned.startsWith('http') ? cleaned : `https://${cleaned}`
-}
-
-function decodeHtml(text: string): string {
-  return text
-    .replace(/\\u0026/g, '&')
-    .replace(/\\\//g, '/')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
 }
 
 function extractSocialLinks(text: string) {
@@ -76,6 +104,32 @@ function extractSocialLinks(text: string) {
     twitch: normalizeUrl(twitch),
     website: normalizeUrl(website),
   }
+}
+
+function looksLikeLanguage(text: string, lang: string): boolean {
+  const t = ` ${text.toLowerCase()} `
+
+  if (lang === 'Français') {
+    return /[àâçéèêëîïôûùüÿœ]/i.test(text) ||
+      [' le ', ' la ', ' les ', ' des ', ' une ', ' un ', ' avec ', ' chaîne ', ' français ', ' vidéo ', ' abonne '].some(w => t.includes(w))
+  }
+
+  if (lang === 'Espagnol') {
+    return /[áéíóúñ¿¡]/i.test(text) ||
+      [' el ', ' la ', ' los ', ' las ', ' una ', ' con ', ' español ', ' canal ', ' vídeos '].some(w => t.includes(w))
+  }
+
+  if (lang === 'Portugais') {
+    return /[áàâãçéêíóôõú]/i.test(text) ||
+      [' de ', ' com ', ' para ', ' você ', ' canal ', ' português ', ' brasil ', ' vídeos '].some(w => t.includes(w))
+  }
+
+  if (lang === 'Allemand') {
+    return /[äöüß]/i.test(text) ||
+      [' der ', ' die ', ' das ', ' und ', ' deutsch ', ' kanal ', ' videos '].some(w => t.includes(w))
+  }
+
+  return true
 }
 
 async function fetchAboutText(channelId: string): Promise<string> {
@@ -127,28 +181,33 @@ export async function searchYouTubeChannels(
   const apiKey = process.env.YOUTUBE_API_KEY
   if (!apiKey) throw new Error('YOUTUBE_API_KEY manquante')
 
-  const query = `${BASE_NICHE_QUERIES[niche] || niche || 'youtube'} ${LANGUAGE_QUERIES[lang] || ''}`.trim()
+  const queries = buildQueries(niche, lang)
+  const relevanceLanguage = LANG_CODES[lang] || undefined
 
   let allItems: any[] = []
-  let nextPageToken = ''
 
-  for (let i = 0; i < 3; i++) {
-    const searchUrl =
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}` +
-      `&maxResults=50&key=${apiKey}` +
-      `${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`
+  for (const query of queries) {
+    let nextPageToken = ''
 
-    const searchRes = await fetch(searchUrl)
-    const searchData = await searchRes.json()
+    for (let i = 0; i < 2; i++) {
+      const searchUrl =
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}` +
+        `&maxResults=50&key=${apiKey}` +
+        `${relevanceLanguage ? `&relevanceLanguage=${relevanceLanguage}` : ''}` +
+        `${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`
 
-    if (searchData.error) {
-      throw new Error(searchData.error.message || 'Erreur YouTube Search API')
+      const searchRes = await fetch(searchUrl)
+      const searchData = await searchRes.json()
+
+      if (searchData.error) {
+        throw new Error(searchData.error.message || 'Erreur YouTube Search API')
+      }
+
+      allItems.push(...(searchData.items || []))
+
+      if (!searchData.nextPageToken) break
+      nextPageToken = searchData.nextPageToken
     }
-
-    allItems.push(...(searchData.items || []))
-
-    if (!searchData.nextPageToken) break
-    nextPageToken = searchData.nextPageToken
   }
 
   const channelIds = Array.from(
@@ -188,7 +247,7 @@ export async function searchYouTubeChannels(
 
       const channel = {
         id: ch.id,
-        name: ch.snippet?.title || 'ChaÃ®ne inconnue',
+        name: ch.snippet?.title || 'Chaîne inconnue',
         subs: formatSubs(subsNum),
         subsNum,
         niche,
@@ -213,8 +272,15 @@ export async function searchYouTubeChannels(
       }
     })
     .filter((ch: any) => ch.subsNum >= subsMin && ch.subsNum <= subsMax)
+    .filter((ch: any) => {
+      const text = `${ch.name} ${ch.desc}`
+      if (!looksLikeLanguage(text, lang)) {
+        return ch.email || ch.instagram || ch.tiktok || ch.twitch || ch.website
+      }
+      return true
+    })
     .sort((a: any, b: any) => b.score - a.score)
-    .slice(0, maxResults)
+    .slice(0, Math.max(maxResults * 3, maxResults))
 
   const enriched = await Promise.all(
     candidates.map(async (channel: any) => {
@@ -245,5 +311,14 @@ export async function searchYouTubeChannels(
     })
   )
 
-  return enriched.sort((a: any, b: any) => b.score - a.score)
+  return enriched
+    .filter((ch: any) => {
+      const text = `${ch.name} ${ch.desc}`
+      if (!looksLikeLanguage(text, lang)) {
+        return ch.email || ch.instagram || ch.tiktok || ch.twitch || ch.website
+      }
+      return true
+    })
+    .sort((a: any, b: any) => b.score - a.score)
+    .slice(0, maxResults)
 }
