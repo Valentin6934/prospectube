@@ -48,12 +48,10 @@ function buildQueries(niche: string, lang: string): string[] {
   const queries = [
     `${base} ${langTerms[0] || ''}`,
     `${base} ${langTerms[1] || ''}`,
-    `${base} ${langTerms[2] || ''}`,
-    `${base} ${langTerms[3] || ''}`,
-    ...smallTerms,
+    smallTerms[0] || `${base} ${langTerms[2] || ''}`,
   ]
 
-  return Array.from(new Set(queries.map(q => q.trim()).filter(Boolean))).slice(0, 8)
+  return Array.from(new Set(queries.map(q => q.trim()).filter(Boolean))).slice(0, 3)
 }
 
 function formatSubs(n: number): string {
@@ -190,7 +188,7 @@ export async function searchYouTubeChannels(
   for (const query of queries) {
     let nextPageToken = ''
 
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 2; i++) {
       const searchUrl =
         `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}` +
         `&maxResults=50&key=${apiKey}` +
@@ -281,7 +279,7 @@ export async function searchYouTubeChannels(
       return true
     })
     .sort((a: any, b: any) => b.score - a.score)
-    .slice(0, Math.max(maxResults * 5, maxResults))
+    .slice(0, Math.max(maxResults * 3, maxResults))
 
   const enriched = await Promise.all(
     candidates.map(async (channel: any) => {
