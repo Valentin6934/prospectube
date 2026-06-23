@@ -34,13 +34,15 @@ export async function POST(req: NextRequest) {
   let results: any[] = []
   let source = 'youtube'
 
-  try {
-    results = await searchYouTubeChannels(niche, lang, minVal, maxVal, limits.results)
-  } catch (err: any) {
-    source = 'demo'
-    const allResults = filterChannels(niche, lang, minVal, maxVal)
-    results = allResults.slice(0, limits.results)
-  }
+try {
+  results = await searchYouTubeChannels(niche, lang, minVal, maxVal, limits.results)
+} catch (err: any) {
+  console.error('Erreur YouTube:', err)
+  return NextResponse.json(
+    { error: err?.message || 'Erreur inconnue YouTube', source: 'youtube_error' },
+    { status: 500 }
+  )
+}
 
   await prisma.search.create({
     data: {
