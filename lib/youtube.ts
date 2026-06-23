@@ -1,14 +1,14 @@
 const NICHE_QUERIES: Record<string, string> = {
-  'Gaming': 'gaming gameplay lets play',
-  'Finance & Business': 'finance business investissement',
-  'Tech & Programmation': 'tech programmation informatique',
-  'Fitness & Santé': 'fitness musculation sport',
-  'Lifestyle & Vlog': 'lifestyle vlog',
-  'Cuisine': 'cuisine recette',
-  'Musique': 'musique music',
-  'Éducation': 'education tutoriel formation',
-  'Voyage': 'voyage travel',
-  'Beauté & Mode': 'beauté mode maquillage',
+  'Gaming': 'gaming france français gameplay',
+  'Finance & Business': 'finance business investissement français',
+  'Tech & Programmation': 'tech programmation informatique français',
+  'Fitness & Santé': 'fitness musculation sport français',
+  'Lifestyle & Vlog': 'lifestyle vlog français',
+  'Cuisine': 'cuisine recette français',
+  'Musique': 'musique français',
+  'Éducation': 'education tutoriel formation français',
+  'Voyage': 'voyage travel français',
+  'Beauté & Mode': 'beauté mode maquillage français',
 }
 
 const LANG_CODES: Record<string, string> = {
@@ -25,6 +25,12 @@ function formatSubs(n: number): string {
   return String(n)
 }
 
+function looksFrench(text: string): boolean {
+  const t = ` ${text.toLowerCase()} `
+  const words = [' le ', ' la ', ' les ', ' des ', ' une ', ' un ', ' je ', ' nous ', ' vous ', ' avec ', ' chaîne ', ' français ', ' bienvenue ', ' vidéo ', ' abonnés ']
+  return words.some(w => t.includes(w))
+}
+
 export async function searchYouTubeChannels(
   niche: string,
   lang: string,
@@ -35,12 +41,13 @@ export async function searchYouTubeChannels(
   const apiKey = process.env.YOUTUBE_API_KEY
   if (!apiKey) throw new Error('YOUTUBE_API_KEY manquante')
 
-  const query = NICHE_QUERIES[niche] || niche || 'youtube'
+  const baseQuery = NICHE_QUERIES[niche] || niche || 'youtube'
+  const query = lang === 'Français' ? `${baseQuery} chaîne française` : baseQuery
   const relevanceLanguage = LANG_CODES[lang] || 'fr'
 
   const searchUrl =
     `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}` +
-    `&relevanceLanguage=${relevanceLanguage}&maxResults=50&key=${apiKey}`
+    `&relevanceLanguage=${relevanceLanguage}&regionCode=${relevanceLanguage.toUpperCase()}&maxResults=50&key=${apiKey}`
 
   const searchRes = await fetch(searchUrl)
   const searchData = await searchRes.json()
@@ -50,11 +57,7 @@ export async function searchYouTubeChannels(
   }
 
   const channelIds = Array.from(
-    new Set(
-      (searchData.items || [])
-        .map((item: any) => item.snippet?.channelId)
-        .filter(Boolean)
-    )
+    new Set((searchData.items || []).map((item: any) => item.snippet?.channelId).filter(Boolean))
   )
 
   if (channelIds.length === 0) return []
@@ -70,9 +73,10 @@ export async function searchYouTubeChannels(
     throw new Error(channelsData.error.message || 'Erreur YouTube Channels API')
   }
 
-  const filtered = (channelsData.items || [])
+  return (channelsData.items || [])
     .map((ch: any) => {
       const subsNum = Number(ch.statistics?.subscriberCount || 0)
+      const desc = (ch.snippet?.description || 'Pas de description disponible.').slice(0, 160)
 
       return {
         id: ch.id,
@@ -83,14 +87,16 @@ export async function searchYouTubeChannels(
         lang,
         freq: 'Inconnu',
         email: null,
-        desc: (ch.snippet?.description || 'Pas de description disponible.').slice(0, 160),
+        desc,
         avatar: (ch.snippet?.title || 'YT').slice(0, 2).toUpperCase(),
         color: '#533AB7',
         thumbnail: ch.snippet?.thumbnails?.default?.url || null,
       }
     })
-    .filter((ch: any) => ch.subsNum >= subsMin && ch.subsNum <= subsMax)
+    .filter((ch: any) => {
+      const inRange = ch.subsNum >= subsMin && ch.subsNum <= subsMax
+      if (lang !== 'Français') return inRange
+      return inRange && looksFrench(`${ch.name} ${ch.desc}`)
+    })
     .slice(0, maxResults)
-
-  return filtered
 }
