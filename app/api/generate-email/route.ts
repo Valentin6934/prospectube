@@ -1,22 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
+
 export const dynamic = 'force-dynamic'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession()
-  if (!session?.user?.email) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
+
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
+  }
 
   const { channel, editorEmail } = await req.json()
 
+  const contactInfos = `
+Email trouvé : ${channel.email || 'Non trouvé'}
+Instagram : ${channel.instagram || 'Non trouvé'}
+TikTok : ${channel.tiktok || 'Non trouvé'}
+Twitch : ${channel.twitch || 'Non trouvé'}
+Site web : ${channel.website || 'Non trouvé'}
+Chaîne YouTube : ${channel.channelUrl || 'Non trouvé'}
+Score prospect : ${channel.score || 0}/100
+`
+
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 500,
-    messages: [{
-      role: 'user',
-      content: `Tu es un monteur vidéo freelance qui prospecte des YouTubeurs. Génère un email de prospection court, naturel et personnalisé pour cette chaîne :
+    max_tokens: 700,
+    messages: [
+      {
+        role: 'user',
+        content: `Tu es un monteur vidéo freelance qui prospecte des YouTubeurs.
+
+Génère un message de prospection court, naturel et personnalisé pour cette chaîne :
 
 Nom : ${channel.name}
 Niche : ${channel.niche}
@@ -25,21 +42,36 @@ Fréquence : ${channel.freq}
 Description : ${channel.desc}
 Langue : ${channel.lang}
 
+Infos disponibles :
+${contactInfos}
+
 Règles :
-- Email court (max 120 mots)
+- Message court : maximum 120 mots
 - Ton professionnel mais humain
-- Montre que tu connais leur contenu
-- Propose clairement ton aide pour le montage
-- Termine avec l'email : ${editorEmail}
-- Écris en ${channel.lang}
-- Format : Objet: [sujet]\n\n[corps]`
-    }]
+- Montre que tu as compris leur contenu
+- Propose clairement ton aide pour améliorer le montage vidéo
+- Ne dis pas "je suis une IA"
+- Ne force pas trop la vente
+- Termine avec cet email de contact : ${editorEmail}
+- Écris dans cette langue : ${channel.lang}
+- Format exact :
+Objet: [sujet]
+
+[corps du message]`,
+      },
+    ],
   })
 
   const text = message.content[0].type === 'text' ? message.content[0].text : ''
   const lines = text.split('\n')
-  const subject = lines[0].replace('Objet:', '').replace('Subject:', '').trim()
-  const body = lines.slice(2).join('\n').trim()
+
+  const subject =
+    lines[0]
+      ?.replace('Objet:', '')
+      .replace('Subject:', '')
+      .trim() || `Collaboration avec ${channel.name}`
+
+  const body = lines.slice(1).join('\n').trim()
 
   return NextResponse.json({ subject, body })
 }
