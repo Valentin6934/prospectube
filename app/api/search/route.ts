@@ -44,16 +44,20 @@ try {
   )
 }
 
-  await prisma.search.create({
-    data: {
-      userId: user.id,
-      niche,
-      language: lang || 'Tous',
-      subsMin: String(minVal),
-      subsMax: String(maxVal),
-      results: JSON.stringify(results),
-    },
-  })
+  try {
+    await prisma.search.create({
+      data: {
+        userId: user.id,
+        niche,
+        language: lang || 'Tous',
+        subsMin: String(minVal),
+        subsMax: String(maxVal),
+        results: JSON.stringify(results),
+      },
+    })
+  } catch (err) {
+    console.error('Erreur sauvegarde historique:', err)
+  }
 
   await prisma.user.update({
     where: { id: user.id },
