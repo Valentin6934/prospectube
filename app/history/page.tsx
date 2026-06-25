@@ -68,6 +68,21 @@ function getScoreStyles(score: number) {
   return { background: 'rgba(239,68,68,0.15)', color: '#ef4444' }
 }
 
+function normalizeResults(results: unknown): Channel[] {
+  if (Array.isArray(results)) return results
+
+  if (typeof results === 'string') {
+    try {
+      const parsed = JSON.parse(results)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+
+  return []
+}
+
 export default function HistoryPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -77,6 +92,8 @@ export default function HistoryPage() {
   const [selectedResults, setSelectedResults] = useState<Channel[]>([])
   const [resultsLoadingId, setResultsLoadingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([])
+  const [favoriteLoadingId, setFavoriteLoadingId] = useState<string | null>(null)
   const [resultsError, setResultsError] = useState('')
   const plan = (session?.user as any)?.plan || 'Gratuit'
 
@@ -87,10 +104,18 @@ export default function HistoryPage() {
   useEffect(() => {
     if (status !== 'authenticated') return
 
-    fetch('/api/history')
-      .then(res => res.ok ? res.json() : { searches: [] })
-      .then(data => setHistory(data.searches || []))
-      .catch(() => setHistory([]))
+    Promise.all([
+      fetch('/api/history')
+        .then(res => res.ok ? res.json() : { searches: [] })
+        .catch(() => ({ searches: [] })),
+      fetch('/api/favorites')
+        .then(res => res.ok ? res.json() : { favorites: [] })
+        .catch(() => ({ favorites: [] })),
+    ])
+      .then(([historyData, favoritesData]) => {
+        setHistory(historyData.searches || [])
+        setFavoriteIds((favoritesData.favorites || []).map((favorite: any) => favorite.channelId).filter(Boolean))
+      })
       .finally(() => setLoading(false))
   }, [status])
 
@@ -109,10 +134,10 @@ export default function HistoryPage() {
       return
     }
 
-    const results = Array.isArray(data.search?.results) ? data.search.results : []
+    const results = normalizeResults(data.search?.results)
     setSelectedSearch(item)
     setSelectedResults(results)
-    setResultsError(results.length === 0 ? 'Aucun résultat exploitable dans cette recherche sauvegardée.' : '')
+    setResultsError(results.length === 0 ? 'Aucun résultat sauvegardé pour cette recherche.' : '')
   }
 
   const deleteSearch = async (item: HistoryItem) => {
@@ -130,6 +155,26 @@ export default function HistoryPage() {
       setSelectedResults([])
       setResultsError('')
     }
+  }
+
+  const addFavorite = async (channel: Channel) => {
+    const channelId = channel.id
+    if (!channelId || favoriteIds.includes(channelId)) return
+
+    setFavoriteLoadingId(channelId)
+
+    const res = await fetch('/api/favorites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(channel),
+    })
+    const data = await res.json().catch(() => ({}))
+    setFavoriteLoadingId(null)
+
+    if (!res.ok) return alert(data.error || "Impossible d'ajouter ce favori.")
+
+    const savedChannelId = data.favorite?.channelId || channelId
+    setFavoriteIds(current => current.includes(savedChannelId) ? current : [...current, savedChannelId])
   }
 
   if (status === 'loading' || loading) return (
@@ -152,6 +197,9 @@ export default function HistoryPage() {
           </Link>
           <Link href="/favorites" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
             ⭐ Mes favoris
+          </Link>
+          <Link href="/history" style={{ color: '#a78bfa', textDecoration: 'none', fontSize: '0.85rem' }}>
+            📁 Historique
           </Link>
           <div style={{ background: 'rgba(83,58,183,0.2)', border: '1px solid rgba(83,58,183,0.4)', color: '#a78bfa', padding: '0.2rem 0.75rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 500 }}>
             Plan {plan}
@@ -213,9 +261,11 @@ export default function HistoryPage() {
                 const color = ch.color || '#533AB7'
                 const avatar = ch.avatar || (ch.name || 'YT').slice(0, 2).toUpperCase()
                 const year = getCreatedYear(ch.createdAt)
+                const channelId = ch.id
+                const isFavorite = Boolean(channelId && favoriteIds.includes(channelId))
 
                 return (
-                  <div key={ch.id || `${ch.name}-${index}`} className="card" style={{ padding: '1.25rem', marginBottom: '0.75rem', display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                  <div key={channelId || `${ch.name}-${index}`} className="card" style={{ padding: '1.25rem', marginBottom: '0.75rem', display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
                     <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: `${color}33`, border: `2px solid ${color}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem', color, flexShrink: 0 }}>
                       {avatar}
                     </div>
@@ -247,6 +297,16 @@ export default function HistoryPage() {
                         {ch.twitch ? <a href={ch.twitch} target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF', textDecoration: 'none' }}>🎮 Twitch</a> : <div style={{ color: '#6B5F96' }}>🎮 Twitch non trouvé</div>}
                         {ch.website ? <a href={ch.website} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>🌐 Site web</a> : <div style={{ color: '#6B5F96' }}>🌐 Site web non trouvé</div>}
                       </div>
+                    </div>
+
+                    <div style={{ flexShrink: 0 }}>
+                      <button
+                        onClick={() => addFavorite(ch)}
+                        disabled={!channelId || isFavorite || favoriteLoadingId === channelId}
+                        style={{ background: isFavorite ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.15)', color: isFavorite ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.82rem', cursor: !channelId || isFavorite ? 'default' : 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
+                      >
+                        {isFavorite ? '⭐ Favori ajouté' : favoriteLoadingId === channelId ? 'Ajout...' : '☆ Ajouter aux favoris'}
+                      </button>
                     </div>
                   </div>
                 )
