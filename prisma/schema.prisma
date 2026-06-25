@@ -18,6 +18,7 @@ model User {
   createdAt         DateTime @default(now())
   searches          Search[]
   emailsSent        EmailSent[]
+  favorites         Favorite[]
 }
 
 model Search {
@@ -41,4 +42,36 @@ model EmailSent {
   content      String
   status       String   @default("Envoyé")
   createdAt    DateTime @default(now())
+}
+
+model Favorite {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  channelId        String
+  name             String
+  subs             String?
+  subsNum          Int?
+  niche            String?
+  lang             String?
+  score            Int?
+  scoreLabel       String?
+  scoreReason      String?
+  email            String?
+  instagram        String?
+  tiktok           String?
+  twitch           String?
+  website          String?
+  channelUrl       String?
+  aboutUrl         String?
+  desc             String?
+  avatar           String?
+  color            String?
+  thumbnail        String?
+  totalViews       Float?
+  videoCount       Int?
+  channelCreatedAt DateTime?
+  createdAt        DateTime @default(now())
+
+  @@unique([userId, channelId])
 }

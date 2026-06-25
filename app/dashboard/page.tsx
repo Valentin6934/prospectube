@@ -8,6 +8,33 @@ const NICHES = ['Gaming', 'Finance & Business', 'Tech & Programmation', 'Fitness
 const LANGS = ['Français', 'Anglais', 'Espagnol', 'Portugais', 'Allemand']
 const SUBS_LABELS = ['1K', '10K', '50K', '100K', '500K', '1M', '5M+']
 
+function formatCompactNumber(n: number): string {
+  if (n >= 1000000000) return `${(n / 1000000000).toFixed(1).replace('.0', '')}B`
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1).replace('.0', '')}M`
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace('.0', '')}K`
+  return String(n || 0)
+}
+
+function getCreatedYear(createdAt: string | null | undefined): string {
+  if (!createdAt) return ''
+  const year = new Date(createdAt).getFullYear()
+  return Number.isFinite(year) ? String(year) : ''
+}
+
+function getScoreStyles(scoreColor: string | undefined, score: number) {
+  const color = scoreColor || (score >= 80 ? 'green' : score >= 60 ? 'yellow' : 'red')
+
+  if (color === 'green') {
+    return { background: 'rgba(34,197,94,0.15)', color: '#22c55e' }
+  }
+
+  if (color === 'yellow') {
+    return { background: 'rgba(234,179,8,0.15)', color: '#eab308' }
+  }
+
+  return { background: 'rgba(239,68,68,0.15)', color: '#ef4444' }
+}
+
 export default function Dashboard() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -23,6 +50,8 @@ export default function Dashboard() {
   const [canEmail, setCanEmail] = useState(false)
   const [searchesLeft, setSearchesLeft] = useState<number | null>(null)
   const [plan, setPlan] = useState('Gratuit')
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([])
+  const [favoriteLoadingId, setFavoriteLoadingId] = useState<string | null>(null)
 
   const [emailModal, setEmailModal] = useState<any>(null)
   const [emailLoading, setEmailLoading] = useState(false)
@@ -39,6 +68,18 @@ export default function Dashboard() {
     }
   }, [status, session, router])
 
+  useEffect(() => {
+    if (status !== 'authenticated') return
+
+    fetch('/api/favorites')
+      .then(res => res.ok ? res.json() : { favorites: [] })
+      .then(data => {
+        const ids = (data.favorites || []).map((favorite: any) => favorite.channelId).filter(Boolean)
+        setFavoriteIds(ids)
+      })
+      .catch(() => setFavoriteIds([]))
+  }, [status])
+
   const copyEmail = async (email: string) => {
     await navigator.clipboard.writeText(email)
     alert('Email copié !')
@@ -48,10 +89,16 @@ export default function Dashboard() {
     if (!isPro) return alert('Export CSV disponible avec le plan Pro.')
 
     const headers = ['Nom', 'Abonnés', 'Score', 'Email', 'YouTube', 'Instagram', 'TikTok', 'Twitch', 'Site web']
+    headers.splice(3, 0, 'Score Label', 'Score Reason', 'Vues totales', 'Nombre de videos', 'Date creation')
     const rows = results.map(ch => [
       ch.name || '',
       ch.subs || '',
       ch.score || '',
+      ch.scoreLabel || '',
+      ch.scoreReason || '',
+      ch.totalViews || '',
+      ch.videoCount || '',
+      ch.createdAt || '',
       ch.email || '',
       ch.channelUrl || '',
       ch.instagram || '',
@@ -125,6 +172,26 @@ export default function Dashboard() {
     setEmailData(data)
   }
 
+  const addFavorite = async (channel: any) => {
+    if (!channel?.id || favoriteIds.includes(channel.id)) return
+
+    setFavoriteLoadingId(channel.id)
+
+    const res = await fetch('/api/favorites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(channel),
+    })
+
+    const data = await res.json()
+    setFavoriteLoadingId(null)
+
+    if (!res.ok) return alert(data.error || "Impossible d'ajouter ce favori.")
+
+    const channelId = data.favorite?.channelId || channel.id
+    setFavoriteIds(current => current.includes(channelId) ? current : [...current, channelId])
+  }
+
   if (status === 'loading') return (
     <div style={{ minHeight: '100vh', background: '#0A0812', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ color: '#A89FCC' }}>Chargement...</div>
@@ -140,6 +207,9 @@ export default function Dashboard() {
           </div>
         </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <Link href="/favorites" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
+            ⭐ Mes favoris
+          </Link>
           <div style={{ background: 'rgba(83,58,183,0.2)', border: '1px solid rgba(83,58,183,0.4)', color: '#a78bfa', padding: '0.2rem 0.75rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 500 }}>
             Plan {plan}
           </div>
@@ -235,6 +305,26 @@ export default function Dashboard() {
 
                     <div style={{
                       display: 'inline-block',
+                      marginBottom: '0.35rem',
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '999px',
+                      ...getScoreStyles(ch.scoreColor, ch.score || 0),
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                    }}>
+                      ⭐ {ch.scoreLabel || 'Potentiel faible'} · {ch.score || 0}/100
+                    </div>
+
+                    <div style={{ fontSize: '0.82rem', color: '#C4BCDF', marginBottom: '0.25rem' }}>
+                      {ch.scoreReason || "Faible potentiel ou peu d'informations disponibles"}
+                    </div>
+
+                    <div style={{ fontSize: '0.82rem', color: '#A89FCC', marginBottom: '0.6rem' }}>
+                      {ch.subs} abonnés · {ch.totalViewsFormatted || formatCompactNumber(ch.totalViews || 0)} vues · {ch.videoCountFormatted || formatCompactNumber(ch.videoCount || 0)} vidéos{getCreatedYear(ch.createdAt) ? ` · créée en ${getCreatedYear(ch.createdAt)}` : ''}
+                    </div>
+
+                    <div style={{
+                      display: 'none',
                       marginBottom: '0.5rem',
                       padding: '0.2rem 0.6rem',
                       borderRadius: '999px',
@@ -319,7 +409,14 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <div style={{ flexShrink: 0 }}>
+                  <div style={{ flexShrink: 0, display: 'grid', gap: '0.5rem' }}>
+                    <button
+                      onClick={() => addFavorite(ch)}
+                      disabled={favoriteIds.includes(ch.id) || favoriteLoadingId === ch.id}
+                      style={{ background: favoriteIds.includes(ch.id) ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.15)', color: favoriteIds.includes(ch.id) ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.82rem', cursor: favoriteIds.includes(ch.id) ? 'default' : 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
+                    >
+                      {favoriteIds.includes(ch.id) ? '⭐ Favori ajouté' : favoriteLoadingId === ch.id ? 'Ajout...' : '☆ Ajouter aux favoris'}
+                    </button>
                     <button onClick={() => generateEmail(ch)} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.82rem', cursor: canEmail ? 'pointer' : 'not-allowed', fontWeight: 500, whiteSpace: 'nowrap' }}>
                       {canEmail ? '✨ Message IA' : '🔒 IA Pro'}
                     </button>

@@ -52,6 +52,13 @@ function formatSubs(n: number): string {
   return String(n)
 }
 
+function formatCompactNumber(n: number): string {
+  if (n >= 1000000000) return `${(n / 1000000000).toFixed(1).replace('.0', '')}B`
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1).replace('.0', '')}M`
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace('.0', '')}K`
+  return String(n)
+}
+
 function decodeHtml(text: string): string {
   return text
     .replace(/\\u0026/g, '&')
@@ -146,20 +153,52 @@ async function fetchAboutText(channelId: string): Promise<string> {
 }
 
 function getProspectScore(channel: any): number {
-  let score = 30
+  let score = 20
 
   if (channel.email) score += 20
-  if (channel.instagram) score += 10
-  if (channel.tiktok) score += 10
-  if (channel.twitch) score += 10
-  if (channel.website) score += 10
+  if (channel.instagram) score += 8
+  if (channel.tiktok) score += 8
+  if (channel.twitch) score += 6
+  if (channel.website) score += 8
 
-  if (channel.subsNum >= 10000 && channel.subsNum <= 500000) score += 20
-  else if (channel.subsNum > 500000 && channel.subsNum <= 2000000) score += 10
+  if (channel.subsNum >= 10000 && channel.subsNum <= 300000) score += 20
+  else if (channel.subsNum > 300000 && channel.subsNum <= 1000000) score += 12
+  else if (channel.subsNum > 1000000 && channel.subsNum <= 2000000) score += 6
 
-  if (channel.desc && channel.desc.length > 80) score += 10
+  if (channel.videoCount >= 200) score += 12
+  else if (channel.videoCount >= 50) score += 8
+
+  if (channel.totalViews >= 10000000) score += 10
+  else if (channel.totalViews >= 1000000) score += 6
+
+  if (channel.desc && channel.desc.length > 80) score += 5
 
   return Math.min(score, 100)
+}
+
+function getScoreLabel(score: number): string {
+  if (score >= 80) return 'Excellent prospect'
+  if (score >= 60) return 'Bon prospect'
+  return 'Potentiel faible'
+}
+
+function getScoreColor(score: number): string {
+  if (score >= 80) return 'green'
+  if (score >= 60) return 'yellow'
+  return 'red'
+}
+
+function getScoreReason(channel: any): string {
+  const hasDirectContact = Boolean(channel.email || channel.website)
+  const hasPublicContact = Boolean(
+    channel.email || channel.instagram || channel.tiktok || channel.twitch || channel.website
+  )
+  const isActive = Number(channel.videoCount || 0) >= 50
+  const hasGoodVolume = Number(channel.totalViews || 0) >= 1000000 || Number(channel.subsNum || 0) >= 10000
+
+  if (hasDirectContact && isActive) return 'Contact direct disponible et chaîne active'
+  if (hasGoodVolume && !hasPublicContact) return 'Bon volume, mais peu de contacts publics'
+  return "Faible potentiel ou peu d'informations disponibles"
 }
 
 export async function searchYouTubeChannels(
@@ -227,6 +266,9 @@ export async function searchYouTubeChannels(
   const candidates = allChannels
     .map((ch: any) => {
       const subsNum = Number(ch.statistics?.subscriberCount || 0)
+      const totalViews = Number(ch.statistics?.viewCount || 0)
+      const videoCount = Number(ch.statistics?.videoCount || 0)
+      const createdAt = ch.snippet?.publishedAt || null
       const snippetDesc = ch.snippet?.description || ''
       const brandingDesc = ch.brandingSettings?.channel?.description || ''
       const fullDesc = `${snippetDesc}\n${brandingDesc}`
@@ -239,6 +281,11 @@ export async function searchYouTubeChannels(
         name: ch.snippet?.title || 'Chaîne inconnue',
         subs: formatSubs(subsNum),
         subsNum,
+        totalViews,
+        totalViewsFormatted: formatCompactNumber(totalViews),
+        videoCount,
+        videoCountFormatted: formatCompactNumber(videoCount),
+        createdAt,
         niche,
         lang,
         freq: 'Inconnu',
@@ -255,9 +302,14 @@ export async function searchYouTubeChannels(
         thumbnail: ch.snippet?.thumbnails?.default?.url || null,
       }
 
+      const score = getProspectScore(channel)
+
       return {
         ...channel,
-        score: getProspectScore(channel),
+        score,
+        scoreLabel: getScoreLabel(score),
+        scoreColor: getScoreColor(score),
+        scoreReason: getScoreReason(channel),
       }
     })
     .filter((ch: any) => ch.subsNum >= subsMin && ch.subsNum <= subsMax)
@@ -293,9 +345,14 @@ export async function searchYouTubeChannels(
         website: channel.website || aboutSocials.website,
       }
 
+      const score = getProspectScore(enrichedChannel)
+
       return {
         ...enrichedChannel,
-        score: getProspectScore(enrichedChannel),
+        score,
+        scoreLabel: getScoreLabel(score),
+        scoreColor: getScoreColor(score),
+        scoreReason: getScoreReason(enrichedChannel),
       }
     })
   )

@@ -23,6 +23,11 @@ Twitch : ${channel.twitch || 'Non trouvé'}
 Site web : ${channel.website || 'Non trouvé'}
 Chaîne YouTube : ${channel.channelUrl || 'Non trouvé'}
 Score prospect : ${channel.score || 0}/100
+Label score : ${channel.scoreLabel || 'Non trouvé'}
+Raison score : ${channel.scoreReason || 'Non trouvé'}
+Vues totales : ${channel.totalViews ?? 'Non trouvé'}
+Nombre de vidéos : ${channel.videoCount ?? 'Non trouvé'}
+Date création : ${channel.createdAt || 'Non trouvé'}
 `
 
   const message = await anthropic.messages.create({
