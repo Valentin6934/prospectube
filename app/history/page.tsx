@@ -125,6 +125,7 @@ export default function HistoryPage() {
 
     const res = await fetch(`/api/history/${item.id}`)
     const data = await res.json().catch(() => ({}))
+    console.log('Historique JSON reçu:', data)
     setResultsLoadingId(null)
 
     if (!res.ok) {
@@ -137,6 +138,9 @@ export default function HistoryPage() {
     const results = normalizeResults(data.search?.results)
     setSelectedSearch(item)
     setSelectedResults(results)
+    window.setTimeout(() => {
+      document.getElementById('saved-history-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 0)
     setResultsError(results.length === 0 ? 'Aucun résultat sauvegardé pour cette recherche.' : '')
   }
 
@@ -246,7 +250,7 @@ export default function HistoryPage() {
         )}
 
         {selectedSearch && (
-          <div>
+          <div id="saved-history-results">
             <h3 className="font-display" style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '1rem' }}>
               Résultats sauvegardés · {selectedSearch.niche} · {selectedSearch.language}
             </h3>
