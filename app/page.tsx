@@ -21,7 +21,7 @@ export default function HomePage() {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           {session ? (
-            <button onClick={() => router.push('/dashboard')} style={{ background: 'linear-gradient(135deg,#533AB7,#7B63D3)', color: '#fff', border: 'none', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 500 }}>Dashboard →</button>
+            <button onClick={() => router.push('/dashboard/home')} style={{ background: 'linear-gradient(135deg,#533AB7,#7B63D3)', color: '#fff', border: 'none', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 500 }}>Dashboard →</button>
           ) : (
             <>
               <button onClick={() => router.push('/login')} style={{ background: 'none', border: '1px solid rgba(83,58,183,0.5)', color: '#A89FCC', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}>Connexion</button>

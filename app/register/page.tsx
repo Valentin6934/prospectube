@@ -28,7 +28,7 @@ export default function RegisterPage() {
       return
     }
     await signIn('credentials', { email, password, redirect: false })
-    router.push('/dashboard')
+    router.push('/dashboard/home')
   }
 
   return (

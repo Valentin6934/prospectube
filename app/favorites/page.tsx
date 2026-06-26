@@ -93,14 +93,14 @@ export default function FavoritesPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#0A0812' }}>
       <nav style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
-        <Link href="/" style={{ textDecoration: 'none' }}>
+        <Link href="/dashboard/home" style={{ textDecoration: 'none' }}>
           <div className="font-display" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#F0EDF8' }}>
             Prospect<span className="grad-text">Tube</span>
           </div>
         </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Link href="/dashboard" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
-            Retour dashboard
+            Nouvelle recherche
           </Link>
           <Link href="/favorites" style={{ color: '#a78bfa', textDecoration: 'none', fontSize: '0.85rem' }}>
             ⭐ Mes favoris
