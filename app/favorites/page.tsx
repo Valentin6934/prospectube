@@ -96,6 +96,9 @@ export default function FavoritesPage() {
           </div>
         </Link>
         <div className="app-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <Link href="/dashboard/home" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
+            🏠 Accueil
+          </Link>
           <Link href="/dashboard" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
             Nouvelle recherche
           </Link>

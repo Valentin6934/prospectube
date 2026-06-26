@@ -53,6 +53,11 @@
   color: #f0edf8;
 }
 
+.secondaryNav a[aria-current='page'] {
+  color: #c4b5fd;
+  font-weight: 700;
+}
+
 .searchButton {
   border-radius: 8px;
   background: #6d4ee5;

@@ -190,6 +190,7 @@ export default async function DashboardHomePage() {
           </Link>
           <div className={styles.navActions}>
             <div className={styles.secondaryNav}>
+              <Link href="/dashboard/home" aria-current="page">🏠 Accueil</Link>
               <Link href="/favorites">Favoris</Link>
               <Link href="/history">Historique</Link>
               <Link href="/campaigns">Campagnes</Link>
