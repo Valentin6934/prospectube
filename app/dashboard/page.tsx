@@ -57,6 +57,7 @@ export default function Dashboard() {
   const [favoriteIds, setFavoriteIds] = useState<string[]>([])
   const [favoriteLoadingId, setFavoriteLoadingId] = useState<string | null>(null)
   const [cacheNotice, setCacheNotice] = useState(false)
+  const [expandedAnalysisIds, setExpandedAnalysisIds] = useState<string[]>([])
 
   const [emailModal, setEmailModal] = useState<any>(null)
   const [emailLoading, setEmailLoading] = useState(false)
@@ -203,6 +204,14 @@ export default function Dashboard() {
     setFavoriteIds(current => current.includes(channelId) ? current : [...current, channelId])
   }
 
+  const toggleAnalysis = (channelId: string) => {
+    setExpandedAnalysisIds(current =>
+      current.includes(channelId)
+        ? current.filter(id => id !== channelId)
+        : [...current, channelId]
+    )
+  }
+
   if (status === 'loading') return (
     <div style={{ minHeight: '100vh', background: '#0A0812', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ color: '#A89FCC' }}>Chargement...</div>
@@ -315,12 +324,113 @@ export default function Dashboard() {
               </div>
             ) : (
               results.map(ch => (
-                <div key={ch.id} className="card" style={{ padding: '1.25rem', marginBottom: '0.75rem', display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                  <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: ch.color + '33', border: `2px solid ${ch.color}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem', color: ch.color, flexShrink: 0 }}>
+                <div key={ch.id} className="card" style={{ padding: '1rem', marginBottom: '0.85rem', display: 'block', border: '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
+                  {(() => {
+                    const isExpanded = expandedAnalysisIds.includes(ch.id)
+                    const reasons = String(ch.scoreReason || "Peu d'informations exploitables").split(' • ').filter(Boolean)
+                    const contacts = [
+                      ch.email ? { label: '📧 Email trouvé', href: `mailto:${ch.email}`, color: '#22c55e' } : null,
+                      ch.instagram ? { label: '📱 Instagram', href: ch.instagram, color: '#e879f9' } : null,
+                      ch.tiktok ? { label: '🎵 TikTok', href: ch.tiktok, color: '#f472b6' } : null,
+                      ch.twitch ? { label: '🎮 Twitch', href: ch.twitch, color: '#9146FF' } : null,
+                      ch.website ? { label: '🌍 Site', href: ch.website, color: '#38bdf8' } : null,
+                    ].filter(Boolean) as { label: string; href: string; color: string }[]
+                    const statBadges = [
+                      `👥 ${ch.subs || formatCompactNumber(ch.subsNum || 0)}`,
+                      `👁 ${ch.totalViewsFormatted || formatCompactNumber(ch.totalViews || ch.viewCount || 0)}`,
+                      `🎬 ${ch.videoCountFormatted || formatCompactNumber(ch.videoCount || 0)}`,
+                      getCreatedYear(ch.createdAt || ch.publishedAt) ? `📅 ${getCreatedYear(ch.createdAt || ch.publishedAt)}` : null,
+                    ].filter(Boolean)
+
+                    return (
+                      <div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '1rem', alignItems: 'start' }}>
+                          <div style={{ display: 'flex', gap: '0.9rem', minWidth: 0 }}>
+                            {ch.thumbnail ? (
+                              <img src={ch.thumbnail} alt="" style={{ width: '54px', height: '54px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(83,58,183,0.35)', flexShrink: 0 }} />
+                            ) : (
+                              <div style={{ width: '54px', height: '54px', borderRadius: '50%', background: ch.color + '33', border: `2px solid ${ch.color}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.9rem', color: ch.color, flexShrink: 0 }}>
+                                {ch.avatar}
+                              </div>
+                            )}
+
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
+                                <div style={{ fontWeight: 700, fontSize: '1rem', color: '#F0EDF8', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ch.name}</div>
+                                <span style={{ padding: '0.18rem 0.55rem', borderRadius: '999px', ...getScoreStyles(ch.scoreColor, ch.score || 0), fontSize: '0.72rem', fontWeight: 700 }}>
+                                  {ch.scoreLabel || '🔴 Faible potentiel'}
+                                </span>
+                                <span style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.9rem' }}>{ch.score || 0}/100</span>
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.55rem' }}>
+                                {statBadges.map(stat => (
+                                  <span key={stat} style={{ fontSize: '0.75rem', color: '#C4BCDF', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '0.22rem 0.55rem' }}>{stat}</span>
+                                ))}
+                              </div>
+
+                              {contacts.length > 0 && (
+                                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                  {contacts.map(contact => (
+                                    <a key={contact.label} href={contact.href} target={contact.href.startsWith('http') ? '_blank' : undefined} rel={contact.href.startsWith('http') ? 'noopener noreferrer' : undefined} style={{ fontSize: '0.75rem', color: contact.color, background: `${contact.color}1F`, border: `1px solid ${contact.color}3D`, borderRadius: '999px', padding: '0.22rem 0.55rem', textDecoration: 'none', fontWeight: 600 }}>
+                                      {contact.label}
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.55rem', marginTop: '0.9rem' }}>
+                          <button onClick={() => addFavorite(ch)} disabled={favoriteIds.includes(ch.id) || favoriteLoadingId === ch.id} style={{ background: favoriteIds.includes(ch.id) ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.14)', color: favoriteIds.includes(ch.id) ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: favoriteIds.includes(ch.id) ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+                            {favoriteIds.includes(ch.id) ? '⭐ Favori' : favoriteLoadingId === ch.id ? 'Ajout...' : '☆ Favori'}
+                          </button>
+                          <button onClick={() => generateEmail(ch)} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: canEmail ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 700 }}>
+                            {canEmail ? '✨ Message IA' : '🔒 IA Pro'}
+                          </button>
+                          <button onClick={() => toggleAnalysis(ch.id)} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+                            {isExpanded ? '▼ Masquer' : '▶ Voir l’analyse'}
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateRows: isExpanded ? '1fr' : '0fr', transition: 'grid-template-rows 220ms ease, opacity 220ms ease', opacity: isExpanded ? 1 : 0 }}>
+                          <div style={{ overflow: 'hidden' }}>
+                            <div style={{ borderTop: '1px solid rgba(83,58,183,0.22)', marginTop: '1rem', paddingTop: '1rem' }}>
+                              <div style={{ fontWeight: 700, color: '#F0EDF8', fontSize: '0.9rem', marginBottom: '0.55rem' }}>Pourquoi ce score ?</div>
+                              <div style={{ display: 'grid', gap: '0.3rem', color: '#C4BCDF', fontSize: '0.82rem', marginBottom: '1rem' }}>
+                                {reasons.map(reason => <div key={reason}>✓ {reason}</div>)}
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(180px, 0.8fr)', gap: '1rem' }}>
+                                <div>
+                                  <div style={{ fontWeight: 700, color: '#F0EDF8', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Description</div>
+                                  <div style={{ color: '#A89FCC', fontSize: '0.82rem', lineHeight: 1.6 }}>{ch.desc || 'Pas de description disponible.'}</div>
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: 700, color: '#F0EDF8', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Contacts</div>
+                                  <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8rem' }}>
+                                    {ch.email && <a href={`mailto:${ch.email}`} style={{ color: '#22c55e', textDecoration: 'none' }}>📧 {ch.email}</a>}
+                                    {ch.channelUrl && <a href={ch.channelUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', textDecoration: 'none' }}>▶ YouTube</a>}
+                                    {ch.instagram && <a href={ch.instagram} target="_blank" rel="noopener noreferrer" style={{ color: '#e879f9', textDecoration: 'none' }}>📱 Instagram</a>}
+                                    {ch.tiktok && <a href={ch.tiktok} target="_blank" rel="noopener noreferrer" style={{ color: '#f472b6', textDecoration: 'none' }}>🎵 TikTok</a>}
+                                    {ch.twitch && <a href={ch.twitch} target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF', textDecoration: 'none' }}>🎮 Twitch</a>}
+                                    {ch.website && <a href={ch.website} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>🌍 Site</a>}
+                                    {!ch.email && !ch.channelUrl && contacts.length === 0 && <span style={{ color: '#6B5F96' }}>Aucun contact public trouvé</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                  <div style={{ display: 'none', width: '42px', height: '42px', borderRadius: '50%', background: ch.color + '33', border: `2px solid ${ch.color}66`, alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem', color: ch.color, flexShrink: 0 }}>
                     {ch.avatar}
                   </div>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'none', flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.2rem' }}>{ch.name}</div>
 
                     <div style={{
@@ -451,7 +561,7 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <div style={{ flexShrink: 0, display: 'grid', gap: '0.5rem' }}>
+                  <div style={{ flexShrink: 0, display: 'none', gap: '0.5rem' }}>
                     <button
                       onClick={() => addFavorite(ch)}
                       disabled={favoriteIds.includes(ch.id) || favoriteLoadingId === ch.id}
