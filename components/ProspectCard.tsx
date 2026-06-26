@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import CreatorDetails from './CreatorDetails'
 
 export type ProspectChannel = {
   id?: string
@@ -26,6 +27,7 @@ export type ProspectChannel = {
   totalViewsFormatted?: string | null
   videoCount?: number | null
   videoCountFormatted?: string | null
+  viewsPerSubscriber?: number | null
   createdAt?: string | null
   publishedAt?: string | null
   channelCreatedAt?: string | null
@@ -76,13 +78,12 @@ export default function ProspectCard({
   onAddFavorite,
   onRemoveFavorite,
 }: ProspectCardProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const score = channel.score || 0
   const color = channel.color || '#533AB7'
   const name = channel.name || 'Chaîne inconnue'
   const avatar = channel.avatar || name.slice(0, 2).toUpperCase()
   const createdYear = getCreatedYear(channel.createdAt || channel.publishedAt || channel.channelCreatedAt)
-  const reasons = String(channel.scoreReason || "Peu d'informations exploitables").split(' • ').filter(Boolean)
   const contacts = [
     channel.email ? { label: '📧 Email trouvé', href: `mailto:${channel.email}`, color: '#22c55e' } : null,
     channel.instagram ? { label: '📱 Instagram', href: channel.instagram, color: '#e879f9' } : null,
@@ -96,6 +97,7 @@ export default function ProspectCard({
     `🎬 ${channel.videoCountFormatted || formatCompactNumber(channel.videoCount || 0)}`,
     createdYear ? `📅 ${createdYear}` : null,
   ].filter(Boolean)
+  const actionColumns = showRemoveButton ? 2 : showFavoriteButton && onGenerateEmail ? 3 : 2
 
   return (
     <div className="card" style={{ padding: '1rem', marginBottom: '0.85rem', border: '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
@@ -135,7 +137,7 @@ export default function ProspectCard({
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${showRemoveButton ? 2 : showFavoriteButton && onGenerateEmail ? 3 : 2}, minmax(0, 1fr))`, gap: '0.55rem', marginTop: '0.9rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${actionColumns}, minmax(0, 1fr))`, gap: '0.55rem', marginTop: '0.9rem' }}>
         {showFavoriteButton && (
           <button onClick={() => onAddFavorite?.(channel)} disabled={isFavorite || favoriteLoading} style={{ background: isFavorite ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.14)', color: isFavorite ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: isFavorite ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
             {isFavorite ? '⭐ Favori' : favoriteLoading ? 'Ajout...' : '☆ Favori'}
@@ -151,40 +153,25 @@ export default function ProspectCard({
             {canEmail ? '✨ Message IA' : '🔒 IA Pro'}
           </button>
         )}
-        <button onClick={() => setExpanded(current => !current)} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-          {expanded ? '▼ Masquer' : '▶ Voir l’analyse'}
+        <button onClick={() => setDetailsOpen(true)} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+          ▶ Voir la fiche
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateRows: expanded ? '1fr' : '0fr', transition: 'grid-template-rows 220ms ease, opacity 220ms ease', opacity: expanded ? 1 : 0 }}>
-        <div style={{ overflow: 'hidden' }}>
-          <div style={{ borderTop: '1px solid rgba(83,58,183,0.22)', marginTop: '1rem', paddingTop: '1rem' }}>
-            <div style={{ fontWeight: 700, color: '#F0EDF8', fontSize: '0.9rem', marginBottom: '0.55rem' }}>Pourquoi ce score ?</div>
-            <div style={{ display: 'grid', gap: '0.3rem', color: '#C4BCDF', fontSize: '0.82rem', marginBottom: '1rem' }}>
-              {reasons.map(reason => <div key={reason}>✓ {reason}</div>)}
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-              <div>
-                <div style={{ fontWeight: 700, color: '#F0EDF8', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Description</div>
-                <div style={{ color: '#A89FCC', fontSize: '0.82rem', lineHeight: 1.6 }}>{channel.desc || 'Pas de description disponible.'}</div>
-              </div>
-              <div>
-                <div style={{ fontWeight: 700, color: '#F0EDF8', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Contacts et liens</div>
-                <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8rem' }}>
-                  {channel.email && <a href={`mailto:${channel.email}`} style={{ color: '#22c55e', textDecoration: 'none' }}>📧 {channel.email}</a>}
-                  {channel.channelUrl && <a href={channel.channelUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', textDecoration: 'none' }}>▶ YouTube</a>}
-                  {channel.instagram && <a href={channel.instagram} target="_blank" rel="noopener noreferrer" style={{ color: '#e879f9', textDecoration: 'none' }}>📱 Instagram</a>}
-                  {channel.tiktok && <a href={channel.tiktok} target="_blank" rel="noopener noreferrer" style={{ color: '#f472b6', textDecoration: 'none' }}>🎵 TikTok</a>}
-                  {channel.twitch && <a href={channel.twitch} target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF', textDecoration: 'none' }}>🎮 Twitch</a>}
-                  {channel.website && <a href={channel.website} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>🌍 Site web</a>}
-                  {!channel.email && !channel.channelUrl && contacts.length === 0 && <span style={{ color: '#6B5F96' }}>Aucun contact public trouvé</span>}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <CreatorDetails
+        channel={channel}
+        open={detailsOpen}
+        canEmail={canEmail}
+        isFavorite={isFavorite}
+        favoriteLoading={favoriteLoading}
+        removing={removing}
+        showFavoriteButton={showFavoriteButton}
+        showRemoveButton={showRemoveButton}
+        onClose={() => setDetailsOpen(false)}
+        onGenerateEmail={onGenerateEmail}
+        onAddFavorite={onAddFavorite}
+        onRemoveFavorite={onRemoveFavorite}
+      />
     </div>
   )
 }
