@@ -65,10 +65,13 @@ export default function Dashboard() {
   const [sendStatus, setSendStatus] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [bulkModalOpen, setBulkModalOpen] = useState(false)
-  const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([])
+  const [campaigns, setCampaigns] = useState<{ id: string; name: string; _count?: { prospects: number } }[]>([])
   const [bulkCampaignId, setBulkCampaignId] = useState('')
   const [bulkCampaignName, setBulkCampaignName] = useState('')
   const [bulkLoading, setBulkLoading] = useState(false)
+  const [bulkCampaignsLoading, setBulkCampaignsLoading] = useState(false)
+  const [bulkError, setBulkError] = useState('')
+  const [campaignTargetIds, setCampaignTargetIds] = useState<string[]>([])
   const [toast, setToast] = useState('')
 
   const isPro = plan !== 'Gratuit'
@@ -218,40 +221,11 @@ export default function Dashboard() {
     showToast('✓ Prospect ajouté')
   }
 
-  const addToCampaign = async (channel: any) => {
+  const addToCampaign = (channel: any) => {
     const channelId = channel?.channelId || channel?.id
     if (!channelId) return alert('Chaîne invalide.')
 
-    const campaignName = window.prompt('Nom de la campagne')
-    const name = campaignName?.trim()
-    if (!name) return
-
-    const listRes = await fetch('/api/campaigns')
-    const listData = await listRes.json().catch(() => ({}))
-    if (!listRes.ok) return alert(listData.error || 'Impossible de charger les campagnes.')
-
-    let campaign = (listData.campaigns || []).find((item: { id: string; name: string }) => item.name.toLowerCase() === name.toLowerCase())
-
-    if (!campaign) {
-      const createRes = await fetch('/api/campaigns', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      })
-      const createData = await createRes.json().catch(() => ({}))
-      if (!createRes.ok) return alert(createData.error || 'Impossible de créer la campagne.')
-      campaign = createData.campaign
-    }
-
-    const addRes = await fetch(`/api/campaigns/${campaign.id}/prospects`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(channel),
-    })
-    const addData = await addRes.json().catch(() => ({}))
-    if (!addRes.ok) return alert(addData.error || "Impossible d'ajouter ce prospect à la campagne.")
-
-    showToast('✓ Prospect ajouté')
+    openBulkModal([channel.id])
   }
 
   const toggleSelected = (channelId: string) => {
@@ -262,26 +236,34 @@ export default function Dashboard() {
     )
   }
 
-  const openBulkModal = async () => {
+  const openBulkModal = async (targetIds = selectedIds) => {
     setBulkModalOpen(true)
-    setBulkCampaignId('')
+    setBulkCampaignId('new')
     setBulkCampaignName('')
+    setBulkError('')
+    setCampaignTargetIds(targetIds)
+    setBulkCampaignsLoading(true)
     const res = await fetch('/api/campaigns')
     const data = await res.json().catch(() => ({}))
+    setBulkCampaignsLoading(false)
     if (res.ok) setCampaigns(data.campaigns || [])
+    else setBulkError(data.error || 'Impossible de charger les campagnes.')
   }
 
   const addSelectedToCampaign = async () => {
-    const selectedChannels = results.filter(channel => selectedIds.includes(channel.id))
+    const targetIds = campaignTargetIds.length > 0 ? campaignTargetIds : selectedIds
+    const selectedChannels = results.filter(channel => targetIds.includes(channel.id))
     if (selectedChannels.length === 0) return
 
     setBulkLoading(true)
-    let campaignId = bulkCampaignId
+    setBulkError('')
+    let campaignId = bulkCampaignId === 'new' ? '' : bulkCampaignId
 
     if (!campaignId) {
       const name = bulkCampaignName.trim()
       if (!name) {
         setBulkLoading(false)
+        setBulkError('Entre un nom de campagne.')
         return
       }
 
@@ -293,13 +275,14 @@ export default function Dashboard() {
       const createData = await createRes.json().catch(() => ({}))
       if (!createRes.ok) {
         setBulkLoading(false)
-        return alert(createData.error || 'Impossible de créer la campagne.')
+        setBulkError(createData.error || 'Impossible de créer la campagne.')
+        return
       }
       campaignId = createData.campaign.id
       showToast('✓ Campagne créée')
     }
 
-    await Promise.all(selectedChannels.map(channel =>
+    const responses = await Promise.all(selectedChannels.map(channel =>
       fetch(`/api/campaigns/${campaignId}/prospects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -307,10 +290,19 @@ export default function Dashboard() {
       })
     ))
 
+    const failed = responses.find(response => !response.ok)
+    if (failed) {
+      const data = await failed.json().catch(() => ({}))
+      setBulkLoading(false)
+      setBulkError(data.error || "Certains prospects n'ont pas pu être ajoutés.")
+      return
+    }
+
     setBulkLoading(false)
     setBulkModalOpen(false)
-    setSelectedIds([])
-    showToast(`✓ ${selectedChannels.length} prospects ajoutés.`)
+    setCampaignTargetIds([])
+    setSelectedIds(current => current.filter(id => !targetIds.includes(id)))
+    showToast(`${selectedChannels.length} prospects ajoutés à la campagne`)
   }
 
   const toggleAnalysis = (channelId: string) => {
@@ -708,7 +700,7 @@ export default function Dashboard() {
             {selectedIds.length} prospect{selectedIds.length !== 1 ? 's' : ''} sélectionné{selectedIds.length !== 1 ? 's' : ''}
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button onClick={openBulkModal} style={{ background: 'linear-gradient(135deg, #533AB7, #7B63D3)', color: 'white', border: 'none', padding: '0.6rem 0.85rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
+            <button onClick={() => openBulkModal()} style={{ background: 'linear-gradient(135deg, #533AB7, #7B63D3)', color: 'white', border: 'none', padding: '0.6rem 0.85rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
               Ajouter à une campagne
             </button>
             <button onClick={() => setSelectedIds([])} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.6rem 0.85rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
@@ -723,20 +715,32 @@ export default function Dashboard() {
           <div className="card" style={{ width: '100%', maxWidth: '460px', padding: '1.5rem' }} onClick={event => event.stopPropagation()}>
             <h3 className="font-display" style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem' }}>Ajouter à une campagne</h3>
             <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.35rem' }}>Campagne existante</label>
-            <select value={bulkCampaignId} onChange={event => setBulkCampaignId(event.target.value)} style={{ marginBottom: '1rem' }}>
-              <option value="">Créer une nouvelle campagne...</option>
-              {campaigns.map(campaign => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+            <select value={bulkCampaignId} onChange={event => setBulkCampaignId(event.target.value)} disabled={bulkCampaignsLoading} style={{ marginBottom: '1rem' }}>
+              <option value="new">+ Créer une nouvelle campagne</option>
+              {campaigns.map(campaign => (
+                <option key={campaign.id} value={campaign.id}>
+                  {campaign.name} ({campaign._count?.prospects || 0} prospect{(campaign._count?.prospects || 0) !== 1 ? 's' : ''})
+                </option>
+              ))}
             </select>
-            {!bulkCampaignId && (
+            {bulkCampaignsLoading && (
+              <div style={{ color: '#A89FCC', fontSize: '0.8rem', marginBottom: '1rem' }}>Chargement des campagnes...</div>
+            )}
+            {bulkCampaignId === 'new' && (
               <>
                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.35rem' }}>Nouvelle campagne</label>
                 <input value={bulkCampaignName} onChange={event => setBulkCampaignName(event.target.value)} placeholder="Nom de campagne" style={{ marginBottom: '1rem' }} />
               </>
             )}
+            {bulkError && (
+              <div style={{ color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '0.6rem 0.75rem', fontSize: '0.82rem', marginBottom: '1rem' }}>
+                {bulkError}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => setBulkModalOpen(false)} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.65rem 0.9rem', borderRadius: '8px', cursor: 'pointer' }}>Annuler</button>
-              <button onClick={addSelectedToCampaign} disabled={bulkLoading || (!bulkCampaignId && !bulkCampaignName.trim())} className="btn-primary" style={{ padding: '0.65rem 0.9rem' }}>
-                {bulkLoading ? 'Ajout...' : `Ajouter ${selectedIds.length}`}
+              <button onClick={() => { setBulkModalOpen(false); setCampaignTargetIds([]); setBulkError('') }} disabled={bulkLoading} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.65rem 0.9rem', borderRadius: '8px', cursor: bulkLoading ? 'default' : 'pointer' }}>Annuler</button>
+              <button onClick={addSelectedToCampaign} disabled={bulkLoading || bulkCampaignsLoading || (bulkCampaignId === 'new' && !bulkCampaignName.trim())} className="btn-primary" style={{ padding: '0.65rem 0.9rem' }}>
+                {bulkLoading ? 'Ajout...' : `Ajouter ${campaignTargetIds.length || selectedIds.length}`}
               </button>
             </div>
           </div>
