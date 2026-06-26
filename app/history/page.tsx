@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import ProspectCard, { ProspectChannel } from '@/components/ProspectCard'
 
 type HistoryItem = {
   id: string
@@ -13,43 +14,6 @@ type HistoryItem = {
   subsMax: string
   resultCount: number
   createdAt: string
-}
-
-type Channel = {
-  id?: string
-  name?: string
-  subs?: string
-  subsNum?: number
-  score?: number
-  scoreLabel?: string
-  scoreReason?: string
-  email?: string | null
-  instagram?: string | null
-  tiktok?: string | null
-  twitch?: string | null
-  website?: string | null
-  channelUrl?: string | null
-  desc?: string
-  avatar?: string
-  color?: string
-  totalViews?: number
-  totalViewsFormatted?: string
-  videoCount?: number
-  videoCountFormatted?: string
-  createdAt?: string | null
-}
-
-function formatCompactNumber(n: number): string {
-  if (n >= 1000000000) return `${(n / 1000000000).toFixed(1).replace('.0', '')}B`
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1).replace('.0', '')}M`
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace('.0', '')}K`
-  return String(n || 0)
-}
-
-function getCreatedYear(createdAt: string | null | undefined): string {
-  if (!createdAt) return ''
-  const year = new Date(createdAt).getFullYear()
-  return Number.isFinite(year) ? String(year) : ''
 }
 
 function formatDate(date: string): string {
@@ -62,14 +26,7 @@ function formatDate(date: string): string {
   }).format(new Date(date))
 }
 
-function getScoreStyles(score: number) {
-  if (score >= 80) return { background: 'rgba(34,197,94,0.15)', color: '#22c55e' }
-  if (score >= 65) return { background: 'rgba(234,179,8,0.15)', color: '#eab308' }
-  if (score >= 50) return { background: 'rgba(249,115,22,0.15)', color: '#f97316' }
-  return { background: 'rgba(239,68,68,0.15)', color: '#ef4444' }
-}
-
-function normalizeResults(results: unknown): Channel[] {
+function normalizeResults(results: unknown): ProspectChannel[] {
   if (Array.isArray(results)) return results
 
   if (typeof results === 'string') {
@@ -90,7 +47,7 @@ export default function HistoryPage() {
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedSearch, setSelectedSearch] = useState<HistoryItem | null>(null)
-  const [selectedResults, setSelectedResults] = useState<Channel[]>([])
+  const [selectedResults, setSelectedResults] = useState<ProspectChannel[]>([])
   const [resultsLoadingId, setResultsLoadingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [favoriteIds, setFavoriteIds] = useState<string[]>([])
@@ -126,7 +83,6 @@ export default function HistoryPage() {
 
     const res = await fetch(`/api/history/${item.id}`)
     const data = await res.json().catch(() => ({}))
-    console.log('Historique JSON reçu:', data)
     setResultsLoadingId(null)
 
     if (!res.ok) {
@@ -139,10 +95,10 @@ export default function HistoryPage() {
     const results = normalizeResults(data.search?.results)
     setSelectedSearch(item)
     setSelectedResults(results)
+    setResultsError(results.length === 0 ? 'Aucun résultat sauvegardé pour cette recherche.' : '')
     window.setTimeout(() => {
       document.getElementById('saved-history-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 0)
-    setResultsError(results.length === 0 ? 'Aucun résultat sauvegardé pour cette recherche.' : '')
   }
 
   const deleteSearch = async (item: HistoryItem) => {
@@ -162,7 +118,7 @@ export default function HistoryPage() {
     }
   }
 
-  const addFavorite = async (channel: Channel) => {
+  const addFavorite = async (channel: ProspectChannel) => {
     const channelId = channel.id
     if (!channelId || favoriteIds.includes(channelId)) return
 
@@ -261,59 +217,17 @@ export default function HistoryPage() {
                 {resultsError}
               </div>
             ) : (
-              selectedResults.map((ch, index) => {
-                const score = ch.score || 0
-                const color = ch.color || '#533AB7'
-                const avatar = ch.avatar || (ch.name || 'YT').slice(0, 2).toUpperCase()
-                const year = getCreatedYear(ch.createdAt)
-                const channelId = ch.id
-                const isFavorite = Boolean(channelId && favoriteIds.includes(channelId))
-
+              selectedResults.map((channel, index) => {
+                const channelId = channel.id
                 return (
-                  <div key={channelId || `${ch.name}-${index}`} className="card" style={{ padding: '1.25rem', marginBottom: '0.75rem', display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                    <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: `${color}33`, border: `2px solid ${color}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem', color, flexShrink: 0 }}>
-                      {avatar}
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.2rem' }}>{ch.name || 'Chaîne inconnue'}</div>
-
-                      <div style={{ display: 'inline-block', marginBottom: '0.35rem', padding: '0.2rem 0.6rem', borderRadius: '999px', ...getScoreStyles(score), fontSize: '0.75rem', fontWeight: 600 }}>
-                        ⭐ {ch.scoreLabel || 'Potentiel faible'} · {score}/100
-                      </div>
-
-                      <div style={{ fontSize: '0.82rem', color: '#C4BCDF', marginBottom: '0.25rem' }}>
-                        {ch.scoreReason || "Faible potentiel ou peu d'informations disponibles"}
-                      </div>
-
-                      <div style={{ fontSize: '0.82rem', color: '#A89FCC', marginBottom: '0.6rem' }}>
-                        {ch.subs || formatCompactNumber(ch.subsNum || 0)} abonnés · {ch.totalViewsFormatted || formatCompactNumber(ch.totalViews || 0)} vues · {ch.videoCountFormatted || formatCompactNumber(ch.videoCount || 0)} vidéos{year ? ` · créée en ${year}` : ''}
-                      </div>
-
-                      {ch.desc && (
-                        <div style={{ fontSize: '0.82rem', color: '#A89FCC', marginBottom: '0.6rem' }}>{ch.desc}</div>
-                      )}
-
-                      <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8rem' }}>
-                        {ch.email ? <a href={`mailto:${ch.email}`} style={{ color: '#22c55e', textDecoration: 'none' }}>📧 {ch.email}</a> : <div style={{ color: '#6B5F96' }}>📭 Email non trouvé</div>}
-                        {ch.channelUrl && <a href={ch.channelUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', textDecoration: 'none' }}>🎥 Voir la chaîne YouTube</a>}
-                        {ch.instagram ? <a href={ch.instagram} target="_blank" rel="noopener noreferrer" style={{ color: '#e879f9', textDecoration: 'none' }}>📷 Instagram</a> : <div style={{ color: '#6B5F96' }}>📷 Instagram non trouvé</div>}
-                        {ch.tiktok ? <a href={ch.tiktok} target="_blank" rel="noopener noreferrer" style={{ color: '#f472b6', textDecoration: 'none' }}>🎵 TikTok</a> : <div style={{ color: '#6B5F96' }}>🎵 TikTok non trouvé</div>}
-                        {ch.twitch ? <a href={ch.twitch} target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF', textDecoration: 'none' }}>🎮 Twitch</a> : <div style={{ color: '#6B5F96' }}>🎮 Twitch non trouvé</div>}
-                        {ch.website ? <a href={ch.website} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>🌐 Site web</a> : <div style={{ color: '#6B5F96' }}>🌐 Site web non trouvé</div>}
-                      </div>
-                    </div>
-
-                    <div style={{ flexShrink: 0 }}>
-                      <button
-                        onClick={() => addFavorite(ch)}
-                        disabled={!channelId || isFavorite || favoriteLoadingId === channelId}
-                        style={{ background: isFavorite ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.15)', color: isFavorite ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.82rem', cursor: !channelId || isFavorite ? 'default' : 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
-                      >
-                        {isFavorite ? '⭐ Favori ajouté' : favoriteLoadingId === channelId ? 'Ajout...' : '☆ Ajouter aux favoris'}
-                      </button>
-                    </div>
-                  </div>
+                  <ProspectCard
+                    key={channelId || `${channel.name}-${index}`}
+                    channel={channel}
+                    showFavoriteButton
+                    isFavorite={Boolean(channelId && favoriteIds.includes(channelId))}
+                    favoriteLoading={favoriteLoadingId === channelId}
+                    onAddFavorite={addFavorite}
+                  />
                 )
               })
             )}

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import ProspectCard from '@/components/ProspectCard'
 
 type Favorite = {
   id: string
@@ -30,26 +31,6 @@ type Favorite = {
   totalViews: number | null
   videoCount: number | null
   channelCreatedAt: string | null
-}
-
-function formatCompactNumber(n: number): string {
-  if (n >= 1000000000) return `${(n / 1000000000).toFixed(1).replace('.0', '')}B`
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1).replace('.0', '')}M`
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace('.0', '')}K`
-  return String(n || 0)
-}
-
-function getCreatedYear(createdAt: string | null | undefined): string {
-  if (!createdAt) return ''
-  const year = new Date(createdAt).getFullYear()
-  return Number.isFinite(year) ? String(year) : ''
-}
-
-function getScoreStyles(score: number) {
-  if (score >= 80) return { background: 'rgba(34,197,94,0.15)', color: '#22c55e' }
-  if (score >= 65) return { background: 'rgba(234,179,8,0.15)', color: '#eab308' }
-  if (score >= 50) return { background: 'rgba(249,115,22,0.15)', color: '#f97316' }
-  return { background: 'rgba(239,68,68,0.15)', color: '#ef4444' }
 }
 
 export default function FavoritesPage() {
@@ -136,64 +117,15 @@ export default function FavoritesPage() {
             Aucun favori pour le moment. Ajoute une chaîne depuis le dashboard.
           </div>
         ) : (
-          favorites.map(favorite => {
-            const score = favorite.score || 0
-            const year = getCreatedYear(favorite.channelCreatedAt)
-
-            return (
-              <div key={favorite.id} className="card" style={{ padding: '1.25rem', marginBottom: '0.75rem', display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: `${favorite.color || '#533AB7'}33`, border: `2px solid ${favorite.color || '#533AB7'}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem', color: favorite.color || '#533AB7', flexShrink: 0 }}>
-                  {favorite.avatar || favorite.name.slice(0, 2).toUpperCase()}
-                </div>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.2rem' }}>{favorite.name}</div>
-
-                  <div style={{ display: 'inline-block', marginBottom: '0.35rem', padding: '0.2rem 0.6rem', borderRadius: '999px', ...getScoreStyles(score), fontSize: '0.75rem', fontWeight: 600 }}>
-                    ⭐ {favorite.scoreLabel || 'Potentiel faible'} · {score}/100
-                  </div>
-
-                  <div style={{ fontSize: '0.82rem', color: '#C4BCDF', marginBottom: '0.25rem' }}>
-                    {favorite.scoreReason || "Faible potentiel ou peu d'informations disponibles"}
-                  </div>
-
-                  <div style={{ fontSize: '0.82rem', color: '#A89FCC', marginBottom: '0.6rem' }}>
-                    {favorite.subs || formatCompactNumber(favorite.subsNum || 0)} abonnés · {formatCompactNumber(favorite.totalViews || 0)} vues · {formatCompactNumber(favorite.videoCount || 0)} vidéos{year ? ` · créée en ${year}` : ''}
-                  </div>
-
-                  {favorite.desc && (
-                    <div style={{ fontSize: '0.82rem', color: '#A89FCC', marginBottom: '0.6rem' }}>{favorite.desc}</div>
-                  )}
-
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-                    {[favorite.niche, favorite.lang].filter(Boolean).map(tag => (
-                      <span key={tag} style={{ fontSize: '0.75rem', padding: '0.15rem 0.6rem', borderRadius: '20px', background: 'rgba(83,58,183,0.15)', border: '1px solid rgba(83,58,183,0.3)', color: '#a78bfa' }}>{tag}</span>
-                    ))}
-                  </div>
-
-                  <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8rem' }}>
-                    {favorite.email ? (
-                      <a href={`mailto:${favorite.email}`} style={{ color: '#22c55e', textDecoration: 'none' }}>📧 {favorite.email}</a>
-                    ) : (
-                      <div style={{ color: '#6B5F96' }}>📭 Email non trouvé</div>
-                    )}
-
-                    {favorite.channelUrl && <a href={favorite.channelUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', textDecoration: 'none' }}>🎥 Voir la chaîne YouTube</a>}
-                    {favorite.instagram ? <a href={favorite.instagram} target="_blank" rel="noopener noreferrer" style={{ color: '#e879f9', textDecoration: 'none' }}>📷 Instagram</a> : <div style={{ color: '#6B5F96' }}>📷 Instagram non trouvé</div>}
-                    {favorite.tiktok ? <a href={favorite.tiktok} target="_blank" rel="noopener noreferrer" style={{ color: '#f472b6', textDecoration: 'none' }}>🎵 TikTok</a> : <div style={{ color: '#6B5F96' }}>🎵 TikTok non trouvé</div>}
-                    {favorite.twitch ? <a href={favorite.twitch} target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF', textDecoration: 'none' }}>🎮 Twitch</a> : <div style={{ color: '#6B5F96' }}>🎮 Twitch non trouvé</div>}
-                    {favorite.website ? <a href={favorite.website} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>🌐 Site web</a> : <div style={{ color: '#6B5F96' }}>🌐 Site web non trouvé</div>}
-                  </div>
-                </div>
-
-                <div style={{ flexShrink: 0 }}>
-                  <button onClick={() => deleteFavorite(favorite.id)} disabled={deletingId === favorite.id} style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.82rem', cursor: deletingId === favorite.id ? 'default' : 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                    {deletingId === favorite.id ? 'Suppression...' : 'Supprimer'}
-                  </button>
-                </div>
-              </div>
-            )
-          })
+          favorites.map(favorite => (
+            <ProspectCard
+              key={favorite.id}
+              channel={favorite}
+              showRemoveButton
+              removing={deletingId === favorite.id}
+              onRemoveFavorite={() => deleteFavorite(favorite.id)}
+            />
+          ))
         )}
       </div>
     </div>
