@@ -97,7 +97,43 @@ export default function ProspectCard({
     `🎬 ${channel.videoCountFormatted || formatCompactNumber(channel.videoCount || 0)}`,
     createdYear ? `📅 ${createdYear}` : null,
   ].filter(Boolean)
-  const actionColumns = showRemoveButton ? 2 : showFavoriteButton && onGenerateEmail ? 3 : 2
+  const actionColumns = showRemoveButton ? 3 : showFavoriteButton && onGenerateEmail ? 4 : 3
+
+  const addToCampaign = async (targetChannel: ProspectChannel) => {
+    const channelId = targetChannel.channelId || targetChannel.id
+    if (!channelId) return alert('Chaîne invalide.')
+
+    const campaignName = window.prompt('Nom de la campagne')
+    const name = campaignName?.trim()
+    if (!name) return
+
+    const listRes = await fetch('/api/campaigns')
+    const listData = await listRes.json().catch(() => ({}))
+    if (!listRes.ok) return alert(listData.error || 'Impossible de charger les campagnes.')
+
+    let campaign = (listData.campaigns || []).find((item: { id: string; name: string }) => item.name.toLowerCase() === name.toLowerCase())
+
+    if (!campaign) {
+      const createRes = await fetch('/api/campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const createData = await createRes.json().catch(() => ({}))
+      if (!createRes.ok) return alert(createData.error || 'Impossible de créer la campagne.')
+      campaign = createData.campaign
+    }
+
+    const addRes = await fetch(`/api/campaigns/${campaign.id}/prospects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(targetChannel),
+    })
+    const addData = await addRes.json().catch(() => ({}))
+    if (!addRes.ok) return alert(addData.error || "Impossible d'ajouter ce prospect à la campagne.")
+
+    alert('Prospect ajouté à la campagne.')
+  }
 
   return (
     <div className="card" style={{ padding: '1rem', marginBottom: '0.85rem', border: '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
@@ -153,6 +189,9 @@ export default function ProspectCard({
             {canEmail ? '✨ Message IA' : '🔒 IA Pro'}
           </button>
         )}
+        <button onClick={() => addToCampaign(channel)} style={{ background: 'rgba(83,58,183,0.14)', color: '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+          Ajouter à campagne
+        </button>
         <button onClick={() => setDetailsOpen(true)} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
           ▶ Voir la fiche
         </button>
@@ -171,6 +210,7 @@ export default function ProspectCard({
         onGenerateEmail={onGenerateEmail}
         onAddFavorite={onAddFavorite}
         onRemoveFavorite={onRemoveFavorite}
+        onAddCampaign={addToCampaign}
       />
     </div>
   )

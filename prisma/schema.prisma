@@ -19,6 +19,7 @@ model User {
   searches          Search[]
   emailsSent        EmailSent[]
   favorites         Favorite[]
+  campaigns         Campaign[]
 }
 
 model Search {
@@ -86,4 +87,38 @@ model SearchCache {
   results   Json
   createdAt DateTime @default(now())
   expiresAt DateTime
+}
+
+model Campaign {
+  id        String             @id @default(cuid())
+  userId    String
+  user      User               @relation(fields: [userId], references: [id])
+  name      String
+  status    String             @default("Brouillon")
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  prospects CampaignProspect[]
+}
+
+model CampaignProspect {
+  id               String   @id @default(cuid())
+  campaignId       String
+  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  channelId        String
+  name             String
+  email            String?
+  instagram        String?
+  tiktok           String?
+  twitch           String?
+  website          String?
+  channelUrl       String?
+  score            Int?
+  scoreLabel       String?
+  scoreReason      String?
+  generatedSubject String?
+  generatedBody    String?
+  status           String   @default("À contacter")
+  createdAt        DateTime @default(now())
+
+  @@unique([campaignId, channelId])
 }

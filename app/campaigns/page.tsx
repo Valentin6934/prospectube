@@ -1,0 +1,293 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useSession, signOut } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+
+type CampaignSummary = {
+  id: string
+  name: string
+  status: string
+  createdAt: string
+  updatedAt: string
+  _count?: { prospects: number }
+}
+
+type CampaignProspect = {
+  id: string
+  channelId: string
+  name: string
+  email: string | null
+  instagram: string | null
+  tiktok: string | null
+  twitch: string | null
+  website: string | null
+  channelUrl: string | null
+  score: number | null
+  scoreLabel: string | null
+  scoreReason: string | null
+  generatedSubject: string | null
+  generatedBody: string | null
+  status: string
+  createdAt: string
+}
+
+type CampaignDetails = CampaignSummary & {
+  prospects: CampaignProspect[]
+}
+
+function formatDate(date: string): string {
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(date))
+}
+
+export default function CampaignsPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
+  const [selectedCampaign, setSelectedCampaign] = useState<CampaignDetails | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
+  const [openingId, setOpeningId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [newCampaignName, setNewCampaignName] = useState('')
+  const plan = (session?.user as any)?.plan || 'Gratuit'
+  const canGenerate = plan === 'Pro' || plan === 'Agence'
+
+  useEffect(() => {
+    if (status === 'unauthenticated') router.push('/login')
+  }, [status, router])
+
+  const loadCampaigns = async () => {
+    const res = await fetch('/api/campaigns')
+    const data = await res.json().catch(() => ({ campaigns: [] }))
+    setCampaigns(res.ok ? data.campaigns || [] : [])
+  }
+
+  useEffect(() => {
+    if (status !== 'authenticated') return
+
+    loadCampaigns().finally(() => setLoading(false))
+  }, [status])
+
+  const createCampaign = async () => {
+    const name = newCampaignName.trim()
+    if (!name) return
+
+    setCreating(true)
+    const res = await fetch('/api/campaigns', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    const data = await res.json().catch(() => ({}))
+    setCreating(false)
+
+    if (!res.ok) return alert(data.error || 'Impossible de créer la campagne.')
+
+    setNewCampaignName('')
+    setCampaigns(current => [data.campaign, ...current])
+    openCampaign(data.campaign.id)
+  }
+
+  const openCampaign = async (campaignId: string) => {
+    setOpeningId(campaignId)
+    const res = await fetch(`/api/campaigns/${campaignId}`)
+    const data = await res.json().catch(() => ({}))
+    setOpeningId(null)
+
+    if (!res.ok) return alert(data.error || 'Impossible de charger la campagne.')
+
+    setSelectedCampaign(data.campaign)
+  }
+
+  const deleteCampaign = async (campaignId: string) => {
+    if (!window.confirm('Supprimer cette campagne ?')) return
+
+    setDeletingId(campaignId)
+    const res = await fetch(`/api/campaigns/${campaignId}`, { method: 'DELETE' })
+    const data = await res.json().catch(() => ({}))
+    setDeletingId(null)
+
+    if (!res.ok) return alert(data.error || 'Impossible de supprimer la campagne.')
+
+    setCampaigns(current => current.filter(campaign => campaign.id !== campaignId))
+    if (selectedCampaign?.id === campaignId) setSelectedCampaign(null)
+  }
+
+  const generateCampaignEmails = async () => {
+    if (!selectedCampaign) return
+    if (!canGenerate) return alert('Le plan Pro ou Agence est requis pour générer des messages IA en campagne.')
+
+    setGenerating(true)
+    const res = await fetch(`/api/campaigns/${selectedCampaign.id}/generate`, { method: 'POST' })
+    const data = await res.json().catch(() => ({}))
+    setGenerating(false)
+
+    if (!res.ok) {
+      if (data.upgrade) return alert('Plan Pro ou Agence requis pour les campagnes IA.')
+      return alert(data.error || 'Impossible de générer les messages.')
+    }
+
+    await openCampaign(selectedCampaign.id)
+    alert(`${data.generated?.length || 0} message(s) généré(s).`)
+  }
+
+  const copyMessage = async (prospect: CampaignProspect) => {
+    const message = [prospect.generatedSubject ? `Objet: ${prospect.generatedSubject}` : '', prospect.generatedBody || '']
+      .filter(Boolean)
+      .join('\n\n')
+    if (!message) return
+
+    await navigator.clipboard.writeText(message)
+    alert('Message copié.')
+  }
+
+  if (status === 'loading' || loading) return (
+    <div style={{ minHeight: '100vh', background: '#0A0812', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ color: '#A89FCC' }}>Chargement...</div>
+    </div>
+  )
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#0A0812' }}>
+      <nav style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
+        <Link href="/" style={{ textDecoration: 'none' }}>
+          <div className="font-display" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#F0EDF8' }}>
+            Prospect<span className="grad-text">Tube</span>
+          </div>
+        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <Link href="/dashboard" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>Retour dashboard</Link>
+          <Link href="/favorites" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>⭐ Mes favoris</Link>
+          <Link href="/history" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>📁 Historique</Link>
+          <Link href="/campaigns" style={{ color: '#a78bfa', textDecoration: 'none', fontSize: '0.85rem' }}>📧 Campagnes</Link>
+          <div style={{ background: 'rgba(83,58,183,0.2)', border: '1px solid rgba(83,58,183,0.4)', color: '#a78bfa', padding: '0.2rem 0.75rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 500 }}>
+            Plan {plan}
+          </div>
+          <button onClick={() => signOut({ callbackUrl: '/' })} style={{ background: 'none', border: '1px solid rgba(83,58,183,0.3)', color: '#A89FCC', padding: '0.4rem 1rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
+            Déconnexion
+          </button>
+        </div>
+      </nav>
+
+      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+          <h2 className="font-display" style={{ fontWeight: 700, fontSize: '1.2rem' }}>📧 Campagnes</h2>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <input value={newCampaignName} onChange={event => setNewCampaignName(event.target.value)} placeholder="Nom de campagne" style={{ minWidth: '220px' }} />
+            <button onClick={createCampaign} disabled={creating || !newCampaignName.trim()} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.85rem' }}>
+              {creating ? 'Création...' : 'Créer'}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 0.8fr) minmax(0, 1.2fr)', gap: '1rem' }}>
+          <div>
+            {campaigns.length === 0 ? (
+              <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#A89FCC' }}>
+                Aucune campagne pour le moment.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: '0.75rem' }}>
+                {campaigns.map(campaign => (
+                  <div key={campaign.id} className="card" style={{ padding: '1rem', border: selectedCampaign?.id === campaign.id ? '1px solid rgba(167,139,250,0.5)' : undefined }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'start' }}>
+                      <div>
+                        <div style={{ color: '#F0EDF8', fontWeight: 700, marginBottom: '0.3rem' }}>{campaign.name}</div>
+                        <div style={{ color: '#A89FCC', fontSize: '0.8rem' }}>
+                          {campaign.status} · {campaign._count?.prospects || 0} prospect{(campaign._count?.prospects || 0) !== 1 ? 's' : ''}
+                        </div>
+                        <div style={{ color: '#6B5F96', fontSize: '0.75rem', marginTop: '0.25rem' }}>{formatDate(campaign.createdAt)}</div>
+                      </div>
+                      <button onClick={() => deleteCampaign(campaign.id)} disabled={deletingId === campaign.id} style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', padding: '0.4rem 0.6rem', borderRadius: '8px', cursor: deletingId === campaign.id ? 'default' : 'pointer', fontSize: '0.78rem' }}>
+                        {deletingId === campaign.id ? '...' : 'Supprimer'}
+                      </button>
+                    </div>
+                    <button onClick={() => openCampaign(campaign.id)} disabled={openingId === campaign.id} style={{ marginTop: '0.8rem', width: '100%', background: 'rgba(83,58,183,0.18)', border: '1px solid rgba(83,58,183,0.32)', color: '#a78bfa', padding: '0.55rem 0.75rem', borderRadius: '8px', cursor: openingId === campaign.id ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+                      {openingId === campaign.id ? 'Chargement...' : 'Ouvrir'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            {!selectedCampaign ? (
+              <div className="card" style={{ padding: '2rem', color: '#A89FCC', textAlign: 'center' }}>
+                Ouvre une campagne pour voir ses prospects et générer les messages.
+              </div>
+            ) : (
+              <div className="card" style={{ padding: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <h3 className="font-display" style={{ color: '#F0EDF8', fontSize: '1rem', marginBottom: '0.25rem' }}>{selectedCampaign.name}</h3>
+                    <div style={{ color: '#A89FCC', fontSize: '0.82rem' }}>{selectedCampaign.prospects.length} prospect{selectedCampaign.prospects.length !== 1 ? 's' : ''}</div>
+                  </div>
+                  <button onClick={generateCampaignEmails} disabled={generating || !canGenerate || selectedCampaign.prospects.length === 0} style={{ background: canGenerate ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canGenerate ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.65rem 1rem', borderRadius: '8px', cursor: generating || !canGenerate ? 'default' : 'pointer', fontSize: '0.85rem', fontWeight: 700 }}>
+                    {generating ? 'Génération...' : canGenerate ? '✨ Générer les messages IA' : '🔒 IA Pro'}
+                  </button>
+                </div>
+
+                {selectedCampaign.prospects.length === 0 ? (
+                  <div style={{ padding: '1.25rem', textAlign: 'center', color: '#A89FCC', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px' }}>
+                    Aucun prospect dans cette campagne.
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gap: '0.75rem' }}>
+                    {selectedCampaign.prospects.map(prospect => (
+                      <div key={prospect.id} style={{ border: '1px solid rgba(83,58,183,0.22)', borderRadius: '10px', padding: '0.9rem', background: 'rgba(255,255,255,0.025)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'start', marginBottom: '0.6rem' }}>
+                          <div>
+                            <div style={{ color: '#F0EDF8', fontWeight: 700 }}>{prospect.name}</div>
+                            <div style={{ color: '#A89FCC', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                              {prospect.scoreLabel || 'Score inconnu'} · {prospect.score || 0}/100
+                            </div>
+                          </div>
+                          <span style={{ color: prospect.generatedBody ? '#22c55e' : '#eab308', background: prospect.generatedBody ? 'rgba(34,197,94,0.12)' : 'rgba(234,179,8,0.12)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '0.2rem 0.55rem', fontSize: '0.75rem', fontWeight: 700 }}>
+                            {prospect.status}
+                          </span>
+                        </div>
+
+                        <div style={{ color: '#C4BCDF', fontSize: '0.82rem', marginBottom: '0.65rem' }}>
+                          {prospect.scoreReason || 'Aucune analyse disponible.'}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: prospect.generatedBody ? '0.75rem' : 0 }}>
+                          {prospect.email && <a href={`mailto:${prospect.email}`} style={{ color: '#22c55e', textDecoration: 'none', fontSize: '0.8rem' }}>Email</a>}
+                          {prospect.instagram && <a href={prospect.instagram} target="_blank" rel="noopener noreferrer" style={{ color: '#e879f9', textDecoration: 'none', fontSize: '0.8rem' }}>Instagram</a>}
+                          {prospect.tiktok && <a href={prospect.tiktok} target="_blank" rel="noopener noreferrer" style={{ color: '#f472b6', textDecoration: 'none', fontSize: '0.8rem' }}>TikTok</a>}
+                          {prospect.twitch && <a href={prospect.twitch} target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF', textDecoration: 'none', fontSize: '0.8rem' }}>Twitch</a>}
+                          {prospect.website && <a href={prospect.website} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'none', fontSize: '0.8rem' }}>Site</a>}
+                          {prospect.channelUrl && <a href={prospect.channelUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', textDecoration: 'none', fontSize: '0.8rem' }}>YouTube</a>}
+                        </div>
+
+                        {prospect.generatedBody && (
+                          <div style={{ background: 'rgba(10,8,18,0.55)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.8rem' }}>
+                            <div style={{ color: '#F0EDF8', fontWeight: 700, fontSize: '0.84rem', marginBottom: '0.45rem' }}>{prospect.generatedSubject}</div>
+                            <div style={{ color: '#C4BCDF', whiteSpace: 'pre-wrap', fontSize: '0.82rem', lineHeight: 1.6 }}>{prospect.generatedBody}</div>
+                            <button onClick={() => copyMessage(prospect)} style={{ marginTop: '0.65rem', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', padding: '0.45rem 0.75rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+                              Copier message
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

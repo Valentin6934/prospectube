@@ -204,6 +204,42 @@ export default function Dashboard() {
     setFavoriteIds(current => current.includes(channelId) ? current : [...current, channelId])
   }
 
+  const addToCampaign = async (channel: any) => {
+    const channelId = channel?.channelId || channel?.id
+    if (!channelId) return alert('Chaîne invalide.')
+
+    const campaignName = window.prompt('Nom de la campagne')
+    const name = campaignName?.trim()
+    if (!name) return
+
+    const listRes = await fetch('/api/campaigns')
+    const listData = await listRes.json().catch(() => ({}))
+    if (!listRes.ok) return alert(listData.error || 'Impossible de charger les campagnes.')
+
+    let campaign = (listData.campaigns || []).find((item: { id: string; name: string }) => item.name.toLowerCase() === name.toLowerCase())
+
+    if (!campaign) {
+      const createRes = await fetch('/api/campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const createData = await createRes.json().catch(() => ({}))
+      if (!createRes.ok) return alert(createData.error || 'Impossible de créer la campagne.')
+      campaign = createData.campaign
+    }
+
+    const addRes = await fetch(`/api/campaigns/${campaign.id}/prospects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(channel),
+    })
+    const addData = await addRes.json().catch(() => ({}))
+    if (!addRes.ok) return alert(addData.error || "Impossible d'ajouter ce prospect à la campagne.")
+
+    alert('Prospect ajouté à la campagne.')
+  }
+
   const toggleAnalysis = (channelId: string) => {
     setExpandedAnalysisIds(current =>
       current.includes(channelId)
@@ -232,6 +268,9 @@ export default function Dashboard() {
           </Link>
           <Link href="/history" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
             📁 Historique
+          </Link>
+          <Link href="/campaigns" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
+            📧 Campagnes
           </Link>
           <div style={{ background: 'rgba(83,58,183,0.2)', border: '1px solid rgba(83,58,183,0.4)', color: '#a78bfa', padding: '0.2rem 0.75rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 500 }}>
             Plan {plan}
@@ -382,12 +421,15 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.55rem', marginTop: '0.9rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.55rem', marginTop: '0.9rem' }}>
                           <button onClick={() => addFavorite(ch)} disabled={favoriteIds.includes(ch.id) || favoriteLoadingId === ch.id} style={{ background: favoriteIds.includes(ch.id) ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.14)', color: favoriteIds.includes(ch.id) ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: favoriteIds.includes(ch.id) ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
                             {favoriteIds.includes(ch.id) ? '⭐ Favori' : favoriteLoadingId === ch.id ? 'Ajout...' : '☆ Favori'}
                           </button>
                           <button onClick={() => generateEmail(ch)} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: canEmail ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 700 }}>
                             {canEmail ? '✨ Message IA' : '🔒 IA Pro'}
+                          </button>
+                          <button onClick={() => addToCampaign(ch)} style={{ background: 'rgba(83,58,183,0.14)', color: '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+                            Ajouter à campagne
                           </button>
                           <button onClick={() => toggleAnalysis(ch.id)} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
                             {isExpanded ? '▼ Masquer' : '▶ Voir l’analyse'}
