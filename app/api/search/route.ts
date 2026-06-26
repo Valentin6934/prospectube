@@ -8,6 +8,60 @@ import { searchYouTubeChannels } from '@/lib/youtube'
 export const dynamic = 'force-dynamic'
 
 const SUBS_VALUES = [1000, 10000, 50000, 100000, 500000, 1000000, 5000000]
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000
+
+function normalizeCachePart(value: string): string {
+  return String(value || 'all')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'all'
+}
+
+function buildCacheKey(niche: string, lang: string, subsMin: number, subsMax: number): string {
+  return `${normalizeCachePart(niche)}-${normalizeCachePart(lang)}-${subsMin}-${subsMax}`
+}
+
+function parseCachedResults(results: unknown): any[] {
+  if (Array.isArray(results)) return results
+
+  if (typeof results === 'string') {
+    try {
+      const parsed = JSON.parse(results)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+
+  return []
+}
+
+async function saveSearchHistory(
+  userId: string,
+  niche: string,
+  lang: string,
+  subsMin: number,
+  subsMax: number,
+  results: any[]
+) {
+  try {
+    await prisma.search.create({
+      data: {
+        userId,
+        niche,
+        language: lang || 'Tous',
+        subsMin: String(subsMin),
+        subsMax: String(subsMax),
+        results: JSON.stringify(results),
+      },
+    })
+  } catch (err) {
+    console.error('Erreur sauvegarde historique:', err)
+  }
+}
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -30,9 +84,41 @@ export async function POST(req: NextRequest) {
 
   const minVal = SUBS_VALUES[parseInt(subsMin)] || 0
   const maxVal = SUBS_VALUES[parseInt(subsMax)] || 5000000
+  const cacheKey = buildCacheKey(niche, lang, minVal, maxVal)
 
   let results: any[] = []
   let source = 'youtube'
+
+  try {
+    const cachedSearch = await prisma.searchCache.findFirst({
+      where: {
+        cacheKey,
+        expiresAt: { gt: new Date() },
+      },
+    })
+
+    const cachedResults = cachedSearch ? parseCachedResults(cachedSearch.results) : []
+
+    if (cachedSearch && cachedResults.length > 0) {
+      await saveSearchHistory(user.id, niche, lang, minVal, maxVal, cachedResults)
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { searchesRemaining: user.searchesRemaining - 1 },
+      })
+
+      return NextResponse.json({
+        results: cachedResults,
+        source,
+        cached: true,
+        searchesRemaining: user.searchesRemaining - 1,
+        plan: user.plan,
+        canGenerateEmail: limits.emailAI,
+      })
+    }
+  } catch (err) {
+    console.error('Erreur lecture cache recherche:', err)
+  }
 
 try {
   results = await searchYouTubeChannels(niche, lang, minVal, maxVal, limits.results)
@@ -44,19 +130,31 @@ try {
   )
 }
 
+  await saveSearchHistory(user.id, niche, lang, minVal, maxVal, results)
+
   try {
-    await prisma.search.create({
-      data: {
-        userId: user.id,
+    await prisma.searchCache.upsert({
+      where: { cacheKey },
+      update: {
         niche,
-        language: lang || 'Tous',
-        subsMin: String(minVal),
-        subsMax: String(maxVal),
-        results: JSON.stringify(results),
+        lang,
+        subsMin: minVal,
+        subsMax: maxVal,
+        results,
+        expiresAt: new Date(Date.now() + CACHE_TTL_MS),
+      },
+      create: {
+        cacheKey,
+        niche,
+        lang,
+        subsMin: minVal,
+        subsMax: maxVal,
+        results,
+        expiresAt: new Date(Date.now() + CACHE_TTL_MS),
       },
     })
   } catch (err) {
-    console.error('Erreur sauvegarde historique:', err)
+    console.error('Erreur sauvegarde cache recherche:', err)
   }
 
   await prisma.user.update({
@@ -67,6 +165,7 @@ try {
   return NextResponse.json({
     results,
     source,
+    cached: false,
     searchesRemaining: user.searchesRemaining - 1,
     plan: user.plan,
     canGenerateEmail: limits.emailAI,

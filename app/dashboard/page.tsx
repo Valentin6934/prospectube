@@ -52,6 +52,7 @@ export default function Dashboard() {
   const [plan, setPlan] = useState('Gratuit')
   const [favoriteIds, setFavoriteIds] = useState<string[]>([])
   const [favoriteLoadingId, setFavoriteLoadingId] = useState<string | null>(null)
+  const [cacheNotice, setCacheNotice] = useState(false)
 
   const [emailModal, setEmailModal] = useState<any>(null)
   const [emailLoading, setEmailLoading] = useState(false)
@@ -125,6 +126,7 @@ export default function Dashboard() {
     if (!editorEmail) return alert('Entre ton email de contact !')
     setLoading(true)
     setSearched(false)
+    setCacheNotice(false)
 
     const res = await fetch('/api/search', {
       method: 'POST',
@@ -145,6 +147,11 @@ export default function Dashboard() {
     setSearchesLeft(data.searchesRemaining)
     setPlan(data.plan)
     setSearched(true)
+
+    if (data.cached) {
+      setCacheNotice(true)
+      window.setTimeout(() => setCacheNotice(false), 3500)
+    }
   }
 
   const generateEmail = async (channel: any) => {
@@ -277,6 +284,12 @@ export default function Dashboard() {
             {loading ? '⏳ Recherche en cours...' : 'Rechercher des chaînes →'}
           </button>
         </div>
+
+        {cacheNotice && (
+          <div style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', fontWeight: 600 }}>
+            ⚡ Résultats instantanés (cache)
+          </div>
+        )}
 
         {searched && (
           <div>

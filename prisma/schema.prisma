@@ -75,3 +75,15 @@ model Favorite {
 
   @@unique([userId, channelId])
 }
+
+model SearchCache {
+  id        String   @id @default(cuid())
+  cacheKey  String   @unique
+  niche     String
+  lang      String
+  subsMin   Int
+  subsMax   Int
+  results   Json
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
