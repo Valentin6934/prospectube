@@ -32,6 +32,10 @@ function getScoreStyles(scoreColor: string | undefined, score: number) {
     return { background: 'rgba(234,179,8,0.15)', color: '#eab308' }
   }
 
+  if (color === 'orange') {
+    return { background: 'rgba(249,115,22,0.15)', color: '#f97316' }
+  }
+
   return { background: 'rgba(239,68,68,0.15)', color: '#ef4444' }
 }
 
@@ -328,10 +332,32 @@ export default function Dashboard() {
                       fontSize: '0.75rem',
                       fontWeight: 600,
                     }}>
+                      {ch.scoreLabel || '🔴 Faible potentiel'}
+                    </div>
+
+                    <div style={{ fontSize: '0.9rem', color: '#F0EDF8', fontWeight: 700, marginBottom: '0.35rem' }}>
+                      {ch.score || 0}/100
+                    </div>
+
+                    <div style={{ display: 'grid', gap: '0.2rem', fontSize: '0.82rem', color: '#C4BCDF', marginBottom: '0.6rem' }}>
+                      {String(ch.scoreReason || "Peu d'informations exploitables").split(' • ').map((reason: string) => (
+                        <div key={reason}>{reason}</div>
+                      ))}
+                    </div>
+
+                    <div style={{
+                      display: 'none',
+                      marginBottom: '0.35rem',
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '999px',
+                      ...getScoreStyles(ch.scoreColor, ch.score || 0),
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                    }}>
                       ⭐ {ch.scoreLabel || 'Potentiel faible'} · {ch.score || 0}/100
                     </div>
 
-                    <div style={{ fontSize: '0.82rem', color: '#C4BCDF', marginBottom: '0.25rem' }}>
+                    <div style={{ display: 'none', fontSize: '0.82rem', color: '#C4BCDF', marginBottom: '0.25rem' }}>
                       {ch.scoreReason || "Faible potentiel ou peu d'informations disponibles"}
                     </div>
 

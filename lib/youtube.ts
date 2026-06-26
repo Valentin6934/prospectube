@@ -201,6 +201,95 @@ function getScoreReason(channel: any): string {
   return "Faible potentiel ou peu d'informations disponibles"
 }
 
+function getChannelAge(publishedAt: string | null): number | null {
+  if (!publishedAt) return null
+  const created = new Date(publishedAt)
+  if (Number.isNaN(created.getTime())) return null
+  return Math.max(0, (Date.now() - created.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+}
+
+function getAdvancedScoreLabel(score: number): string {
+  if (score >= 90) return '🔥 Prospect exceptionnel'
+  if (score >= 80) return '🟢 Excellent prospect'
+  if (score >= 65) return '🟡 Bon prospect'
+  if (score >= 50) return '🟠 Prospect moyen'
+  return '🔴 Faible potentiel'
+}
+
+function getAdvancedScoreColor(score: number): string {
+  if (score >= 80) return 'green'
+  if (score >= 65) return 'yellow'
+  if (score >= 50) return 'orange'
+  return 'red'
+}
+
+function getAdvancedProspectScore(channel: any) {
+  let score = 0
+  const reasons: string[] = []
+
+  if (channel.email) {
+    score += 20
+    reasons.push('Email professionnel trouvé')
+  }
+  if (channel.instagram) {
+    score += 8
+    reasons.push('Instagram présent')
+  }
+  if (channel.tiktok) {
+    score += 8
+    reasons.push('TikTok présent')
+  }
+  if (channel.twitch) {
+    score += 5
+    reasons.push('Twitch présent')
+  }
+  if (channel.website) {
+    score += 5
+    reasons.push('Site web présent')
+  }
+
+  if (channel.subsNum >= 10000 && channel.subsNum <= 300000) {
+    score += 20
+    reasons.push('Taille de chaîne idéale')
+  } else if (channel.subsNum > 300000 && channel.subsNum <= 1000000) {
+    score += 12
+    reasons.push('Audience solide')
+  }
+
+  if (channel.videoCount > 100) {
+    score += 10
+    reasons.push('Chaîne active')
+  }
+
+  if (channel.viewCount > 1000000) {
+    score += 10
+    reasons.push('Plus de 1M vues')
+  }
+
+  if (channel.viewsPerSubscriber > 20) {
+    score += 10
+    reasons.push('Très bon ratio vues/abonnés')
+  }
+
+  if (channel.channelAge !== null && channel.channelAge < 5) {
+    score += 5
+    reasons.push('Chaîne récente')
+  }
+
+  if (channel.desc && channel.desc.length > 100) {
+    score += 5
+    reasons.push('Description détaillée')
+  }
+
+  const finalScore = Math.min(score, 100)
+
+  return {
+    score: finalScore,
+    label: getAdvancedScoreLabel(finalScore),
+    reason: reasons.length > 0 ? reasons.join(' • ') : "Peu d'informations exploitables",
+  }
+}
+
 export async function searchYouTubeChannels(
   niche: string,
   lang: string,
@@ -266,9 +355,13 @@ export async function searchYouTubeChannels(
   const candidates = allChannels
     .map((ch: any) => {
       const subsNum = Number(ch.statistics?.subscriberCount || 0)
-      const totalViews = Number(ch.statistics?.viewCount || 0)
+      const viewCount = Number(ch.statistics?.viewCount || 0)
+      const totalViews = viewCount
       const videoCount = Number(ch.statistics?.videoCount || 0)
-      const createdAt = ch.snippet?.publishedAt || null
+      const publishedAt = ch.snippet?.publishedAt || null
+      const createdAt = publishedAt
+      const channelAge = getChannelAge(publishedAt)
+      const viewsPerSubscriber = subsNum > 0 ? viewCount / subsNum : 0
       const snippetDesc = ch.snippet?.description || ''
       const brandingDesc = ch.brandingSettings?.channel?.description || ''
       const fullDesc = `${snippetDesc}\n${brandingDesc}`
@@ -281,11 +374,15 @@ export async function searchYouTubeChannels(
         name: ch.snippet?.title || 'Chaîne inconnue',
         subs: formatSubs(subsNum),
         subsNum,
+        viewCount,
         totalViews,
         totalViewsFormatted: formatCompactNumber(totalViews),
         videoCount,
         videoCountFormatted: formatCompactNumber(videoCount),
+        publishedAt,
         createdAt,
+        channelAge,
+        viewsPerSubscriber,
         niche,
         lang,
         freq: 'Inconnu',
@@ -302,14 +399,14 @@ export async function searchYouTubeChannels(
         thumbnail: ch.snippet?.thumbnails?.default?.url || null,
       }
 
-      const score = getProspectScore(channel)
+      const advancedScore = getAdvancedProspectScore(channel)
 
       return {
         ...channel,
-        score,
-        scoreLabel: getScoreLabel(score),
-        scoreColor: getScoreColor(score),
-        scoreReason: getScoreReason(channel),
+        score: advancedScore.score,
+        scoreLabel: advancedScore.label,
+        scoreColor: getAdvancedScoreColor(advancedScore.score),
+        scoreReason: advancedScore.reason,
       }
     })
     .filter((ch: any) => ch.subsNum >= subsMin && ch.subsNum <= subsMax)
@@ -345,14 +442,14 @@ export async function searchYouTubeChannels(
         website: channel.website || aboutSocials.website,
       }
 
-      const score = getProspectScore(enrichedChannel)
+      const advancedScore = getAdvancedProspectScore(enrichedChannel)
 
       return {
         ...enrichedChannel,
-        score,
-        scoreLabel: getScoreLabel(score),
-        scoreColor: getScoreColor(score),
-        scoreReason: getScoreReason(enrichedChannel),
+        score: advancedScore.score,
+        scoreLabel: advancedScore.label,
+        scoreColor: getAdvancedScoreColor(advancedScore.score),
+        scoreReason: advancedScore.reason,
       }
     })
   )

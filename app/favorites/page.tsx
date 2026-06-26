@@ -47,7 +47,8 @@ function getCreatedYear(createdAt: string | null | undefined): string {
 
 function getScoreStyles(score: number) {
   if (score >= 80) return { background: 'rgba(34,197,94,0.15)', color: '#22c55e' }
-  if (score >= 60) return { background: 'rgba(234,179,8,0.15)', color: '#eab308' }
+  if (score >= 65) return { background: 'rgba(234,179,8,0.15)', color: '#eab308' }
+  if (score >= 50) return { background: 'rgba(249,115,22,0.15)', color: '#f97316' }
   return { background: 'rgba(239,68,68,0.15)', color: '#ef4444' }
 }
 
