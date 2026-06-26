@@ -5,6 +5,9 @@ import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ProspectCard, { ProspectChannel } from '@/components/ProspectCard'
+import AppLoader from '@/components/AppLoader'
+import EmptyState from '@/components/EmptyState'
+import Toast, { useToast } from '@/components/Toast'
 
 type HistoryItem = {
   id: string
@@ -53,13 +56,8 @@ export default function HistoryPage() {
   const [favoriteIds, setFavoriteIds] = useState<string[]>([])
   const [favoriteLoadingId, setFavoriteLoadingId] = useState<string | null>(null)
   const [resultsError, setResultsError] = useState('')
-  const [toast, setToast] = useState('')
+  const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
-
-  const showToast = (message: string) => {
-    setToast(message)
-    window.setTimeout(() => setToast(''), 2600)
-  }
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -85,11 +83,13 @@ export default function HistoryPage() {
 
   useEffect(() => {
     const listener = (event: Event) => {
-      showToast((event as CustomEvent<string>).detail)
+      const detail = (event as CustomEvent<string | { message: string; type?: 'success' | 'error' | 'info' }>).detail
+      if (typeof detail === 'string') showToast(detail)
+      else showToast(detail.message, detail.type || 'success')
     }
     window.addEventListener('prospectube-toast', listener)
     return () => window.removeEventListener('prospectube-toast', listener)
-  }, [])
+  }, [showToast])
 
   const viewResults = async (item: HistoryItem) => {
     setResultsLoadingId(item.id)
@@ -122,7 +122,10 @@ export default function HistoryPage() {
     const data = await res.json().catch(() => ({}))
     setDeletingId(null)
 
-    if (!res.ok) return alert(data.error || 'Impossible de supprimer cette recherche.')
+    if (!res.ok) {
+      showToast(data.error || 'Impossible de supprimer cette recherche.', 'error')
+      return
+    }
 
     setHistory(current => current.filter(search => search.id !== item.id))
     showToast('✓ Prospect supprimé')
@@ -147,28 +150,27 @@ export default function HistoryPage() {
     const data = await res.json().catch(() => ({}))
     setFavoriteLoadingId(null)
 
-    if (!res.ok) return alert(data.error || "Impossible d'ajouter ce favori.")
+    if (!res.ok) {
+      showToast(data.error || "Impossible d'ajouter ce favori.", 'error')
+      return
+    }
 
     const savedChannelId = data.favorite?.channelId || channelId
     setFavoriteIds(current => current.includes(savedChannelId) ? current : [...current, savedChannelId])
     showToast('✓ Prospect ajouté')
   }
 
-  if (status === 'loading' || loading) return (
-    <div style={{ minHeight: '100vh', background: '#0A0812', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: '#A89FCC' }}>Chargement...</div>
-    </div>
-  )
+  if (status === 'loading' || loading) return <AppLoader text="Chargement de votre historique..." />
 
   return (
     <div style={{ minHeight: '100vh', background: '#0A0812' }}>
-      <nav style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
+      <nav className="app-nav" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
         <Link href="/dashboard/home" style={{ textDecoration: 'none' }}>
           <div className="font-display" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#F0EDF8' }}>
             Prospect<span className="grad-text">Tube</span>
           </div>
         </Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div className="app-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Link href="/dashboard" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
             Nouvelle recherche
           </Link>
@@ -196,9 +198,13 @@ export default function HistoryPage() {
         </h2>
 
         {history.length === 0 ? (
-          <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#A89FCC' }}>
-            Aucune recherche sauvegardée pour le moment.
-          </div>
+          <EmptyState
+            icon="📁"
+            title="Aucune recherche sauvegardée"
+            description="Vos prochaines recherches apparaîtront ici et pourront être rouvertes sans nouvel appel YouTube."
+            actionLabel="Faire une recherche"
+            actionHref="/dashboard"
+          />
         ) : (
           <div style={{ display: 'grid', gap: '0.75rem', marginBottom: '1.5rem' }}>
             {history.map(item => (
@@ -214,7 +220,7 @@ export default function HistoryPage() {
 
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <button onClick={() => viewResults(item)} disabled={resultsLoadingId === item.id} style={{ background: 'rgba(83,58,183,0.25)', border: '1px solid rgba(83,58,183,0.35)', color: '#a78bfa', padding: '0.45rem 0.8rem', borderRadius: '8px', cursor: resultsLoadingId === item.id ? 'default' : 'pointer', fontSize: '0.8rem' }}>
-                    {resultsLoadingId === item.id ? 'Chargement...' : 'Voir les résultats'}
+                    {resultsLoadingId === item.id ? <span className="button-loader"><span className="app-spinner" /> Ouverture...</span> : 'Voir les résultats'}
                   </button>
                   <button onClick={() => deleteSearch(item)} disabled={deletingId === item.id} style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', padding: '0.45rem 0.8rem', borderRadius: '8px', cursor: deletingId === item.id ? 'default' : 'pointer', fontSize: '0.8rem' }}>
                     {deletingId === item.id ? 'Suppression...' : 'Supprimer'}
@@ -253,11 +259,7 @@ export default function HistoryPage() {
           </div>
         )}
       </div>
-      {toast && (
-        <div style={{ position: 'fixed', right: '1rem', bottom: '1rem', zIndex: 1300, background: 'rgba(18,14,31,0.96)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '10px', padding: '0.7rem 0.95rem', boxShadow: '0 18px 45px rgba(0,0,0,0.35)', fontSize: '0.85rem', fontWeight: 700 }}>
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
     </div>
   )
 }

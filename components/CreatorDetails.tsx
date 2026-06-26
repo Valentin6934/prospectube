@@ -109,7 +109,7 @@ export default function CreatorDetails({
   const hasEmail = Boolean(channel.email)
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.66)', display: 'flex', justifyContent: 'flex-end' }} onClick={onClose}>
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={`Fiche de ${name}`} style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.66)', display: 'flex', justifyContent: 'flex-end' }} onClick={onClose}>
       <div
         className="card"
         onClick={event => event.stopPropagation()}
@@ -137,7 +137,7 @@ export default function CreatorDetails({
               </div>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#A89FCC', borderRadius: '8px', padding: '0.45rem 0.7rem', cursor: 'pointer' }}>Fermer</button>
+          <button aria-label="Fermer la fiche" onClick={onClose} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#A89FCC', borderRadius: '8px', padding: '0.45rem 0.7rem', cursor: 'pointer' }}>Fermer</button>
         </div>
 
         <section style={{ marginBottom: '1.25rem' }}>
@@ -194,7 +194,7 @@ export default function CreatorDetails({
             {showFavoriteButton && <button onClick={() => onAddFavorite?.(channel)} disabled={isFavorite || favoriteLoading} style={{ background: isFavorite ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.14)', color: isFavorite ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.7rem', borderRadius: '8px', cursor: isFavorite ? 'default' : 'pointer', fontWeight: 700 }}>{isFavorite ? '⭐ Favori' : favoriteLoading ? 'Ajout...' : '☆ Favori'}</button>}
             {showRemoveButton && <button onClick={() => onRemoveFavorite?.(channel)} disabled={removing} style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', padding: '0.7rem', borderRadius: '8px', cursor: removing ? 'default' : 'pointer', fontWeight: 700 }}>{removing ? 'Suppression...' : 'Supprimer'}</button>}
             {onAddCampaign && <button onClick={() => onAddCampaign(channel)} style={{ background: 'rgba(83,58,183,0.14)', color: '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.7rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>Ajouter à campagne</button>}
-            {onGenerateEmail && <button onClick={() => onGenerateEmail(channel)} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.7rem', borderRadius: '8px', cursor: canEmail ? 'pointer' : 'not-allowed', fontWeight: 700 }}>{canEmail ? '✨ Message IA' : '🔒 IA Pro'}</button>}
+            {onGenerateEmail && <button onClick={() => onGenerateEmail(channel)} disabled={!canEmail} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.7rem', borderRadius: '8px', cursor: canEmail ? 'pointer' : 'not-allowed', fontWeight: 700 }}>{canEmail ? '✨ Message IA' : '🔒 IA Pro'}</button>}
             <button onClick={() => channel.email && navigator.clipboard.writeText(channel.email)} disabled={!channel.email} style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: channel.email ? '#22c55e' : '#6B5F96', padding: '0.7rem', borderRadius: '8px', cursor: channel.email ? 'pointer' : 'not-allowed', fontWeight: 700 }}>Copier email</button>
           </div>
         </section>

@@ -5,6 +5,9 @@ import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ProspectCard from '@/components/ProspectCard'
+import AppLoader from '@/components/AppLoader'
+import EmptyState from '@/components/EmptyState'
+import Toast, { useToast } from '@/components/Toast'
 
 type Favorite = {
   id: string
@@ -39,13 +42,8 @@ export default function FavoritesPage() {
   const [favorites, setFavorites] = useState<Favorite[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [toast, setToast] = useState('')
+  const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
-
-  const showToast = (message: string) => {
-    setToast(message)
-    window.setTimeout(() => setToast(''), 2600)
-  }
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -63,11 +61,13 @@ export default function FavoritesPage() {
 
   useEffect(() => {
     const listener = (event: Event) => {
-      showToast((event as CustomEvent<string>).detail)
+      const detail = (event as CustomEvent<string | { message: string; type?: 'success' | 'error' | 'info' }>).detail
+      if (typeof detail === 'string') showToast(detail)
+      else showToast(detail.message, detail.type || 'success')
     }
     window.addEventListener('prospectube-toast', listener)
     return () => window.removeEventListener('prospectube-toast', listener)
-  }, [])
+  }, [showToast])
 
   const deleteFavorite = async (favoriteId: string) => {
     setDeletingId(favoriteId)
@@ -77,28 +77,25 @@ export default function FavoritesPage() {
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
-      return alert(data.error || 'Impossible de supprimer ce favori.')
+      showToast(data.error || 'Impossible de supprimer ce favori.', 'error')
+      return
     }
 
     setFavorites(current => current.filter(favorite => favorite.id !== favoriteId))
     showToast('✓ Prospect supprimé')
   }
 
-  if (status === 'loading' || loading) return (
-    <div style={{ minHeight: '100vh', background: '#0A0812', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: '#A89FCC' }}>Chargement...</div>
-    </div>
-  )
+  if (status === 'loading' || loading) return <AppLoader text="Chargement de vos favoris..." />
 
   return (
     <div style={{ minHeight: '100vh', background: '#0A0812' }}>
-      <nav style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
+      <nav className="app-nav" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
         <Link href="/dashboard/home" style={{ textDecoration: 'none' }}>
           <div className="font-display" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#F0EDF8' }}>
             Prospect<span className="grad-text">Tube</span>
           </div>
         </Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div className="app-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Link href="/dashboard" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
             Nouvelle recherche
           </Link>
@@ -131,9 +128,13 @@ export default function FavoritesPage() {
         </div>
 
         {favorites.length === 0 ? (
-          <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#A89FCC' }}>
-            Aucun favori pour le moment. Ajoute une chaîne depuis le dashboard.
-          </div>
+          <EmptyState
+            icon="⭐"
+            title="Votre sélection est encore vide"
+            description="Ajoutez les chaînes les plus prometteuses depuis une recherche pour les retrouver ici."
+            actionLabel="Lancer une recherche"
+            actionHref="/dashboard"
+          />
         ) : (
           favorites.map(favorite => (
             <ProspectCard
@@ -146,11 +147,7 @@ export default function FavoritesPage() {
           ))
         )}
       </div>
-      {toast && (
-        <div style={{ position: 'fixed', right: '1rem', bottom: '1rem', zIndex: 1300, background: 'rgba(18,14,31,0.96)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '10px', padding: '0.7rem 0.95rem', boxShadow: '0 18px 45px rgba(0,0,0,0.35)', fontSize: '0.85rem', fontWeight: 700 }}>
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
     </div>
   )
 }

@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import AppLoader from '@/components/AppLoader'
+import EmptyState from '@/components/EmptyState'
+import Toast, { useToast } from '@/components/Toast'
 
 type CampaignSummary = {
   id: string
@@ -61,13 +64,9 @@ export default function CampaignsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [scoreFilter, setScoreFilter] = useState('Tous')
   const [selectedProspectIds, setSelectedProspectIds] = useState<string[]>([])
-  const [toast, setToast] = useState('')
+  const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
   const canGenerate = plan === 'Pro' || plan === 'Agence'
-  const showToast = (message: string) => {
-    setToast(message)
-    window.setTimeout(() => setToast(''), 2600)
-  }
 
   const getScoreBucket = (prospect: CampaignProspect) => {
     const label = `${prospect.scoreLabel || ''} ${prospect.score || ''}`.toLowerCase()
@@ -133,7 +132,10 @@ export default function CampaignsPage() {
     const data = await res.json().catch(() => ({}))
     setCreating(false)
 
-    if (!res.ok) return alert(data.error || 'Impossible de créer la campagne.')
+    if (!res.ok) {
+      showToast(data.error || 'Impossible de créer la campagne.', 'error')
+      return
+    }
 
     setNewCampaignName('')
     setCampaigns(current => [data.campaign, ...current])
@@ -147,7 +149,10 @@ export default function CampaignsPage() {
     const data = await res.json().catch(() => ({}))
     setOpeningId(null)
 
-    if (!res.ok) return alert(data.error || 'Impossible de charger la campagne.')
+    if (!res.ok) {
+      showToast(data.error || 'Impossible de charger la campagne.', 'error')
+      return
+    }
 
     setSelectedCampaign(data.campaign)
     setSelectedProspectIds([])
@@ -161,7 +166,10 @@ export default function CampaignsPage() {
     const data = await res.json().catch(() => ({}))
     setDeletingId(null)
 
-    if (!res.ok) return alert(data.error || 'Impossible de supprimer la campagne.')
+    if (!res.ok) {
+      showToast(data.error || 'Impossible de supprimer la campagne.', 'error')
+      return
+    }
 
     setCampaigns(current => current.filter(campaign => campaign.id !== campaignId))
     if (selectedCampaign?.id === campaignId) setSelectedCampaign(null)
@@ -170,8 +178,8 @@ export default function CampaignsPage() {
 
   const generateCampaignEmails = async () => {
     if (!selectedCampaign) return
-    if (!canGenerate) return alert('Le plan Pro ou Agence est requis pour générer des messages IA en campagne.')
-    if (selectedProspectIds.length === 0) return alert('Sélectionne au moins un prospect à générer.')
+    if (!canGenerate) return showToast('Le plan Pro ou Agence est requis pour générer des messages IA en campagne.', 'info')
+    if (selectedProspectIds.length === 0) return showToast('Sélectionnez au moins un prospect à générer.', 'info')
 
     setGenerating(true)
     const res = await fetch(`/api/campaigns/${selectedCampaign.id}/generate`, {
@@ -183,8 +191,8 @@ export default function CampaignsPage() {
     setGenerating(false)
 
     if (!res.ok) {
-      if (data.upgrade) return alert('Plan Pro ou Agence requis pour les campagnes IA.')
-      return alert(data.error || 'Impossible de générer les messages.')
+      if (data.upgrade) return showToast('Plan Pro ou Agence requis pour les campagnes IA.', 'info')
+      return showToast(data.error || 'Impossible de générer les messages.', 'error')
     }
 
     await openCampaign(selectedCampaign.id)
@@ -209,21 +217,17 @@ export default function CampaignsPage() {
     )
   }
 
-  if (status === 'loading' || loading) return (
-    <div style={{ minHeight: '100vh', background: '#0A0812', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: '#A89FCC' }}>Chargement...</div>
-    </div>
-  )
+  if (status === 'loading' || loading) return <AppLoader text="Chargement de vos campagnes..." />
 
   return (
     <div style={{ minHeight: '100vh', background: '#0A0812' }}>
-      <nav style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
+      <nav className="app-nav" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
         <Link href="/dashboard/home" style={{ textDecoration: 'none' }}>
           <div className="font-display" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#F0EDF8' }}>
             Prospect<span className="grad-text">Tube</span>
           </div>
         </Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div className="app-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Link href="/dashboard" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>Nouvelle recherche</Link>
           <Link href="/favorites" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>⭐ Mes favoris</Link>
           <Link href="/history" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>📁 Historique</Link>
@@ -248,12 +252,14 @@ export default function CampaignsPage() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 0.8fr) minmax(0, 1.2fr)', gap: '1rem' }}>
+        <div className="campaign-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 0.8fr) minmax(0, 1.2fr)', gap: '1rem' }}>
           <div>
             {campaigns.length === 0 ? (
-              <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#A89FCC' }}>
-                Aucune campagne pour le moment.
-              </div>
+              <EmptyState
+                icon="📧"
+                title="Aucune campagne"
+                description="Créez votre première campagne pour regrouper des prospects et préparer vos messages."
+              />
             ) : (
               <div style={{ display: 'grid', gap: '0.75rem' }}>
                 {campaigns.map(campaign => (
@@ -271,7 +277,7 @@ export default function CampaignsPage() {
                       </button>
                     </div>
                     <button onClick={() => openCampaign(campaign.id)} disabled={openingId === campaign.id} style={{ marginTop: '0.8rem', width: '100%', background: 'rgba(83,58,183,0.18)', border: '1px solid rgba(83,58,183,0.32)', color: '#a78bfa', padding: '0.55rem 0.75rem', borderRadius: '8px', cursor: openingId === campaign.id ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-                      {openingId === campaign.id ? 'Chargement...' : 'Ouvrir'}
+                      {openingId === campaign.id ? <span className="button-loader"><span className="app-spinner" /> Ouverture...</span> : 'Ouvrir'}
                     </button>
                   </div>
                 ))}
@@ -317,7 +323,7 @@ export default function CampaignsPage() {
                   </div>
                 )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '0.65rem', marginBottom: '1rem' }}>
+                <div className="campaign-filters" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '0.65rem', marginBottom: '1rem' }}>
                   <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Rechercher nom, email ou score..." />
                   <select value={scoreFilter} onChange={event => setScoreFilter(event.target.value)} style={{ minWidth: '150px' }}>
                     {['Tous', 'Excellent', 'Bon', 'Moyen', 'Faible', 'Sans email'].map(filter => <option key={filter} value={filter}>{filter}</option>)}
@@ -383,11 +389,7 @@ export default function CampaignsPage() {
           </div>
         </div>
       </div>
-      {toast && (
-        <div style={{ position: 'fixed', right: '1rem', bottom: '1rem', zIndex: 1300, background: 'rgba(18,14,31,0.96)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '10px', padding: '0.7rem 0.95rem', boxShadow: '0 18px 45px rgba(0,0,0,0.35)', fontSize: '0.85rem', fontWeight: 700 }}>
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
     </div>
   )
 }

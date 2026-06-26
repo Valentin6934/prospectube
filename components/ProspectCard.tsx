@@ -66,8 +66,8 @@ function getScoreStyles(score: number) {
   return { background: 'rgba(239,68,68,0.15)', color: '#ef4444' }
 }
 
-function showToast(message: string) {
-  window.dispatchEvent(new CustomEvent('prospectube-toast', { detail: message }))
+function showToast(message: string, type: 'success' | 'error' | 'info' = 'success') {
+  window.dispatchEvent(new CustomEvent('prospectube-toast', { detail: { message, type } }))
 }
 
 export default function ProspectCard({
@@ -105,7 +105,7 @@ export default function ProspectCard({
 
   const addToCampaign = async (targetChannel: ProspectChannel) => {
     const channelId = targetChannel.channelId || targetChannel.id
-    if (!channelId) return alert('Chaîne invalide.')
+    if (!channelId) return showToast('Cette chaîne ne peut pas être ajoutée.', 'error')
 
     const campaignName = window.prompt('Nom de la campagne')
     const name = campaignName?.trim()
@@ -113,7 +113,7 @@ export default function ProspectCard({
 
     const listRes = await fetch('/api/campaigns')
     const listData = await listRes.json().catch(() => ({}))
-    if (!listRes.ok) return alert(listData.error || 'Impossible de charger les campagnes.')
+    if (!listRes.ok) return showToast(listData.error || 'Impossible de charger les campagnes.', 'error')
 
     let campaign = (listData.campaigns || []).find((item: { id: string; name: string }) => item.name.toLowerCase() === name.toLowerCase())
 
@@ -124,7 +124,7 @@ export default function ProspectCard({
         body: JSON.stringify({ name }),
       })
       const createData = await createRes.json().catch(() => ({}))
-      if (!createRes.ok) return alert(createData.error || 'Impossible de créer la campagne.')
+      if (!createRes.ok) return showToast(createData.error || 'Impossible de créer la campagne.', 'error')
       campaign = createData.campaign
     }
 
@@ -134,13 +134,13 @@ export default function ProspectCard({
       body: JSON.stringify(targetChannel),
     })
     const addData = await addRes.json().catch(() => ({}))
-    if (!addRes.ok) return alert(addData.error || "Impossible d'ajouter ce prospect à la campagne.")
+    if (!addRes.ok) return showToast(addData.error || "Impossible d'ajouter ce prospect à la campagne.", 'error')
 
     showToast('✓ Prospect ajouté')
   }
 
   return (
-    <div className="card" style={{ padding: '1rem', marginBottom: '0.85rem', border: '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
+    <div className="card prospect-card" style={{ padding: '1rem', marginBottom: '0.85rem', border: '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
       <div style={{ display: 'flex', gap: '0.9rem', minWidth: 0 }}>
         {channel.thumbnail ? (
           <img src={channel.thumbnail} alt="" style={{ width: '54px', height: '54px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(83,58,183,0.35)', flexShrink: 0 }} />
@@ -177,7 +177,7 @@ export default function ProspectCard({
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${actionColumns}, minmax(0, 1fr))`, gap: '0.55rem', marginTop: '0.9rem' }}>
+      <div className="prospect-actions" style={{ display: 'grid', gridTemplateColumns: `repeat(${actionColumns}, minmax(0, 1fr))`, gap: '0.55rem', marginTop: '0.9rem' }}>
         {showFavoriteButton && (
           <button onClick={() => onAddFavorite?.(channel)} disabled={isFavorite || favoriteLoading} style={{ background: isFavorite ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.14)', color: isFavorite ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: isFavorite ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
             {isFavorite ? '⭐ Favori' : favoriteLoading ? 'Ajout...' : '☆ Favori'}
@@ -189,7 +189,7 @@ export default function ProspectCard({
           </button>
         )}
         {onGenerateEmail && (
-          <button onClick={() => onGenerateEmail(channel)} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: canEmail ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 700 }}>
+          <button onClick={() => onGenerateEmail(channel)} disabled={!canEmail} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: canEmail ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 700 }}>
             {canEmail ? '✨ Message IA' : '🔒 IA Pro'}
           </button>
         )}

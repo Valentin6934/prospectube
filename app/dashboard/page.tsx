@@ -3,6 +3,10 @@ import { useState, useEffect } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import AppLoader from '@/components/AppLoader'
+import EmptyState from '@/components/EmptyState'
+import ProspectSkeleton from '@/components/ProspectSkeleton'
+import Toast, { useToast } from '@/components/Toast'
 
 const NICHES = ['Gaming', 'Finance & Business', 'Tech & Programmation', 'Fitness & Santé', 'Lifestyle & Vlog', 'Cuisine', 'Musique', 'Éducation', 'Voyage', 'Beauté & Mode']
 const LANGS = ['Français', 'Anglais', 'Espagnol', 'Portugais', 'Allemand']
@@ -79,14 +83,9 @@ export default function Dashboard() {
   const [bulkCampaignsLoading, setBulkCampaignsLoading] = useState(false)
   const [bulkError, setBulkError] = useState('')
   const [campaignTargetIds, setCampaignTargetIds] = useState<string[]>([])
-  const [toast, setToast] = useState('')
+  const { toast, showToast } = useToast()
 
   const isPro = plan !== 'Gratuit'
-
-  const showToast = (message: string) => {
-    setToast(message)
-    window.setTimeout(() => setToast(''), 2600)
-  }
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -114,7 +113,7 @@ export default function Dashboard() {
   }
 
   const exportCSV = () => {
-    if (!isPro) return alert('Export CSV disponible avec le plan Pro.')
+    if (!isPro) return showToast('Export CSV disponible avec le plan Pro.', 'info')
 
     const headers = ['Nom', 'Abonnés', 'Score', 'Email', 'YouTube', 'Instagram', 'TikTok', 'Twitch', 'Site web']
     headers.splice(3, 0, 'Score Label', 'Score Reason', 'Vues totales', 'Nombre de videos', 'Date creation')
@@ -149,8 +148,8 @@ export default function Dashboard() {
   }
 
   const handleSearch = async () => {
-    if (!niche) return alert('Choisis une niche !')
-    if (!editorEmail) return alert('Entre ton email de contact !')
+    if (!niche) return showToast('Choisissez une niche avant de lancer la recherche.', 'info')
+    if (!editorEmail) return showToast('Ajoutez votre email de contact avant de continuer.', 'info')
     setLoading(true)
     setSearched(false)
     setCacheNotice(false)
@@ -166,8 +165,8 @@ export default function Dashboard() {
     setLoading(false)
 
     if (!res.ok) {
-      if (data.upgrade) return alert('Quota épuisé ! Passe au plan Pro.')
-      return alert(data.error)
+      if (data.upgrade) return showToast('Quota épuisé. Passez au plan Pro pour continuer.', 'info')
+      return showToast(data.error || 'La recherche a échoué.', 'error')
     }
 
     setResults(data.results)
@@ -183,7 +182,7 @@ export default function Dashboard() {
   }
 
   const generateEmail = async (channel: any) => {
-    if (!canEmail) return alert('Le plan Pro est requis pour générer des messages IA.')
+    if (!canEmail) return showToast('Le plan Pro est requis pour générer des messages IA.', 'info')
 
     setEmailModal(channel)
     setEmailLoading(true)
@@ -200,8 +199,8 @@ export default function Dashboard() {
     setEmailLoading(false)
 
     if (!res.ok) {
-      if (data.upgrade) return alert('Plan Pro requis pour les messages IA.')
-      return alert(data.error)
+      if (data.upgrade) return showToast('Plan Pro requis pour les messages IA.', 'info')
+      return showToast(data.error || 'Impossible de générer le message.', 'error')
     }
 
     setEmailData(data)
@@ -221,7 +220,7 @@ export default function Dashboard() {
     const data = await res.json()
     setFavoriteLoadingId(null)
 
-    if (!res.ok) return alert(data.error || "Impossible d'ajouter ce favori.")
+    if (!res.ok) return showToast(data.error || "Impossible d'ajouter ce favori.", 'error')
 
     const channelId = data.favorite?.channelId || channel.id
     setFavoriteIds(current => current.includes(channelId) ? current : [...current, channelId])
@@ -230,7 +229,7 @@ export default function Dashboard() {
 
   const addToCampaign = (channel: any) => {
     const channelId = channel?.channelId || channel?.id
-    if (!channelId) return alert('Chaîne invalide.')
+    if (!channelId) return showToast('Cette chaîne ne peut pas être ajoutée.', 'error')
 
     openBulkModal([channelId])
   }
@@ -354,21 +353,17 @@ export default function Dashboard() {
     )
   }
 
-  if (status === 'loading') return (
-    <div style={{ minHeight: '100vh', background: '#0A0812', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: '#A89FCC' }}>Chargement...</div>
-    </div>
-  )
+  if (status === 'loading') return <AppLoader text="Chargement de votre espace de recherche..." />
 
   return (
     <div style={{ minHeight: '100vh', background: '#0A0812' }}>
-      <nav style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
+      <nav className="app-nav" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
         <Link href="/dashboard/home" style={{ textDecoration: 'none' }}>
           <div className="font-display" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#F0EDF8' }}>
             Prospect<span className="grad-text">Tube</span>
           </div>
         </Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div className="app-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Link href="/favorites" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
             ⭐ Mes favoris
           </Link>
@@ -402,12 +397,12 @@ export default function Dashboard() {
           </div>
         )}
 
-        <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+        <div id="search-form" className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem', scrollMarginTop: '90px' }}>
           <h2 className="font-display" style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '1.25rem' }}>
             🔍 Rechercher des chaînes YouTube
           </h2>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+          <div className="search-fields" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Niche *</label>
               <select value={niche} onChange={e => setNiche(e.target.value)}>
@@ -443,6 +438,12 @@ export default function Dashboard() {
           </button>
         </div>
 
+        {loading && (
+          <div role="status" aria-label="Recherche des chaînes en cours">
+            {[0, 1, 2].map(item => <ProspectSkeleton key={item} />)}
+          </div>
+        )}
+
         {cacheNotice && (
           <div style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', fontWeight: 600 }}>
             ⚡ Résultats instantanés (cache)
@@ -464,12 +465,16 @@ export default function Dashboard() {
             </div>
 
             {results.length === 0 ? (
-              <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#A89FCC' }}>
-                Aucune chaîne trouvée pour ces critères. Essaie d'autres filtres.
-              </div>
+              <EmptyState
+                icon="🔍"
+                title="Aucune chaîne trouvée"
+                description="Élargissez la plage d’abonnés ou essayez une autre niche pour obtenir davantage de résultats."
+                actionLabel="Modifier les critères"
+                actionHref="#search-form"
+              />
             ) : (
               results.map(ch => (
-                <div key={ch.id} className="card" style={{ position: 'relative', padding: '1rem', marginBottom: '0.85rem', display: 'block', border: selectedIds.includes(ch.id) ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
+                <div key={ch.id} className="card prospect-card" style={{ position: 'relative', padding: '1rem', marginBottom: '0.85rem', display: 'block', border: selectedIds.includes(ch.id) ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
                   <input
                     type="checkbox"
                     checked={selectedIds.includes(ch.id)}
@@ -534,7 +539,7 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.55rem', marginTop: '0.9rem' }}>
+                        <div className="prospect-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.55rem', marginTop: '0.9rem' }}>
                           <button onClick={() => addFavorite(ch)} disabled={favoriteIds.includes(ch.id) || favoriteLoadingId === ch.id} style={{ background: favoriteIds.includes(ch.id) ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.14)', color: favoriteIds.includes(ch.id) ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: favoriteIds.includes(ch.id) ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
                             {favoriteIds.includes(ch.id) ? '⭐ Favori' : favoriteLoadingId === ch.id ? 'Ajout...' : '☆ Favori'}
                           </button>
@@ -752,9 +757,9 @@ export default function Dashboard() {
       )}
 
       {bulkModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.68)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }} onClick={() => setBulkModalOpen(false)}>
-          <div className="card" style={{ width: '100%', maxWidth: '460px', padding: '1.5rem' }} onClick={event => event.stopPropagation()}>
-            <h3 className="font-display" style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem' }}>Ajouter à une campagne</h3>
+        <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.68)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }} onClick={() => setBulkModalOpen(false)}>
+          <div className="card modal-panel" role="dialog" aria-modal="true" aria-labelledby="campaign-modal-title" style={{ width: '100%', maxWidth: '460px', padding: '1.5rem' }} onClick={event => event.stopPropagation()}>
+            <h3 id="campaign-modal-title" className="font-display" style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem' }}>Ajouter à une campagne</h3>
             <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.35rem' }}>Campagne existante</label>
             <select value={bulkCampaignId} onChange={event => setBulkCampaignId(event.target.value)} disabled={bulkCampaignsLoading} style={{ marginBottom: '1rem' }}>
               <option value="new">+ Créer une nouvelle campagne</option>
@@ -768,7 +773,7 @@ export default function Dashboard() {
               })}
             </select>
             {bulkCampaignsLoading && (
-              <div style={{ color: '#A89FCC', fontSize: '0.8rem', marginBottom: '1rem' }}>Chargement des campagnes...</div>
+              <div style={{ marginBottom: '1rem' }}><AppLoader text="Chargement des campagnes..." fullScreen={false} compact /></div>
             )}
             {bulkCampaignId === 'new' && (
               <>
@@ -791,25 +796,18 @@ export default function Dashboard() {
         </div>
       )}
 
-      {toast && (
-        <div style={{ position: 'fixed', right: '1rem', bottom: selectedIds.length > 0 ? '6rem' : '1rem', zIndex: 1300, background: 'rgba(18,14,31,0.96)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '10px', padding: '0.7rem 0.95rem', boxShadow: '0 18px 45px rgba(0,0,0,0.35)', fontSize: '0.85rem', fontWeight: 700, whiteSpace: 'pre-line' }}>
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} raised={selectedIds.length > 0} />
 
       {emailModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '560px', padding: '1.75rem', position: 'relative' }}>
+        <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div className="card modal-panel" role="dialog" aria-modal="true" aria-labelledby="email-modal-title" style={{ width: '100%', maxWidth: '560px', padding: '1.75rem', position: 'relative' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 className="font-display" style={{ fontWeight: 700 }}>Message généré par IA ✨</h3>
-              <button onClick={() => { setEmailModal(null); setEmailData(null); setSendStatus('') }} style={{ background: 'none', border: 'none', color: '#A89FCC', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+              <h3 id="email-modal-title" className="font-display" style={{ fontWeight: 700 }}>Message généré par IA ✨</h3>
+              <button aria-label="Fermer la fenêtre" onClick={() => { setEmailModal(null); setEmailData(null); setSendStatus('') }} style={{ background: 'none', border: 'none', color: '#A89FCC', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
             </div>
 
             {emailLoading ? (
-              <div style={{ textAlign: 'center', padding: '2rem', color: '#A89FCC' }}>
-                <div style={{ marginBottom: '0.75rem', fontSize: '1.5rem' }}>⏳</div>
-                Génération du message par IA...
-              </div>
+              <AppLoader text="Génération du message par IA..." fullScreen={false} />
             ) : emailData ? (
               <>
                 <div style={{ background: 'rgba(83,58,183,0.08)', border: '1px solid rgba(83,58,183,0.2)', borderRadius: '10px', padding: '1.25rem', marginBottom: '1rem' }}>
