@@ -16,15 +16,23 @@ export async function GET() {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
 
-  const campaigns = await prisma.campaign.findMany({
+  const campaignRecords = await prisma.campaign.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: 'desc' },
     include: {
       _count: {
         select: { prospects: true },
       },
+      prospects: {
+        select: { channelId: true },
+      },
     },
   })
+
+  const campaigns = campaignRecords.map(({ prospects, ...campaign }) => ({
+    ...campaign,
+    prospectChannelIds: prospects.map(prospect => prospect.channelId),
+  }))
 
   return NextResponse.json({ campaigns })
 }

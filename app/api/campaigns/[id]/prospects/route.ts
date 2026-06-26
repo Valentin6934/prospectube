@@ -44,29 +44,34 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Chaîne invalide' }, { status: 400 })
   }
 
-  const prospect = await prisma.campaignProspect.upsert({
+  const prospectData = {
+    campaignId: campaign.id,
+    channelId,
+    name: toNullableString(channel.name) || 'Chaîne inconnue',
+    email: toNullableString(channel.email),
+    instagram: toNullableString(channel.instagram),
+    tiktok: toNullableString(channel.tiktok),
+    twitch: toNullableString(channel.twitch),
+    website: toNullableString(channel.website),
+    channelUrl: toNullableString(channel.channelUrl),
+    score: toNullableInt(channel.score),
+    scoreLabel: toNullableString(channel.scoreLabel),
+    scoreReason: toNullableString(channel.scoreReason),
+  }
+
+  const result = await prisma.campaignProspect.createMany({
+    data: [prospectData],
+    skipDuplicates: true,
+  })
+
+  const prospect = await prisma.campaignProspect.findUnique({
     where: {
       campaignId_channelId: {
         campaignId: campaign.id,
         channelId,
       },
     },
-    update: {},
-    create: {
-      campaignId: campaign.id,
-      channelId,
-      name: toNullableString(channel.name) || 'Chaîne inconnue',
-      email: toNullableString(channel.email),
-      instagram: toNullableString(channel.instagram),
-      tiktok: toNullableString(channel.tiktok),
-      twitch: toNullableString(channel.twitch),
-      website: toNullableString(channel.website),
-      channelUrl: toNullableString(channel.channelUrl),
-      score: toNullableInt(channel.score),
-      scoreLabel: toNullableString(channel.scoreLabel),
-      scoreReason: toNullableString(channel.scoreReason),
-    },
   })
 
-  return NextResponse.json({ prospect })
+  return NextResponse.json({ prospect, added: result.count === 1 })
 }

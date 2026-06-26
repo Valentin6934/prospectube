@@ -39,6 +39,13 @@ function getScoreStyles(scoreColor: string | undefined, score: number) {
   return { background: 'rgba(239,68,68,0.15)', color: '#ef4444' }
 }
 
+type CampaignOption = {
+  id: string
+  name: string
+  _count?: { prospects: number }
+  prospectChannelIds?: string[]
+}
+
 export default function Dashboard() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -65,7 +72,7 @@ export default function Dashboard() {
   const [sendStatus, setSendStatus] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [bulkModalOpen, setBulkModalOpen] = useState(false)
-  const [campaigns, setCampaigns] = useState<{ id: string; name: string; _count?: { prospects: number } }[]>([])
+  const [campaigns, setCampaigns] = useState<CampaignOption[]>([])
   const [bulkCampaignId, setBulkCampaignId] = useState('')
   const [bulkCampaignName, setBulkCampaignName] = useState('')
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -225,7 +232,7 @@ export default function Dashboard() {
     const channelId = channel?.channelId || channel?.id
     if (!channelId) return alert('Chaîne invalide.')
 
-    openBulkModal([channel.id])
+    openBulkModal([channelId])
   }
 
   const toggleSelected = (channelId: string) => {
@@ -250,9 +257,25 @@ export default function Dashboard() {
     else setBulkError(data.error || 'Impossible de charger les campagnes.')
   }
 
+  const getTargetChannels = () => {
+    const targetIds = campaignTargetIds.length > 0 ? campaignTargetIds : selectedIds
+    return results.filter(channel =>
+      targetIds.includes(channel.channelId) || targetIds.includes(channel.id)
+    )
+  }
+
+  const isCampaignFullyPopulated = (campaign: CampaignOption) => {
+    const targetChannelIds = getTargetChannels()
+      .map(channel => channel.channelId || channel.id)
+      .filter(Boolean)
+    const existingIds = new Set(campaign.prospectChannelIds || [])
+
+    return targetChannelIds.length > 0 && targetChannelIds.every(channelId => existingIds.has(channelId))
+  }
+
   const addSelectedToCampaign = async () => {
     const targetIds = campaignTargetIds.length > 0 ? campaignTargetIds : selectedIds
-    const selectedChannels = results.filter(channel => targetIds.includes(channel.id))
+    const selectedChannels = getTargetChannels()
     if (selectedChannels.length === 0) return
 
     setBulkLoading(true)
@@ -282,28 +305,46 @@ export default function Dashboard() {
       showToast('✓ Campagne créée')
     }
 
-    const responses = await Promise.all(selectedChannels.map(channel =>
-      fetch(`/api/campaigns/${campaignId}/prospects`, {
+    const outcomes = await Promise.all(selectedChannels.map(async channel => {
+      const response = await fetch(`/api/campaigns/${campaignId}/prospects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(channel),
       })
-    ))
+      const data = await response.json().catch(() => ({}))
+      return { response, data }
+    }))
 
-    const failed = responses.find(response => !response.ok)
+    const failed = outcomes.find(({ response }) => !response.ok)
     if (failed) {
-      const data = await failed.json().catch(() => ({}))
       setBulkLoading(false)
-      setBulkError(data.error || "Certains prospects n'ont pas pu être ajoutés.")
+      setBulkError(failed.data.error || "Certains prospects n'ont pas pu être ajoutés.")
       return
     }
+
+    const addedCount = outcomes.filter(({ data }) => data.added === true).length
+    const existingCount = selectedChannels.length - addedCount
 
     setBulkLoading(false)
     setBulkModalOpen(false)
     setCampaignTargetIds([])
     setSelectedIds(current => current.filter(id => !targetIds.includes(id)))
-    showToast(`${selectedChannels.length} prospects ajoutés à la campagne`)
+
+    if (addedCount === 0) {
+      showToast('Tous les prospects sont déjà présents dans cette campagne.')
+      return
+    }
+
+    const addedLabel = `${addedCount} prospect${addedCount !== 1 ? 's' : ''} ajouté${addedCount !== 1 ? 's' : ''}`
+    const existingLabel = existingCount > 0
+      ? `\nℹ️ ${existingCount} étai${existingCount !== 1 ? 'ent' : 't'} déjà dans cette campagne`
+      : ''
+    showToast(`✅ ${addedLabel}${existingLabel}`)
   }
+
+  const selectedCampaignIsFull = campaigns.some(
+    campaign => campaign.id === bulkCampaignId && isCampaignFullyPopulated(campaign)
+  )
 
   const toggleAnalysis = (channelId: string) => {
     setExpandedAnalysisIds(current =>
@@ -717,11 +758,14 @@ export default function Dashboard() {
             <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.35rem' }}>Campagne existante</label>
             <select value={bulkCampaignId} onChange={event => setBulkCampaignId(event.target.value)} disabled={bulkCampaignsLoading} style={{ marginBottom: '1rem' }}>
               <option value="new">+ Créer une nouvelle campagne</option>
-              {campaigns.map(campaign => (
-                <option key={campaign.id} value={campaign.id}>
-                  {campaign.name} ({campaign._count?.prospects || 0} prospect{(campaign._count?.prospects || 0) !== 1 ? 's' : ''})
+              {campaigns.map(campaign => {
+                const alreadyPresent = isCampaignFullyPopulated(campaign)
+                return (
+                <option key={campaign.id} value={campaign.id} disabled={alreadyPresent}>
+                  {campaign.name} ({campaign._count?.prospects || 0} prospect{(campaign._count?.prospects || 0) !== 1 ? 's' : ''}){alreadyPresent ? ' - ✓ Déjà présents' : ''}
                 </option>
-              ))}
+                )
+              })}
             </select>
             {bulkCampaignsLoading && (
               <div style={{ color: '#A89FCC', fontSize: '0.8rem', marginBottom: '1rem' }}>Chargement des campagnes...</div>
@@ -739,7 +783,7 @@ export default function Dashboard() {
             )}
             <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'flex-end' }}>
               <button onClick={() => { setBulkModalOpen(false); setCampaignTargetIds([]); setBulkError('') }} disabled={bulkLoading} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.65rem 0.9rem', borderRadius: '8px', cursor: bulkLoading ? 'default' : 'pointer' }}>Annuler</button>
-              <button onClick={addSelectedToCampaign} disabled={bulkLoading || bulkCampaignsLoading || (bulkCampaignId === 'new' && !bulkCampaignName.trim())} className="btn-primary" style={{ padding: '0.65rem 0.9rem' }}>
+              <button onClick={addSelectedToCampaign} disabled={bulkLoading || bulkCampaignsLoading || selectedCampaignIsFull || (bulkCampaignId === 'new' && !bulkCampaignName.trim())} className="btn-primary" style={{ padding: '0.65rem 0.9rem' }}>
                 {bulkLoading ? 'Ajout...' : `Ajouter ${campaignTargetIds.length || selectedIds.length}`}
               </button>
             </div>
@@ -748,7 +792,7 @@ export default function Dashboard() {
       )}
 
       {toast && (
-        <div style={{ position: 'fixed', right: '1rem', bottom: selectedIds.length > 0 ? '6rem' : '1rem', zIndex: 1300, background: 'rgba(18,14,31,0.96)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '10px', padding: '0.7rem 0.95rem', boxShadow: '0 18px 45px rgba(0,0,0,0.35)', fontSize: '0.85rem', fontWeight: 700 }}>
+        <div style={{ position: 'fixed', right: '1rem', bottom: selectedIds.length > 0 ? '6rem' : '1rem', zIndex: 1300, background: 'rgba(18,14,31,0.96)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '10px', padding: '0.7rem 0.95rem', boxShadow: '0 18px 45px rgba(0,0,0,0.35)', fontSize: '0.85rem', fontWeight: 700, whiteSpace: 'pre-line' }}>
           {toast}
         </div>
       )}
