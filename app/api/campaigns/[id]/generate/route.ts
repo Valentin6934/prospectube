@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
 import { authOptions } from '@/lib/auth'
@@ -78,13 +78,18 @@ Objet: [sujet]
   return { subject, body }
 }
 
-export async function POST(_: Request, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
 
   if (!canGenerateCampaignEmails(user.plan)) {
     return NextResponse.json({ error: 'Plan Pro ou Agence requis', upgrade: true }, { status: 403 })
   }
+
+  const body = await req.json().catch(() => ({}))
+  const prospectIds = Array.isArray(body.prospectIds)
+    ? body.prospectIds.filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0)
+    : []
 
   const campaign = await prisma.campaign.findFirst({
     where: {
@@ -95,6 +100,7 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
       prospects: {
         where: {
           generatedBody: null,
+          ...(prospectIds.length > 0 ? { id: { in: prospectIds } } : {}),
         },
         orderBy: { createdAt: 'asc' },
         take: 20,

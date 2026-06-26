@@ -58,8 +58,51 @@ export default function CampaignsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [newCampaignName, setNewCampaignName] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [scoreFilter, setScoreFilter] = useState('Tous')
+  const [selectedProspectIds, setSelectedProspectIds] = useState<string[]>([])
+  const [toast, setToast] = useState('')
   const plan = (session?.user as any)?.plan || 'Gratuit'
   const canGenerate = plan === 'Pro' || plan === 'Agence'
+  const showToast = (message: string) => {
+    setToast(message)
+    window.setTimeout(() => setToast(''), 2600)
+  }
+
+  const getScoreBucket = (prospect: CampaignProspect) => {
+    const label = `${prospect.scoreLabel || ''} ${prospect.score || ''}`.toLowerCase()
+    const score = prospect.score || 0
+    if (label.includes('exceptionnel') || label.includes('excellent') || score >= 80) return 'Excellent'
+    if (label.includes('bon') || score >= 65) return 'Bon'
+    if (label.includes('moyen') || score >= 50) return 'Moyen'
+    return 'Faible'
+  }
+
+  const getCampaignStats = (prospects: CampaignProspect[]) => {
+    const total = prospects.length
+    const withEmail = prospects.filter(prospect => Boolean(prospect.email)).length
+    const averageScore = total > 0 ? Math.round(prospects.reduce((sum, prospect) => sum + (prospect.score || 0), 0) / total) : 0
+    return {
+      total,
+      withEmail,
+      averageScore,
+      excellent: prospects.filter(prospect => getScoreBucket(prospect) === 'Excellent').length,
+      bon: prospects.filter(prospect => getScoreBucket(prospect) === 'Bon').length,
+      moyen: prospects.filter(prospect => getScoreBucket(prospect) === 'Moyen').length,
+      faible: prospects.filter(prospect => getScoreBucket(prospect) === 'Faible').length,
+    }
+  }
+  const filteredProspects = (selectedCampaign?.prospects || []).filter(prospect => {
+    const search = searchTerm.trim().toLowerCase()
+    const matchesSearch = !search || [prospect.name, prospect.email, prospect.scoreLabel]
+      .some(value => (value || '').toLowerCase().includes(search))
+    const matchesFilter =
+      scoreFilter === 'Tous' ||
+      (scoreFilter === 'Sans email' ? !prospect.email : getScoreBucket(prospect) === scoreFilter)
+
+    return matchesSearch && matchesFilter
+  })
+  const campaignStats = selectedCampaign ? getCampaignStats(selectedCampaign.prospects) : null
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -95,6 +138,7 @@ export default function CampaignsPage() {
     setNewCampaignName('')
     setCampaigns(current => [data.campaign, ...current])
     openCampaign(data.campaign.id)
+    showToast('✓ Campagne créée')
   }
 
   const openCampaign = async (campaignId: string) => {
@@ -106,6 +150,7 @@ export default function CampaignsPage() {
     if (!res.ok) return alert(data.error || 'Impossible de charger la campagne.')
 
     setSelectedCampaign(data.campaign)
+    setSelectedProspectIds([])
   }
 
   const deleteCampaign = async (campaignId: string) => {
@@ -120,14 +165,20 @@ export default function CampaignsPage() {
 
     setCampaigns(current => current.filter(campaign => campaign.id !== campaignId))
     if (selectedCampaign?.id === campaignId) setSelectedCampaign(null)
+    showToast('✓ Campagne supprimée')
   }
 
   const generateCampaignEmails = async () => {
     if (!selectedCampaign) return
     if (!canGenerate) return alert('Le plan Pro ou Agence est requis pour générer des messages IA en campagne.')
+    if (selectedProspectIds.length === 0) return alert('Sélectionne au moins un prospect à générer.')
 
     setGenerating(true)
-    const res = await fetch(`/api/campaigns/${selectedCampaign.id}/generate`, { method: 'POST' })
+    const res = await fetch(`/api/campaigns/${selectedCampaign.id}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prospectIds: selectedProspectIds }),
+    })
     const data = await res.json().catch(() => ({}))
     setGenerating(false)
 
@@ -137,7 +188,7 @@ export default function CampaignsPage() {
     }
 
     await openCampaign(selectedCampaign.id)
-    alert(`${data.generated?.length || 0} message(s) généré(s).`)
+    showToast('✓ Messages générés')
   }
 
   const copyMessage = async (prospect: CampaignProspect) => {
@@ -147,7 +198,15 @@ export default function CampaignsPage() {
     if (!message) return
 
     await navigator.clipboard.writeText(message)
-    alert('Message copié.')
+    showToast('✓ Message copié')
+  }
+
+  const toggleSelectedProspect = (prospectId: string) => {
+    setSelectedProspectIds(current =>
+      current.includes(prospectId)
+        ? current.filter(id => id !== prospectId)
+        : [...current, prospectId]
+    )
   }
 
   if (status === 'loading' || loading) return (
@@ -230,11 +289,39 @@ export default function CampaignsPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
                   <div>
                     <h3 className="font-display" style={{ color: '#F0EDF8', fontSize: '1rem', marginBottom: '0.25rem' }}>{selectedCampaign.name}</h3>
-                    <div style={{ color: '#A89FCC', fontSize: '0.82rem' }}>{selectedCampaign.prospects.length} prospect{selectedCampaign.prospects.length !== 1 ? 's' : ''}</div>
+                    <div style={{ color: '#A89FCC', fontSize: '0.82rem' }}>
+                      {selectedCampaign.prospects.length} prospect{selectedCampaign.prospects.length !== 1 ? 's' : ''} · {selectedProspectIds.length} sélectionné{selectedProspectIds.length !== 1 ? 's' : ''}
+                    </div>
                   </div>
-                  <button onClick={generateCampaignEmails} disabled={generating || !canGenerate || selectedCampaign.prospects.length === 0} style={{ background: canGenerate ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canGenerate ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.65rem 1rem', borderRadius: '8px', cursor: generating || !canGenerate ? 'default' : 'pointer', fontSize: '0.85rem', fontWeight: 700 }}>
-                    {generating ? 'Génération...' : canGenerate ? '✨ Générer les messages IA' : '🔒 IA Pro'}
+                  <button onClick={generateCampaignEmails} disabled={generating || !canGenerate || selectedProspectIds.length === 0} style={{ background: canGenerate ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canGenerate ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.65rem 1rem', borderRadius: '8px', cursor: generating || !canGenerate || selectedProspectIds.length === 0 ? 'default' : 'pointer', fontSize: '0.85rem', fontWeight: 700 }}>
+                    {generating ? 'Génération...' : canGenerate ? `✨ Générer la sélection (${selectedProspectIds.length})` : '🔒 IA Pro'}
                   </button>
+                </div>
+
+                {campaignStats && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '0.55rem', marginBottom: '1rem' }}>
+                    {[
+                      ['Prospects', campaignStats.total],
+                      ['Avec email', campaignStats.withEmail],
+                      ['Score moyen', `${campaignStats.averageScore}/100`],
+                      ['Excellent', campaignStats.excellent],
+                      ['Bon', campaignStats.bon],
+                      ['Moyen', campaignStats.moyen],
+                      ['Faible', campaignStats.faible],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.65rem' }}>
+                        <div style={{ color: '#6B5F96', fontSize: '0.72rem', marginBottom: '0.2rem' }}>{label}</div>
+                        <div style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.95rem' }}>{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '0.65rem', marginBottom: '1rem' }}>
+                  <input value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Rechercher nom, email ou score..." />
+                  <select value={scoreFilter} onChange={event => setScoreFilter(event.target.value)} style={{ minWidth: '150px' }}>
+                    {['Tous', 'Excellent', 'Bon', 'Moyen', 'Faible', 'Sans email'].map(filter => <option key={filter} value={filter}>{filter}</option>)}
+                  </select>
                 </div>
 
                 {selectedCampaign.prospects.length === 0 ? (
@@ -243,13 +330,21 @@ export default function CampaignsPage() {
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gap: '0.75rem' }}>
-                    {selectedCampaign.prospects.map(prospect => (
-                      <div key={prospect.id} style={{ border: '1px solid rgba(83,58,183,0.22)', borderRadius: '10px', padding: '0.9rem', background: 'rgba(255,255,255,0.025)' }}>
+                    {filteredProspects.length === 0 && (
+                      <div style={{ padding: '1rem', textAlign: 'center', color: '#A89FCC', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px' }}>
+                        Aucun prospect ne correspond aux filtres.
+                      </div>
+                    )}
+                    {filteredProspects.map(prospect => (
+                      <div key={prospect.id} style={{ border: selectedProspectIds.includes(prospect.id) ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.22)', borderRadius: '10px', padding: '0.9rem', background: 'rgba(255,255,255,0.025)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'start', marginBottom: '0.6rem' }}>
-                          <div>
+                          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'start' }}>
+                            <input type="checkbox" checked={selectedProspectIds.includes(prospect.id)} onChange={() => toggleSelectedProspect(prospect.id)} aria-label={`Sélectionner ${prospect.name}`} style={{ marginTop: '0.2rem', accentColor: '#7B63D3', cursor: 'pointer' }} />
+                            <div>
                             <div style={{ color: '#F0EDF8', fontWeight: 700 }}>{prospect.name}</div>
                             <div style={{ color: '#A89FCC', fontSize: '0.8rem', marginTop: '0.25rem' }}>
                               {prospect.scoreLabel || 'Score inconnu'} · {prospect.score || 0}/100
+                            </div>
                             </div>
                           </div>
                           <span style={{ color: prospect.generatedBody ? '#22c55e' : '#eab308', background: prospect.generatedBody ? 'rgba(34,197,94,0.12)' : 'rgba(234,179,8,0.12)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '0.2rem 0.55rem', fontSize: '0.75rem', fontWeight: 700 }}>
@@ -288,6 +383,11 @@ export default function CampaignsPage() {
           </div>
         </div>
       </div>
+      {toast && (
+        <div style={{ position: 'fixed', right: '1rem', bottom: '1rem', zIndex: 1300, background: 'rgba(18,14,31,0.96)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '10px', padding: '0.7rem 0.95rem', boxShadow: '0 18px 45px rgba(0,0,0,0.35)', fontSize: '0.85rem', fontWeight: 700 }}>
+          {toast}
+        </div>
+      )}
     </div>
   )
 }

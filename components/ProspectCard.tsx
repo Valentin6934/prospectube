@@ -66,6 +66,10 @@ function getScoreStyles(score: number) {
   return { background: 'rgba(239,68,68,0.15)', color: '#ef4444' }
 }
 
+function showToast(message: string) {
+  window.dispatchEvent(new CustomEvent('prospectube-toast', { detail: message }))
+}
+
 export default function ProspectCard({
   channel,
   canEmail = false,
@@ -132,7 +136,7 @@ export default function ProspectCard({
     const addData = await addRes.json().catch(() => ({}))
     if (!addRes.ok) return alert(addData.error || "Impossible d'ajouter ce prospect à la campagne.")
 
-    alert('Prospect ajouté à la campagne.')
+    showToast('✓ Prospect ajouté')
   }
 
   return (

@@ -63,8 +63,20 @@ export default function Dashboard() {
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailData, setEmailData] = useState<{ subject: string; body: string } | null>(null)
   const [sendStatus, setSendStatus] = useState('')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [bulkModalOpen, setBulkModalOpen] = useState(false)
+  const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([])
+  const [bulkCampaignId, setBulkCampaignId] = useState('')
+  const [bulkCampaignName, setBulkCampaignName] = useState('')
+  const [bulkLoading, setBulkLoading] = useState(false)
+  const [toast, setToast] = useState('')
 
   const isPro = plan !== 'Gratuit'
+
+  const showToast = (message: string) => {
+    setToast(message)
+    window.setTimeout(() => setToast(''), 2600)
+  }
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -88,7 +100,7 @@ export default function Dashboard() {
 
   const copyEmail = async (email: string) => {
     await navigator.clipboard.writeText(email)
-    alert('Email copié !')
+    showToast('✓ Email copié')
   }
 
   const exportCSV = () => {
@@ -132,6 +144,7 @@ export default function Dashboard() {
     setLoading(true)
     setSearched(false)
     setCacheNotice(false)
+    setSelectedIds([])
 
     const res = await fetch('/api/search', {
       method: 'POST',
@@ -202,6 +215,7 @@ export default function Dashboard() {
 
     const channelId = data.favorite?.channelId || channel.id
     setFavoriteIds(current => current.includes(channelId) ? current : [...current, channelId])
+    showToast('✓ Prospect ajouté')
   }
 
   const addToCampaign = async (channel: any) => {
@@ -237,7 +251,66 @@ export default function Dashboard() {
     const addData = await addRes.json().catch(() => ({}))
     if (!addRes.ok) return alert(addData.error || "Impossible d'ajouter ce prospect à la campagne.")
 
-    alert('Prospect ajouté à la campagne.')
+    showToast('✓ Prospect ajouté')
+  }
+
+  const toggleSelected = (channelId: string) => {
+    setSelectedIds(current =>
+      current.includes(channelId)
+        ? current.filter(id => id !== channelId)
+        : [...current, channelId]
+    )
+  }
+
+  const openBulkModal = async () => {
+    setBulkModalOpen(true)
+    setBulkCampaignId('')
+    setBulkCampaignName('')
+    const res = await fetch('/api/campaigns')
+    const data = await res.json().catch(() => ({}))
+    if (res.ok) setCampaigns(data.campaigns || [])
+  }
+
+  const addSelectedToCampaign = async () => {
+    const selectedChannels = results.filter(channel => selectedIds.includes(channel.id))
+    if (selectedChannels.length === 0) return
+
+    setBulkLoading(true)
+    let campaignId = bulkCampaignId
+
+    if (!campaignId) {
+      const name = bulkCampaignName.trim()
+      if (!name) {
+        setBulkLoading(false)
+        return
+      }
+
+      const createRes = await fetch('/api/campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const createData = await createRes.json().catch(() => ({}))
+      if (!createRes.ok) {
+        setBulkLoading(false)
+        return alert(createData.error || 'Impossible de créer la campagne.')
+      }
+      campaignId = createData.campaign.id
+      showToast('✓ Campagne créée')
+    }
+
+    await Promise.all(selectedChannels.map(channel =>
+      fetch(`/api/campaigns/${campaignId}/prospects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(channel),
+      })
+    ))
+
+    setBulkLoading(false)
+    setBulkModalOpen(false)
+    setSelectedIds([])
+    showToast(`✓ ${selectedChannels.length} prospects ajoutés.`)
   }
 
   const toggleAnalysis = (channelId: string) => {
@@ -363,7 +436,14 @@ export default function Dashboard() {
               </div>
             ) : (
               results.map(ch => (
-                <div key={ch.id} className="card" style={{ padding: '1rem', marginBottom: '0.85rem', display: 'block', border: '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
+                <div key={ch.id} className="card" style={{ position: 'relative', padding: '1rem', marginBottom: '0.85rem', display: 'block', border: selectedIds.includes(ch.id) ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(ch.id)}
+                    onChange={() => toggleSelected(ch.id)}
+                    aria-label={`Sélectionner ${ch.name}`}
+                    style={{ position: 'absolute', top: '0.85rem', right: '0.85rem', width: '16px', height: '16px', accentColor: '#7B63D3', cursor: 'pointer' }}
+                  />
                   {(() => {
                     const isExpanded = expandedAnalysisIds.includes(ch.id)
                     const reasons = String(ch.scoreReason || "Peu d'informations exploitables").split(' • ').filter(Boolean)
@@ -621,6 +701,53 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {selectedIds.length > 0 && (
+        <div style={{ position: 'fixed', left: '50%', bottom: '1rem', transform: 'translateX(-50%)', zIndex: 900, width: 'min(620px, calc(100% - 2rem))', background: 'rgba(18,14,31,0.96)', border: '1px solid rgba(167,139,250,0.35)', borderRadius: '14px', boxShadow: '0 20px 60px rgba(0,0,0,0.45)', padding: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div style={{ color: '#F0EDF8', fontWeight: 700, fontSize: '0.9rem' }}>
+            {selectedIds.length} prospect{selectedIds.length !== 1 ? 's' : ''} sélectionné{selectedIds.length !== 1 ? 's' : ''}
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button onClick={openBulkModal} style={{ background: 'linear-gradient(135deg, #533AB7, #7B63D3)', color: 'white', border: 'none', padding: '0.6rem 0.85rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
+              Ajouter à une campagne
+            </button>
+            <button onClick={() => setSelectedIds([])} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.6rem 0.85rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
+              Vider la sélection
+            </button>
+          </div>
+        </div>
+      )}
+
+      {bulkModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.68)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }} onClick={() => setBulkModalOpen(false)}>
+          <div className="card" style={{ width: '100%', maxWidth: '460px', padding: '1.5rem' }} onClick={event => event.stopPropagation()}>
+            <h3 className="font-display" style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem' }}>Ajouter à une campagne</h3>
+            <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.35rem' }}>Campagne existante</label>
+            <select value={bulkCampaignId} onChange={event => setBulkCampaignId(event.target.value)} style={{ marginBottom: '1rem' }}>
+              <option value="">Créer une nouvelle campagne...</option>
+              {campaigns.map(campaign => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+            </select>
+            {!bulkCampaignId && (
+              <>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.35rem' }}>Nouvelle campagne</label>
+                <input value={bulkCampaignName} onChange={event => setBulkCampaignName(event.target.value)} placeholder="Nom de campagne" style={{ marginBottom: '1rem' }} />
+              </>
+            )}
+            <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setBulkModalOpen(false)} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.65rem 0.9rem', borderRadius: '8px', cursor: 'pointer' }}>Annuler</button>
+              <button onClick={addSelectedToCampaign} disabled={bulkLoading || (!bulkCampaignId && !bulkCampaignName.trim())} className="btn-primary" style={{ padding: '0.65rem 0.9rem' }}>
+                {bulkLoading ? 'Ajout...' : `Ajouter ${selectedIds.length}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div style={{ position: 'fixed', right: '1rem', bottom: selectedIds.length > 0 ? '6rem' : '1rem', zIndex: 1300, background: 'rgba(18,14,31,0.96)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '10px', padding: '0.7rem 0.95rem', boxShadow: '0 18px 45px rgba(0,0,0,0.35)', fontSize: '0.85rem', fontWeight: 700 }}>
+          {toast}
+        </div>
+      )}
 
       {emailModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>

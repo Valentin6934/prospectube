@@ -53,7 +53,13 @@ export default function HistoryPage() {
   const [favoriteIds, setFavoriteIds] = useState<string[]>([])
   const [favoriteLoadingId, setFavoriteLoadingId] = useState<string | null>(null)
   const [resultsError, setResultsError] = useState('')
+  const [toast, setToast] = useState('')
   const plan = (session?.user as any)?.plan || 'Gratuit'
+
+  const showToast = (message: string) => {
+    setToast(message)
+    window.setTimeout(() => setToast(''), 2600)
+  }
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -76,6 +82,14 @@ export default function HistoryPage() {
       })
       .finally(() => setLoading(false))
   }, [status])
+
+  useEffect(() => {
+    const listener = (event: Event) => {
+      showToast((event as CustomEvent<string>).detail)
+    }
+    window.addEventListener('prospectube-toast', listener)
+    return () => window.removeEventListener('prospectube-toast', listener)
+  }, [])
 
   const viewResults = async (item: HistoryItem) => {
     setResultsLoadingId(item.id)
@@ -111,6 +125,7 @@ export default function HistoryPage() {
     if (!res.ok) return alert(data.error || 'Impossible de supprimer cette recherche.')
 
     setHistory(current => current.filter(search => search.id !== item.id))
+    showToast('✓ Prospect supprimé')
     if (selectedSearch?.id === item.id) {
       setSelectedSearch(null)
       setSelectedResults([])
@@ -136,6 +151,7 @@ export default function HistoryPage() {
 
     const savedChannelId = data.favorite?.channelId || channelId
     setFavoriteIds(current => current.includes(savedChannelId) ? current : [...current, savedChannelId])
+    showToast('✓ Prospect ajouté')
   }
 
   if (status === 'loading' || loading) return (
@@ -237,6 +253,11 @@ export default function HistoryPage() {
           </div>
         )}
       </div>
+      {toast && (
+        <div style={{ position: 'fixed', right: '1rem', bottom: '1rem', zIndex: 1300, background: 'rgba(18,14,31,0.96)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '10px', padding: '0.7rem 0.95rem', boxShadow: '0 18px 45px rgba(0,0,0,0.35)', fontSize: '0.85rem', fontWeight: 700 }}>
+          {toast}
+        </div>
+      )}
     </div>
   )
 }
