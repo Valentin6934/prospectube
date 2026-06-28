@@ -44,7 +44,7 @@ export default function RefundPolicyPage() {
       <section>
         <h2>Contacter le support</h2>
         <p>
-          Pour soumettre une demande, écrivez à <Placeholder>[Email de contact]</Placeholder> en précisant
+          Pour soumettre une demande, écrivez à <Placeholder>barjouvalentin@gmail.com</Placeholder> en précisant
           l’adresse email du compte, la date du paiement et le motif de la demande.
         </p>
       </section>

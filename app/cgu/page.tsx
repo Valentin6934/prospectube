@@ -19,7 +19,7 @@ export default function TermsPage() {
         <h2>Compte utilisateur</h2>
         <p>
           L’utilisateur doit fournir des informations exactes, conserver ses identifiants confidentiels et
-          informer <Placeholder>[Nom de l’entreprise]</Placeholder> de tout accès non autorisé. Il demeure
+          informer <Placeholder>ProspectTube</Placeholder> de tout accès non autorisé. Il demeure
           responsable des actions réalisées depuis son compte.
         </p>
       </section>
@@ -64,7 +64,7 @@ export default function TermsPage() {
         <h2>Disponibilité et responsabilité du service</h2>
         <p>
           ProspectTube est fourni avec une obligation de moyens. Des interruptions peuvent intervenir pour
-          maintenance, sécurité ou en raison de services tiers. <Placeholder>[Nom de l’entreprise]</Placeholder>
+          maintenance, sécurité ou en raison de services tiers. <Placeholder>ProspectTube</Placeholder>
           ne garantit pas qu’un prospect répondra à une sollicitation.
         </p>
       </section>
@@ -80,7 +80,7 @@ export default function TermsPage() {
 
       <section>
         <h2>Contact</h2>
-        <p>Toute question peut être adressée à <Placeholder>[Email de contact]</Placeholder>.</p>
+        <p>Toute question peut être adressée à <Placeholder>barjouvalentin@gmail.com</Placeholder>.</p>
       </section>
     </LegalPage>
   )

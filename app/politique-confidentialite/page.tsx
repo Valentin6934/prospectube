@@ -67,7 +67,7 @@ export default function PrivacyPolicyPage() {
         <p>
           Vous pouvez demander l’accès, la rectification, la modification ou la suppression de vos données,
           ainsi que la limitation de certains traitements. Adressez votre demande à
-          {' '}<Placeholder>[Email de contact]</Placeholder>. Une preuve d’identité pourra être demandée si
+          {' '}<Placeholder>barjouvalentin@gmail.com</Placeholder>. Une preuve d’identité pourra être demandée si
           elle est nécessaire à la protection du compte.
         </p>
       </section>
@@ -75,8 +75,8 @@ export default function PrivacyPolicyPage() {
       <section>
         <h2>Responsable du traitement</h2>
         <p>
-          Le responsable du traitement est <Placeholder>[Nom de l’entreprise]</Placeholder>, situé à
-          {' '}<Placeholder>[Adresse]</Placeholder>.
+          Le responsable du traitement est <Placeholder>ProspectTube</Placeholder>, situé au
+          {' '}<Placeholder>5 chemin du belvedère</Placeholder>.
         </p>
       </section>
     </LegalPage>

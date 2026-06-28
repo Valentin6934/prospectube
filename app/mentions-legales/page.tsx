@@ -8,22 +8,22 @@ export default function LegalNoticePage() {
     >
       <section>
         <h2>Éditeur du service</h2>
-        <p><strong>Raison sociale :</strong> <Placeholder>[Nom de l’entreprise]</Placeholder></p>
-        <p><strong>Adresse :</strong> <Placeholder>[Adresse]</Placeholder></p>
-        <p><strong>SIREN/SIRET :</strong> <Placeholder>[SIREN/SIRET]</Placeholder></p>
-        <p><strong>Email :</strong> <Placeholder>[Email de contact]</Placeholder></p>
+        <p><strong>Raison sociale :</strong> <Placeholder>ProspectTube</Placeholder></p>
+        <p><strong>Adresse :</strong> <Placeholder>5 chemin du belvedère</Placeholder></p>
+        <p><strong>SIREN/SIRET :</strong> <Placeholder>En cours d’immatriculation</Placeholder></p>
+        <p><strong>Email :</strong> <Placeholder>barjouvalentin@gmail.com</Placeholder></p>
       </section>
 
       <section>
         <h2>Responsable de la publication</h2>
-        <p>Le responsable de la publication du service ProspectTube est <Placeholder>[Responsable publication]</Placeholder>.</p>
+        <p>Le responsable de la publication du service ProspectTube est <Placeholder>Valentin Barjou</Placeholder>.</p>
       </section>
 
       <section>
         <h2>Hébergement</h2>
         <p>
-          Le service est hébergé par <Placeholder>[Nom de l’hébergeur]</Placeholder>, dont le siège est situé
-          à <Placeholder>[Adresse de l’hébergeur]</Placeholder>.
+          Les informations relatives à l’hébergeur sont en cours de finalisation et seront publiées avant
+          la mise en production du service.
         </p>
       </section>
 
@@ -38,7 +38,7 @@ export default function LegalNoticePage() {
 
       <section>
         <h2>Contact</h2>
-        <p>Pour toute question relative au service, contactez <Placeholder>[Email de contact]</Placeholder>.</p>
+        <p>Pour toute question relative au service, contactez <Placeholder>barjouvalentin@gmail.com</Placeholder>.</p>
       </section>
     </LegalPage>
   )
