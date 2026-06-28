@@ -23,6 +23,7 @@ export async function GET() {
   const account = await prisma.googleAccount.findUnique({
     where: { userId: user.id },
     select: {
+      email: true,
       expiryDate: true,
       refreshToken: true,
       updatedAt: true,
@@ -31,7 +32,7 @@ export async function GET() {
 
   return NextResponse.json({
     connected: Boolean(account),
-    email: account ? user.email : null,
+    email: account?.email || null,
     hasRefreshToken: Boolean(account?.refreshToken),
     expiryDate: account?.expiryDate?.toISOString() || null,
     updatedAt: account?.updatedAt.toISOString() || null,

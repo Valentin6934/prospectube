@@ -28,6 +28,7 @@ model GoogleAccount {
   userId            String    @unique
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   providerAccountId String    @unique
+  email             String?
   accessToken       String    @map("access_token")
   refreshToken      String?   @map("refresh_token")
   expiryDate        DateTime? @map("expiry_date")

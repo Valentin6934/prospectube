@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { signIn, signOut, useSession } from 'next-auth/react'
+import { signOut, useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import AppLoader from '@/components/AppLoader'
 import Toast, { useToast } from '@/components/Toast'
@@ -29,6 +29,17 @@ export default function SettingsPage() {
   }, [status, router])
 
   useEffect(() => {
+    const result = new URLSearchParams(window.location.search).get('gmail')
+    if (!result) return
+
+    if (result === 'connected') showToast('Gmail connecté avec succès.')
+    else if (result === 'cancelled') showToast('Autorisation Gmail annulée.', 'info')
+    else showToast('La connexion Gmail a échoué. Réessayez.', 'error')
+
+    window.history.replaceState({}, '', '/settings')
+  }, [showToast])
+
+  useEffect(() => {
     if (status !== 'authenticated') return
 
     fetch('/api/gmail')
@@ -42,7 +53,7 @@ export default function SettingsPage() {
   }, [status, showToast])
 
   const connectGmail = async () => {
-    await signIn('google', { callbackUrl: '/settings' })
+    window.location.assign('/api/gmail/connect')
   }
 
   const disconnectGmail = async () => {
