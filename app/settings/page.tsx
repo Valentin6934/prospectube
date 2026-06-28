@@ -13,6 +13,8 @@ type GmailStatus = {
   hasRefreshToken: boolean
   expiryDate: string | null
   sendMode: 'draft' | 'send'
+  unavailable?: boolean
+  setupRequired?: boolean
 }
 
 export default function SettingsPage() {
@@ -103,6 +105,13 @@ export default function SettingsPage() {
         </div>
 
         <section className="card" style={{ padding: '1.25rem', borderRadius: '8px' }}>
+          {(gmail?.unavailable || gmail?.setupRequired) && (
+            <div style={{ marginBottom: '1rem', border: '1px solid rgba(234,179,8,0.25)', borderRadius: '8px', background: 'rgba(234,179,8,0.08)', color: '#eab308', padding: '0.7rem 0.8rem', fontSize: '0.78rem' }}>
+              {gmail.setupRequired
+                ? 'La migration Gmail doit être appliquée à la base de données.'
+                : 'La base de données est temporairement indisponible. Réessayez dans quelques instants.'}
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '1rem', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: '0.85rem', alignItems: 'start' }}>
               <div style={{ width: '42px', height: '42px', borderRadius: '8px', background: 'rgba(234,67,53,0.12)', display: 'grid', placeItems: 'center', fontSize: '1.1rem' }}>✉</div>

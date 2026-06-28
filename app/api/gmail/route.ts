@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
+import { Prisma } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { SEND_MODE } from '@/lib/gmail'
@@ -17,27 +18,57 @@ async function getCurrentUser() {
 }
 
 export async function GET() {
-  const user = await getCurrentUser()
-  if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
+  try {
+    const user = await getCurrentUser()
+    if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
 
-  const account = await prisma.googleAccount.findUnique({
-    where: { userId: user.id },
-    select: {
-      email: true,
-      expiryDate: true,
-      refreshToken: true,
-      updatedAt: true,
-    },
-  })
+    const account = await prisma.googleAccount.findUnique({
+      where: { userId: user.id },
+      select: {
+        email: true,
+        expiryDate: true,
+        refreshToken: true,
+        updatedAt: true,
+      },
+    })
 
-  return NextResponse.json({
-    connected: Boolean(account),
-    email: account?.email || null,
-    hasRefreshToken: Boolean(account?.refreshToken),
-    expiryDate: account?.expiryDate?.toISOString() || null,
-    updatedAt: account?.updatedAt.toISOString() || null,
-    sendMode: SEND_MODE,
-  })
+    if (!account) {
+      return NextResponse.json({
+        connected: false,
+        email: null,
+        hasRefreshToken: false,
+        expiryDate: null,
+        updatedAt: null,
+        sendMode: SEND_MODE,
+      })
+    }
+
+    return NextResponse.json({
+      connected: true,
+      email: account.email || null,
+      hasRefreshToken: Boolean(account.refreshToken),
+      expiryDate: account.expiryDate?.toISOString() || null,
+      updatedAt: account.updatedAt.toISOString(),
+      sendMode: SEND_MODE,
+    })
+  } catch (error) {
+    console.error('GET /api/gmail error:', error)
+
+    const setupRequired =
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === 'P2021' || error.code === 'P2022')
+
+    return NextResponse.json({
+      connected: false,
+      email: null,
+      hasRefreshToken: false,
+      expiryDate: null,
+      updatedAt: null,
+      sendMode: SEND_MODE,
+      unavailable: !setupRequired,
+      setupRequired,
+    })
+  }
 }
 
 export async function DELETE() {
