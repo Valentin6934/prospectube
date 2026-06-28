@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { isPro, requireProResponse } from '@/lib/plan'
 
 export const dynamic = 'force-dynamic'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession()
+  const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
   }
+
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { plan: true },
+  })
+  if (!user) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
+  if (!isPro(user.plan)) return requireProResponse()
 
   const { channel, editorEmail } = await req.json()
 

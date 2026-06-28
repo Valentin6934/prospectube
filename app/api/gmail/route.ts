@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { SEND_MODE } from '@/lib/gmail'
+import { isPro, requireProResponse } from '@/lib/plan'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +14,7 @@ async function getCurrentUser() {
 
   return prisma.user.findUnique({
     where: { email: session.user.email },
-    select: { id: true, email: true },
+    select: { id: true, email: true, plan: true },
   })
 }
 
@@ -21,6 +22,7 @@ export async function GET() {
   try {
     const user = await getCurrentUser()
     if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
+    if (!isPro(user.plan)) return requireProResponse()
 
     const account = await prisma.googleAccount.findUnique({
       where: { userId: user.id },
@@ -74,6 +76,7 @@ export async function GET() {
 export async function DELETE() {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
+  if (!isPro(user.plan)) return requireProResponse()
 
   const account = await prisma.googleAccount.findUnique({
     where: { userId: user.id },

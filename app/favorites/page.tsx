@@ -148,6 +148,7 @@ export default function FavoritesPage() {
               channel={favorite}
               showRemoveButton
               removing={deletingId === favorite.id}
+              canUseCampaigns={plan === 'Pro'}
               onRemoveFavorite={() => deleteFavorite(favorite.id)}
             />
           ))

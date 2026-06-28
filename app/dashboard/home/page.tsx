@@ -42,7 +42,6 @@ function relativeDate(date: Date) {
 }
 
 function goalTargets(plan: string) {
-  if (plan === 'Agence') return { prospects: 500, emails: 250, campaigns: 30, messages: 200 }
   if (plan === 'Pro') return { prospects: 100, emails: 50, campaigns: 10, messages: 50 }
   return { prospects: 10, emails: 5, campaigns: 2, messages: 5 }
 }

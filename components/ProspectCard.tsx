@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import CreatorDetails from './CreatorDetails'
+import ProGate from './ProGate'
 
 export type ProspectChannel = {
   id?: string
@@ -41,6 +42,7 @@ type ProspectCardProps = {
   removing?: boolean
   showFavoriteButton?: boolean
   showRemoveButton?: boolean
+  canUseCampaigns?: boolean
   onGenerateEmail?: (channel: ProspectChannel) => void
   onAddFavorite?: (channel: ProspectChannel) => void
   onRemoveFavorite?: (channel: ProspectChannel) => void
@@ -78,11 +80,13 @@ export default function ProspectCard({
   removing = false,
   showFavoriteButton = false,
   showRemoveButton = false,
+  canUseCampaigns = false,
   onGenerateEmail,
   onAddFavorite,
   onRemoveFavorite,
 }: ProspectCardProps) {
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
   const score = channel.score || 0
   const color = channel.color || '#533AB7'
   const name = channel.name || 'Chaîne inconnue'
@@ -104,6 +108,11 @@ export default function ProspectCard({
   const actionColumns = showRemoveButton ? 3 : showFavoriteButton && onGenerateEmail ? 4 : 3
 
   const addToCampaign = async (targetChannel: ProspectChannel) => {
+    if (!canUseCampaigns) {
+      setUpgradeOpen(true)
+      return
+    }
+
     const channelId = targetChannel.channelId || targetChannel.id
     if (!channelId) return showToast('Cette chaîne ne peut pas être ajoutée.', 'error')
 
@@ -113,7 +122,10 @@ export default function ProspectCard({
 
     const listRes = await fetch('/api/campaigns')
     const listData = await listRes.json().catch(() => ({}))
-    if (!listRes.ok) return showToast(listData.error || 'Impossible de charger les campagnes.', 'error')
+    if (!listRes.ok) {
+      if (listData.upgrade) return setUpgradeOpen(true)
+      return showToast(listData.error || 'Impossible de charger les campagnes.', 'error')
+    }
 
     let campaign = (listData.campaigns || []).find((item: { id: string; name: string }) => item.name.toLowerCase() === name.toLowerCase())
 
@@ -124,7 +136,10 @@ export default function ProspectCard({
         body: JSON.stringify({ name }),
       })
       const createData = await createRes.json().catch(() => ({}))
-      if (!createRes.ok) return showToast(createData.error || 'Impossible de créer la campagne.', 'error')
+      if (!createRes.ok) {
+        if (createData.upgrade) return setUpgradeOpen(true)
+        return showToast(createData.error || 'Impossible de créer la campagne.', 'error')
+      }
       campaign = createData.campaign
     }
 
@@ -134,7 +149,10 @@ export default function ProspectCard({
       body: JSON.stringify(targetChannel),
     })
     const addData = await addRes.json().catch(() => ({}))
-    if (!addRes.ok) return showToast(addData.error || "Impossible d'ajouter ce prospect à la campagne.", 'error')
+    if (!addRes.ok) {
+      if (addData.upgrade) return setUpgradeOpen(true)
+      return showToast(addData.error || "Impossible d'ajouter ce prospect à la campagne.", 'error')
+    }
 
     showToast('✓ Prospect ajouté')
   }
@@ -216,6 +234,15 @@ export default function ProspectCard({
         onRemoveFavorite={onRemoveFavorite}
         onAddCampaign={addToCampaign}
       />
+
+      {upgradeOpen && (
+        <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(0,0,0,0.72)', display: 'grid', placeItems: 'center', padding: '1rem' }} onClick={() => setUpgradeOpen(false)}>
+          <div className="modal-panel" style={{ width: '100%', maxWidth: '560px', position: 'relative' }} onClick={event => event.stopPropagation()}>
+            <button aria-label="Fermer" onClick={() => setUpgradeOpen(false)} style={{ position: 'absolute', top: '0.7rem', right: '0.7rem', zIndex: 1, border: 'none', background: 'transparent', color: '#A89FCC', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+            <ProGate compact />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

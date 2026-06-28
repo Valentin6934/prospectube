@@ -5,7 +5,7 @@ import { useState } from 'react'
 export default function SubscriptionButton({ plan }: { plan: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const isPro = plan === 'Pro' || plan === 'Agence'
+  const isPro = plan === 'Pro'
 
   const openStripe = async () => {
     setLoading(true)

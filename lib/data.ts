@@ -35,6 +35,5 @@ export function filterChannels(niche: string, lang: string, subsMin: number, sub
 
 export const PLAN_LIMITS = {
   'Gratuit': { searches: 5, results: 3, emailAI: false, exportCSV: false },
-  'Pro': { searches: 200, results: 20, emailAI: true, exportCSV: true },
-  'Agence': { searches: 9999, results: 50, emailAI: true, exportCSV: true },
+  'Pro': { searches: Number.POSITIVE_INFINITY, results: 20, emailAI: true, exportCSV: true },
 }

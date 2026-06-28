@@ -6,6 +6,7 @@ import { signOut, useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import AppLoader from '@/components/AppLoader'
 import Toast, { useToast } from '@/components/Toast'
+import ProGate from '@/components/ProGate'
 
 type GmailStatus = {
   connected: boolean
@@ -25,6 +26,7 @@ export default function SettingsPage() {
   const [disconnecting, setDisconnecting] = useState(false)
   const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
+  const proUser = plan === 'Pro'
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -43,6 +45,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
+    if (!proUser) {
+      setLoading(false)
+      return
+    }
 
     fetch('/api/gmail')
       .then(async response => {
@@ -52,7 +58,7 @@ export default function SettingsPage() {
       })
       .catch(error => showToast(error.message, 'error'))
       .finally(() => setLoading(false))
-  }, [status, showToast])
+  }, [status, proUser, showToast])
 
   const connectGmail = async () => {
     window.location.assign('/api/gmail/connect')
@@ -104,6 +110,10 @@ export default function SettingsPage() {
           </p>
         </div>
 
+        {!proUser ? (
+          <ProGate />
+        ) : (
+          <>
         <section className="card" style={{ padding: '1.25rem', borderRadius: '8px' }}>
           {(gmail?.unavailable || gmail?.setupRequired) && (
             <div style={{ marginBottom: '1rem', border: '1px solid rgba(234,179,8,0.25)', borderRadius: '8px', background: 'rgba(234,179,8,0.08)', color: '#eab308', padding: '0.7rem 0.8rem', fontSize: '0.78rem' }}>
@@ -156,6 +166,8 @@ export default function SettingsPage() {
         <div style={{ marginTop: '1rem', border: '1px solid rgba(56,189,248,0.18)', borderRadius: '8px', background: 'rgba(56,189,248,0.06)', padding: '0.9rem', color: '#9cb8c8', fontSize: '0.78rem', lineHeight: 1.6 }}>
           ProspectTube utilise uniquement les autorisations Gmail nécessaires à la création et à l’envoi de vos messages. Aucun accès à vos emails reçus n’est demandé.
         </div>
+          </>
+        )}
       </div>
 
       <Toast toast={toast} />

@@ -7,6 +7,7 @@ import Link from 'next/link'
 import AppLoader from '@/components/AppLoader'
 import EmptyState from '@/components/EmptyState'
 import Toast, { useToast } from '@/components/Toast'
+import ProGate from '@/components/ProGate'
 
 type CampaignSummary = {
   id: string
@@ -70,7 +71,7 @@ export default function CampaignsPage() {
   const [selectedProspectIds, setSelectedProspectIds] = useState<string[]>([])
   const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
-  const canGenerate = plan === 'Pro' || plan === 'Agence'
+  const canGenerate = plan === 'Pro'
 
   const getScoreBucket = (prospect: CampaignProspect) => {
     const label = `${prospect.scoreLabel || ''} ${prospect.score || ''}`.toLowerCase()
@@ -119,9 +120,13 @@ export default function CampaignsPage() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
+    if (!canGenerate) {
+      setLoading(false)
+      return
+    }
 
     loadCampaigns().finally(() => setLoading(false))
-  }, [status])
+  }, [status, canGenerate])
 
   const createCampaign = async () => {
     const name = newCampaignName.trim()
@@ -293,6 +298,11 @@ export default function CampaignsPage() {
         </div>
       </nav>
 
+      {!canGenerate ? (
+        <div style={{ maxWidth: '760px', margin: '0 auto', padding: '3rem 1.5rem' }}>
+          <ProGate />
+        </div>
+      ) : (
       <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '2rem 1.5rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
           <h2 className="font-display" style={{ fontWeight: 700, fontSize: '1.2rem' }}>📧 Campagnes</h2>
@@ -486,6 +496,7 @@ export default function CampaignsPage() {
           </div>
         </div>
       </div>
+      )}
       <Toast toast={toast} />
     </div>
   )

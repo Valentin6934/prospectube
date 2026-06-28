@@ -2,6 +2,8 @@ import { createHash, randomBytes } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { isPro, requireProResponse } from '@/lib/plan'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +40,15 @@ export async function GET(req: NextRequest) {
       console.error('GET /api/gmail/connect error:', message)
       return NextResponse.json({ error: message }, { status: 401 })
     }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { plan: true },
+    })
+    if (!user) {
+      return NextResponse.json({ error: 'Utilisateur introuvable.' }, { status: 404 })
+    }
+    if (!isPro(user.plan)) return requireProResponse()
 
     const clientId = process.env.GOOGLE_CLIENT_ID?.trim()
     if (!clientId) {

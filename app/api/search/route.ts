@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PLAN_LIMITS, filterChannels } from '@/lib/data'
 import { searchYouTubeChannels } from '@/lib/youtube'
+import { getPlanName, isPro } from '@/lib/plan'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,10 +71,11 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.findUnique({ where: { email: session.user.email! } })
   if (!user) return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
 
-  const plan = user.plan as keyof typeof PLAN_LIMITS
+  const proUser = isPro(user.plan)
+  const plan = getPlanName(user.plan)
   const limits = PLAN_LIMITS[plan]
 
-  if (user.searchesRemaining <= 0)
+  if (!proUser && user.searchesRemaining <= 0)
     return NextResponse.json({ error: 'Quota épuisé', upgrade: true }, { status: 403 })
 
   const body = await req.json()
@@ -102,16 +104,20 @@ export async function POST(req: NextRequest) {
     if (cachedSearch && cachedResults.length > 0) {
       await saveSearchHistory(user.id, niche, lang, minVal, maxVal, cachedResults)
 
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { searchesRemaining: user.searchesRemaining - 1 },
-      })
+      const nextFreeSearchesRemaining = Math.max(0, user.searchesRemaining - 1)
+      const searchesRemaining = proUser ? null : nextFreeSearchesRemaining
+      if (!proUser) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { searchesRemaining: nextFreeSearchesRemaining },
+        })
+      }
 
       return NextResponse.json({
         results: cachedResults,
         source,
         cached: true,
-        searchesRemaining: user.searchesRemaining - 1,
+        searchesRemaining,
         plan: user.plan,
         canGenerateEmail: limits.emailAI,
       })
@@ -157,16 +163,20 @@ try {
     console.error('Erreur sauvegarde cache recherche:', err)
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { searchesRemaining: user.searchesRemaining - 1 },
-  })
+  const nextFreeSearchesRemaining = Math.max(0, user.searchesRemaining - 1)
+  const searchesRemaining = proUser ? null : nextFreeSearchesRemaining
+  if (!proUser) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { searchesRemaining: nextFreeSearchesRemaining },
+    })
+  }
 
   return NextResponse.json({
     results,
     source,
     cached: false,
-    searchesRemaining: user.searchesRemaining - 1,
+    searchesRemaining,
     plan: user.plan,
     canGenerateEmail: limits.emailAI,
   })

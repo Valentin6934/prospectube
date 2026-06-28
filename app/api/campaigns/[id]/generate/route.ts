@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import Anthropic from '@anthropic-ai/sdk'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isPro, requireProResponse } from '@/lib/plan'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,10 +14,6 @@ async function getCurrentUser() {
   if (!session?.user?.email) return null
 
   return prisma.user.findUnique({ where: { email: session.user.email } })
-}
-
-function canGenerateCampaignEmails(plan: string) {
-  return plan === 'Pro' || plan === 'Agence'
 }
 
 async function generateMessage(prospect: {
@@ -82,9 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
 
-  if (!canGenerateCampaignEmails(user.plan)) {
-    return NextResponse.json({ error: 'Plan Pro requis', upgrade: true }, { status: 403 })
-  }
+  if (!isPro(user.plan)) return requireProResponse()
 
   const body = await req.json().catch(() => ({}))
   const prospectIds = Array.isArray(body.prospectIds)

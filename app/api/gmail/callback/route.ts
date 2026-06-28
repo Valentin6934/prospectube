@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isPro } from '@/lib/plan'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +34,13 @@ export async function GET(req: NextRequest) {
   if (!session?.user?.email) {
     return clearOAuthCookies(settingsRedirect(req, 'unauthorized'))
   }
+
+  const currentUser = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true, plan: true },
+  })
+  if (!currentUser) return clearOAuthCookies(settingsRedirect(req, 'user_error'))
+  if (!isPro(currentUser.plan)) return clearOAuthCookies(settingsRedirect(req, 'pro_required'))
 
   const error = req.nextUrl.searchParams.get('error')
   const code = req.nextUrl.searchParams.get('code')
@@ -80,14 +88,8 @@ export async function GET(req: NextRequest) {
       return clearOAuthCookies(settingsRedirect(req, 'profile_error'))
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true },
-    })
-    if (!user) return clearOAuthCookies(settingsRedirect(req, 'user_error'))
-
     const existingAccount = await prisma.googleAccount.findUnique({
-      where: { userId: user.id },
+      where: { userId: currentUser.id },
       select: { refreshToken: true },
     })
     const refreshToken = typeof tokens.refresh_token === 'string'
@@ -99,7 +101,7 @@ export async function GET(req: NextRequest) {
     }
 
     await prisma.googleAccount.upsert({
-      where: { userId: user.id },
+      where: { userId: currentUser.id },
       update: {
         providerAccountId: profile.sub,
         email: typeof profile.email === 'string' ? profile.email : null,
@@ -109,7 +111,7 @@ export async function GET(req: NextRequest) {
         scope: typeof tokens.scope === 'string' ? tokens.scope : null,
       },
       create: {
-        userId: user.id,
+        userId: currentUser.id,
         providerAccountId: profile.sub,
         email: typeof profile.email === 'string' ? profile.email : null,
         accessToken: tokens.access_token,

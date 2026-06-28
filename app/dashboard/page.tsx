@@ -7,6 +7,7 @@ import AppLoader from '@/components/AppLoader'
 import EmptyState from '@/components/EmptyState'
 import ProspectSkeleton from '@/components/ProspectSkeleton'
 import Toast, { useToast } from '@/components/Toast'
+import ProGate from '@/components/ProGate'
 
 const NICHES = ['Gaming', 'Finance & Business', 'Tech & Programmation', 'Fitness & Santé', 'Lifestyle & Vlog', 'Cuisine', 'Musique', 'Éducation', 'Voyage', 'Beauté & Mode']
 const LANGS = ['Français', 'Anglais', 'Espagnol', 'Portugais', 'Allemand']
@@ -83,15 +84,17 @@ export default function Dashboard() {
   const [bulkCampaignsLoading, setBulkCampaignsLoading] = useState(false)
   const [bulkError, setBulkError] = useState('')
   const [campaignTargetIds, setCampaignTargetIds] = useState<string[]>([])
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
   const { toast, showToast } = useToast()
 
-  const isPro = plan !== 'Gratuit'
+  const isPro = plan === 'Pro'
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
     if (session?.user) {
-      setPlan((session.user as any).plan || 'Gratuit')
-      setSearchesLeft((session.user as any).searchesRemaining ?? 5)
+      const sessionPlan = (session.user as any).plan || 'Gratuit'
+      setPlan(sessionPlan)
+      setSearchesLeft(sessionPlan === 'Pro' ? null : ((session.user as any).searchesRemaining ?? 5))
     }
   }, [status, session, router])
 
@@ -113,7 +116,10 @@ export default function Dashboard() {
   }
 
   const exportCSV = () => {
-    if (!isPro) return showToast('Export CSV disponible avec le plan Pro.', 'info')
+    if (!isPro) {
+      setUpgradeOpen(true)
+      return
+    }
 
     const headers = ['Nom', 'Abonnés', 'Score', 'Email', 'YouTube', 'Instagram', 'TikTok', 'Twitch', 'Site web']
     headers.splice(3, 0, 'Score Label', 'Score Reason', 'Vues totales', 'Nombre de videos', 'Date creation')
@@ -165,7 +171,10 @@ export default function Dashboard() {
     setLoading(false)
 
     if (!res.ok) {
-      if (data.upgrade) return showToast('Quota épuisé. Passez au plan Pro pour continuer.', 'info')
+      if (data.upgrade) {
+        setUpgradeOpen(true)
+        return
+      }
       return showToast(data.error || 'La recherche a échoué.', 'error')
     }
 
@@ -182,7 +191,10 @@ export default function Dashboard() {
   }
 
   const generateEmail = async (channel: any) => {
-    if (!canEmail) return showToast('Le plan Pro est requis pour générer des messages IA.', 'info')
+    if (!isPro || !canEmail) {
+      setUpgradeOpen(true)
+      return
+    }
 
     setEmailModal(channel)
     setEmailLoading(true)
@@ -199,7 +211,11 @@ export default function Dashboard() {
     setEmailLoading(false)
 
     if (!res.ok) {
-      if (data.upgrade) return showToast('Plan Pro requis pour les messages IA.', 'info')
+      if (data.upgrade) {
+        setEmailModal(null)
+        setUpgradeOpen(true)
+        return
+      }
       return showToast(data.error || 'Impossible de générer le message.', 'error')
     }
 
@@ -228,6 +244,11 @@ export default function Dashboard() {
   }
 
   const addToCampaign = (channel: any) => {
+    if (!isPro) {
+      setUpgradeOpen(true)
+      return
+    }
+
     const channelId = channel?.channelId || channel?.id
     if (!channelId) return showToast('Cette chaîne ne peut pas être ajoutée.', 'error')
 
@@ -243,6 +264,11 @@ export default function Dashboard() {
   }
 
   const openBulkModal = async (targetIds = selectedIds) => {
+    if (!isPro) {
+      setUpgradeOpen(true)
+      return
+    }
+
     setBulkModalOpen(true)
     setBulkCampaignId('new')
     setBulkCampaignName('')
@@ -253,7 +279,10 @@ export default function Dashboard() {
     const data = await res.json().catch(() => ({}))
     setBulkCampaignsLoading(false)
     if (res.ok) setCampaigns(data.campaigns || [])
-    else setBulkError(data.error || 'Impossible de charger les campagnes.')
+    else if (data.upgrade) {
+      setBulkModalOpen(false)
+      setUpgradeOpen(true)
+    } else setBulkError(data.error || 'Impossible de charger les campagnes.')
   }
 
   const getTargetChannels = () => {
@@ -317,6 +346,11 @@ export default function Dashboard() {
     const failed = outcomes.find(({ response }) => !response.ok)
     if (failed) {
       setBulkLoading(false)
+      if (failed.data.upgrade) {
+        setBulkModalOpen(false)
+        setUpgradeOpen(true)
+        return
+      }
       setBulkError(failed.data.error || "Certains prospects n'ont pas pu être ajoutés.")
       return
     }
@@ -803,6 +837,15 @@ export default function Dashboard() {
       )}
 
       <Toast toast={toast} raised={selectedIds.length > 0} />
+
+      {upgradeOpen && (
+        <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(0,0,0,0.72)', display: 'grid', placeItems: 'center', padding: '1rem' }} onClick={() => setUpgradeOpen(false)}>
+          <div className="modal-panel" style={{ width: '100%', maxWidth: '560px', position: 'relative' }} onClick={event => event.stopPropagation()}>
+            <button aria-label="Fermer" onClick={() => setUpgradeOpen(false)} style={{ position: 'absolute', top: '0.7rem', right: '0.7rem', zIndex: 1, border: 'none', background: 'transparent', color: '#A89FCC', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+            <ProGate compact />
+          </div>
+        </div>
+      )}
 
       {emailModal && (
         <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
