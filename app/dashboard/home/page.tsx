@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import HomeSignOutButton from '@/components/HomeSignOutButton'
+import SubscriptionButton from '@/components/SubscriptionButton'
 import styles from './home.module.css'
 
 export const dynamic = 'force-dynamic'
@@ -46,7 +47,11 @@ function goalTargets(plan: string) {
   return { prospects: 10, emails: 5, campaigns: 2, messages: 5 }
 }
 
-export default async function DashboardHomePage() {
+export default async function DashboardHomePage({
+  searchParams,
+}: {
+  searchParams?: { success?: string; canceled?: string }
+}) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) redirect('/login')
 
@@ -213,8 +218,20 @@ export default async function DashboardHomePage() {
           <div className={styles.currentPlan}>
             <span>Plan actuel</span>
             <strong>{user.plan}</strong>
+            <SubscriptionButton plan={user.plan} />
           </div>
         </header>
+
+        {searchParams?.success === 'pro' && (
+          <div className={styles.billingSuccess}>
+            ✓ Paiement validé. Votre plan Pro est en cours d’activation.
+          </div>
+        )}
+        {searchParams?.canceled === 'true' && (
+          <div className={styles.billingCanceled}>
+            Paiement annulé. Votre plan Gratuit reste actif.
+          </div>
+        )}
 
         <section className={styles.statsGrid} aria-label="Statistiques">
           {stats.map(stat => (

@@ -8,8 +8,7 @@ export default function HomePage() {
 
   const plans = [
     { name: 'Gratuit', price: '0€', period: '/mois', desc: 'Pour démarrer', searches: '5 recherches/mois', results: '3 résultats', emails: false, scraping: false, export: false, cta: 'Commencer gratuitement', featured: false },
-    { name: 'Pro', price: '19€', period: '/mois', desc: 'Pour les monteurs actifs', searches: '200 recherches/mois', results: '20 résultats', emails: true, scraping: true, export: false, cta: 'Passer au Pro', featured: true },
-    { name: 'Agence', price: '49€', period: '/mois', desc: 'Pour les studios', searches: 'Illimité', results: '50 résultats', emails: true, scraping: true, export: true, cta: 'Choisir Agence', featured: false },
+    { name: 'Pro', price: '9,90€', period: '/mois', desc: 'Pour les monteurs actifs', searches: '200 recherches/mois', results: '20 résultats', emails: true, scraping: true, export: true, cta: 'Passer au Pro', featured: true },
   ]
 
   return (
@@ -53,7 +52,7 @@ export default function HomePage() {
           </button>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: '3rem', marginTop: '3rem', flexWrap: 'wrap' }}>
-          {[['500+', 'Chaînes indexées'], ['IA', 'Emails personnalisés'], ['3 plans', 'Adaptés à tous']].map(([n, l]) => (
+          {[['500+', 'Chaînes indexées'], ['IA', 'Emails personnalisés'], ['2 plans', 'Simples et transparents']].map(([n, l]) => (
             <div key={n} style={{ textAlign: 'center' }}>
               <div style={{ fontFamily: 'Syne,sans-serif', fontSize: '1.8rem', fontWeight: 800 }}>{n}</div>
               <div style={{ color: '#A89FCC', fontSize: '13px' }}>{l}</div>

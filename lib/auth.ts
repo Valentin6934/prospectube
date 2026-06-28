@@ -39,6 +39,17 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id
         token.plan = (user as any).plan
         token.searchesRemaining = (user as any).searchesRemaining
+      } else if (token.email) {
+        const databaseUser = await prisma.user.findUnique({
+          where: { email: token.email },
+          select: { id: true, plan: true, searchesRemaining: true },
+        })
+
+        if (databaseUser) {
+          token.id = databaseUser.id
+          token.plan = databaseUser.plan
+          token.searchesRemaining = databaseUser.searchesRemaining
+        }
       }
       return token
     },

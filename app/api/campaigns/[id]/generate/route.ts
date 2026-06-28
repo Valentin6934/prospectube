@@ -83,7 +83,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
 
   if (!canGenerateCampaignEmails(user.plan)) {
-    return NextResponse.json({ error: 'Plan Pro ou Agence requis', upgrade: true }, { status: 403 })
+    return NextResponse.json({ error: 'Plan Pro requis', upgrade: true }, { status: 403 })
   }
 
   const body = await req.json().catch(() => ({}))

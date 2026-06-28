@@ -8,19 +8,21 @@ datasource db {
 }
 
 model User {
-  id                String         @id @default(cuid())
-  name              String?
-  email             String         @unique
-  password          String
-  plan              String         @default("Gratuit")
-  searchesRemaining Int            @default(5)
-  active            Boolean        @default(true)
-  createdAt         DateTime       @default(now())
-  searches          Search[]
-  emailsSent        EmailSent[]
-  favorites         Favorite[]
-  campaigns         Campaign[]
-  googleAccount     GoogleAccount?
+  id                   String         @id @default(cuid())
+  name                 String?
+  email                String         @unique
+  password             String
+  plan                 String         @default("Gratuit")
+  searchesRemaining    Int            @default(5)
+  stripeCustomerId     String?        @unique
+  stripeSubscriptionId String?        @unique
+  active               Boolean        @default(true)
+  createdAt            DateTime       @default(now())
+  searches             Search[]
+  emailsSent           EmailSent[]
+  favorites            Favorite[]
+  campaigns            Campaign[]
+  googleAccount        GoogleAccount?
 }
 
 model GoogleAccount {

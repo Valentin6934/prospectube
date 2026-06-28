@@ -398,7 +398,7 @@ export default function Dashboard() {
           <div style={{ background: 'rgba(83,58,183,0.15)', border: '1px solid rgba(83,58,183,0.4)', borderRadius: '12px', padding: '1rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
             <p style={{ color: '#a78bfa', fontSize: '0.9rem' }}>🔒 Passe au plan Pro pour débloquer Instagram, TikTok, Twitch, site web, messages IA, export CSV et plus de résultats</p>
             <Link href="/#pricing">
-              <button className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}>Voir les plans →</button>
+              <Link href="/dashboard/home" className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem', textDecoration: 'none' }}>Passer Pro — 9,90 €/mois</Link>
             </Link>
           </div>
         )}

@@ -182,7 +182,7 @@ export default function CampaignsPage() {
 
   const generateCampaignEmails = async () => {
     if (!selectedCampaign) return
-    if (!canGenerate) return showToast('Le plan Pro ou Agence est requis pour générer des messages IA en campagne.', 'info')
+    if (!canGenerate) return showToast('Le plan Pro est requis pour générer des messages IA en campagne.', 'info')
     if (selectedProspectIds.length === 0) return showToast('Sélectionnez au moins un prospect à générer.', 'info')
 
     setGenerating(true)
@@ -195,7 +195,7 @@ export default function CampaignsPage() {
     setGenerating(false)
 
     if (!res.ok) {
-      if (data.upgrade) return showToast('Plan Pro ou Agence requis pour les campagnes IA.', 'info')
+      if (data.upgrade) return showToast('Plan Pro requis pour les campagnes IA.', 'info')
       return showToast(data.error || 'Impossible de générer les messages.', 'error')
     }
 
