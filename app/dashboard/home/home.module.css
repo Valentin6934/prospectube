@@ -74,6 +74,18 @@
   background: #7c5cf0;
 }
 
+.settingsLink {
+  color: #a89fcc;
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.settingsLink:hover {
+  color: #f0edf8;
+}
+
 .planBadge {
   border: 1px solid rgba(139, 92, 246, 0.35);
   border-radius: 999px;

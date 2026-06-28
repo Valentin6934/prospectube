@@ -33,6 +33,9 @@ type CampaignProspect = {
   generatedSubject: string | null
   generatedBody: string | null
   status: string
+  sendStatus: string
+  sentAt: string | null
+  sendError: string | null
   createdAt: string
 }
 
@@ -60,6 +63,7 @@ export default function CampaignsPage() {
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [sendingProspectIds, setSendingProspectIds] = useState<string[]>([])
   const [newCampaignName, setNewCampaignName] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [scoreFilter, setScoreFilter] = useState('Tous')
@@ -143,7 +147,7 @@ export default function CampaignsPage() {
     showToast('✓ Campagne créée')
   }
 
-  const openCampaign = async (campaignId: string) => {
+  const openCampaign = async (campaignId: string, preserveSelection = false) => {
     setOpeningId(campaignId)
     const res = await fetch(`/api/campaigns/${campaignId}`)
     const data = await res.json().catch(() => ({}))
@@ -155,7 +159,7 @@ export default function CampaignsPage() {
     }
 
     setSelectedCampaign(data.campaign)
-    setSelectedProspectIds([])
+    if (!preserveSelection) setSelectedProspectIds([])
   }
 
   const deleteCampaign = async (campaignId: string) => {
@@ -209,6 +213,52 @@ export default function CampaignsPage() {
     showToast('✓ Message copié')
   }
 
+  const sendCampaignMessages = async (prospectIds: string[]) => {
+    if (!selectedCampaign || prospectIds.length === 0) {
+      showToast('Sélectionnez au moins un prospect.', 'info')
+      return
+    }
+
+    const selectedProspects = selectedCampaign.prospects.filter(prospect => prospectIds.includes(prospect.id))
+    if (selectedProspects.every(prospect => !prospect.email)) {
+      showToast('Aucun email disponible.', 'info')
+      return
+    }
+
+    const ids = prospectIds.slice(0, 20)
+    setSendingProspectIds(ids)
+    const response = await fetch(`/api/campaigns/${selectedCampaign.id}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prospectIds: ids }),
+    })
+    const data = await response.json().catch(() => ({}))
+    setSendingProspectIds([])
+
+    if (!response.ok) {
+      if (data.gmailNotConnected) {
+        showToast('Connectez Gmail depuis les Paramètres avant l’envoi.', 'info')
+        return
+      }
+      showToast(data.error || 'Erreur Gmail.', 'error')
+      return
+    }
+
+    await openCampaign(selectedCampaign.id, true)
+
+    if (data.successCount === 0) {
+      const firstError = data.results?.find((result: { error?: string }) => result.error)?.error
+      showToast(firstError || 'Aucun message envoyé.', 'info')
+      return
+    }
+
+    const action = data.mode === 'send'
+      ? `envoyé${data.successCount > 1 ? 's' : ''}`
+      : `créé${data.successCount > 1 ? 's' : ''} en brouillon${data.successCount > 1 ? 's' : ''}`
+    const suffix = data.errorCount > 0 ? ` · ${data.errorCount} ignoré${data.errorCount > 1 ? 's' : ''}` : ''
+    showToast(`${data.successCount} message${data.successCount > 1 ? 's' : ''} ${action}${suffix}`)
+  }
+
   const toggleSelectedProspect = (prospectId: string) => {
     setSelectedProspectIds(current =>
       current.includes(prospectId)
@@ -233,6 +283,7 @@ export default function CampaignsPage() {
           <Link href="/favorites" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>⭐ Mes favoris</Link>
           <Link href="/history" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>📁 Historique</Link>
           <Link href="/campaigns" style={{ color: '#a78bfa', textDecoration: 'none', fontSize: '0.85rem' }}>📧 Campagnes</Link>
+          <Link href="/settings" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>⚙ Paramètres</Link>
           <div style={{ background: 'rgba(83,58,183,0.2)', border: '1px solid rgba(83,58,183,0.4)', color: '#a78bfa', padding: '0.2rem 0.75rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 500 }}>
             Plan {plan}
           </div>
@@ -300,9 +351,20 @@ export default function CampaignsPage() {
                       {selectedCampaign.prospects.length} prospect{selectedCampaign.prospects.length !== 1 ? 's' : ''} · {selectedProspectIds.length} sélectionné{selectedProspectIds.length !== 1 ? 's' : ''}
                     </div>
                   </div>
-                  <button onClick={generateCampaignEmails} disabled={generating || !canGenerate || selectedProspectIds.length === 0} style={{ background: canGenerate ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canGenerate ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.65rem 1rem', borderRadius: '8px', cursor: generating || !canGenerate || selectedProspectIds.length === 0 ? 'default' : 'pointer', fontSize: '0.85rem', fontWeight: 700 }}>
-                    {generating ? 'Génération...' : canGenerate ? `✨ Générer la sélection (${selectedProspectIds.length})` : '🔒 IA Pro'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
+                    <button onClick={generateCampaignEmails} disabled={generating || !canGenerate || selectedProspectIds.length === 0 || sendingProspectIds.length > 0} style={{ background: canGenerate ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canGenerate ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.65rem 1rem', borderRadius: '8px', cursor: generating || !canGenerate || selectedProspectIds.length === 0 ? 'default' : 'pointer', fontSize: '0.85rem', fontWeight: 700 }}>
+                      {generating ? 'Génération...' : canGenerate ? `✨ Générer la sélection (${selectedProspectIds.length})` : '🔒 IA Pro'}
+                    </button>
+                    <button
+                      onClick={() => sendCampaignMessages(selectedProspectIds)}
+                      disabled={sendingProspectIds.length > 0 || selectedProspectIds.length === 0}
+                      className="btn btn-secondary"
+                    >
+                      {sendingProspectIds.length > 0
+                        ? <span className="button-loader"><span className="app-spinner" /> Envoi...</span>
+                        : `✉ Envoyer la sélection (${Math.min(selectedProspectIds.length, 20)})`}
+                    </button>
+                  </div>
                 </div>
 
                 {campaignStats && (
@@ -376,9 +438,43 @@ export default function CampaignsPage() {
                           <div style={{ background: 'rgba(10,8,18,0.55)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.8rem' }}>
                             <div style={{ color: '#F0EDF8', fontWeight: 700, fontSize: '0.84rem', marginBottom: '0.45rem' }}>{prospect.generatedSubject}</div>
                             <div style={{ color: '#C4BCDF', whiteSpace: 'pre-wrap', fontSize: '0.82rem', lineHeight: 1.6 }}>{prospect.generatedBody}</div>
-                            <button onClick={() => copyMessage(prospect)} style={{ marginTop: '0.65rem', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', padding: '0.45rem 0.75rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-                              Copier message
-                            </button>
+                            <div style={{ marginTop: '0.7rem', paddingTop: '0.65rem', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                              <div>
+                                <span style={{
+                                  color: prospect.sendStatus === 'Envoyé' || prospect.sendStatus === 'Brouillon créé' ? '#22c55e' : prospect.sendStatus === 'Erreur' ? '#ef4444' : '#A89FCC',
+                                  fontSize: '0.76rem',
+                                  fontWeight: 800,
+                                }}>
+                                  {prospect.sendStatus || 'Non envoyé'}
+                                </span>
+                                {prospect.sentAt && (
+                                  <span style={{ display: 'block', color: '#6B5F96', fontSize: '0.7rem', marginTop: '0.2rem' }}>
+                                    Envoyé le {formatDate(prospect.sentAt)}
+                                  </span>
+                                )}
+                                {prospect.sendError && (
+                                  <span style={{ display: 'block', color: '#ef4444', fontSize: '0.7rem', marginTop: '0.2rem' }}>
+                                    {prospect.sendError}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                                <button onClick={() => copyMessage(prospect)} className="btn btn-secondary">Copier</button>
+                                {prospect.email ? (
+                                  <button
+                                    onClick={() => sendCampaignMessages([prospect.id])}
+                                    disabled={sendingProspectIds.includes(prospect.id) || prospect.sendStatus === 'Envoyé'}
+                                    className="btn btn-secondary"
+                                  >
+                                    {sendingProspectIds.includes(prospect.id)
+                                      ? <span className="button-loader"><span className="app-spinner" /> Envoi...</span>
+                                      : prospect.sendStatus === 'Envoyé' ? 'Déjà envoyé' : 'Envoyer'}
+                                  </button>
+                                ) : (
+                                  <span style={{ color: '#eab308', fontSize: '0.75rem', alignSelf: 'center' }}>Aucun email disponible.</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>

@@ -8,18 +8,32 @@ datasource db {
 }
 
 model User {
-  id                String   @id @default(cuid())
+  id                String         @id @default(cuid())
   name              String?
-  email             String   @unique
+  email             String         @unique
   password          String
-  plan              String   @default("Gratuit")
-  searchesRemaining Int      @default(5)
-  active            Boolean  @default(true)
-  createdAt         DateTime @default(now())
+  plan              String         @default("Gratuit")
+  searchesRemaining Int            @default(5)
+  active            Boolean        @default(true)
+  createdAt         DateTime       @default(now())
   searches          Search[]
   emailsSent        EmailSent[]
   favorites         Favorite[]
   campaigns         Campaign[]
+  googleAccount     GoogleAccount?
+}
+
+model GoogleAccount {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerAccountId String    @unique
+  accessToken       String    @map("access_token")
+  refreshToken      String?   @map("refresh_token")
+  expiryDate        DateTime? @map("expiry_date")
+  scope             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 model Search {
@@ -46,9 +60,9 @@ model EmailSent {
 }
 
 model Favorite {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   userId           String
-  user             User     @relation(fields: [userId], references: [id])
+  user             User      @relation(fields: [userId], references: [id])
   channelId        String
   name             String
   subs             String?
@@ -72,7 +86,7 @@ model Favorite {
   totalViews       Float?
   videoCount       Int?
   channelCreatedAt DateTime?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
 
   @@unique([userId, channelId])
 }
@@ -101,9 +115,9 @@ model Campaign {
 }
 
 model CampaignProspect {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   campaignId       String
-  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign         Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   channelId        String
   name             String
   email            String?
@@ -117,8 +131,12 @@ model CampaignProspect {
   scoreReason      String?
   generatedSubject String?
   generatedBody    String?
-  status           String   @default("À contacter")
-  createdAt        DateTime @default(now())
+  status           String    @default("À contacter")
+  sendStatus       String    @default("Non envoyé")
+  sentAt           DateTime?
+  sendError        String?
+  gmailMessageId   String?
+  createdAt        DateTime  @default(now())
 
   @@unique([campaignId, channelId])
 }

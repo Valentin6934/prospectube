@@ -196,6 +196,7 @@ export default async function DashboardHomePage() {
               <Link href="/campaigns">Campagnes</Link>
             </div>
             <Link href="/dashboard" className={styles.searchButton}>Nouvelle recherche</Link>
+            <Link href="/settings" className={styles.settingsLink}>⚙ Paramètres</Link>
             <span className={styles.planBadge}>Plan {user.plan}</span>
             <HomeSignOutButton className={styles.signOut} />
           </div>

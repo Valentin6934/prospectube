@@ -186,6 +186,9 @@ export default function HistoryPage() {
           <Link href="/campaigns" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
             📧 Campagnes
           </Link>
+          <Link href="/settings" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
+            ⚙ Paramètres
+          </Link>
           <div style={{ background: 'rgba(83,58,183,0.2)', border: '1px solid rgba(83,58,183,0.4)', color: '#a78bfa', padding: '0.2rem 0.75rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 500 }}>
             Plan {plan}
           </div>
