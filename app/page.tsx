@@ -1,6 +1,7 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
+import LegalFooter from '@/components/LegalFooter'
 
 export default function HomePage() {
   const router = useRouter()
@@ -90,6 +91,7 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+      <LegalFooter />
     </main>
   )
 }

@@ -6,6 +6,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import HomeSignOutButton from '@/components/HomeSignOutButton'
 import SubscriptionButton from '@/components/SubscriptionButton'
+import LegalFooter from '@/components/LegalFooter'
 import styles from './home.module.css'
 
 export const dynamic = 'force-dynamic'
@@ -332,6 +333,7 @@ export default async function DashboardHomePage({
           </aside>
         </section>
       </div>
+      <LegalFooter />
     </main>
   )
 }
