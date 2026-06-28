@@ -1,18 +1,21 @@
 import type { Metadata } from 'next'
 import LandingPage from './LandingPage'
 
-const title = 'ProspectTube — Trouvez les meilleurs créateurs YouTube à contacter'
-const description = 'Analysez YouTube, trouvez les contacts publics des créateurs, évaluez leur potentiel et lancez vos campagnes de prospection.'
+const title = 'ProspectTube — Trouvez des créateurs YouTube à contacter'
+const description =
+  'Trouvez les meilleurs créateurs YouTube, leurs emails et réseaux sociaux, puis organisez vos campagnes de prospection avec ProspectTube.'
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://prospecttube.com'),
-  title,
+  title: {
+    absolute: title,
+  },
   description,
   keywords: ['prospection YouTube', 'créateurs YouTube', 'emails créateurs', 'campagnes influenceurs'],
   openGraph: {
     title,
     description,
     type: 'website',
+    url: '/',
     locale: 'fr_FR',
     siteName: 'ProspectTube',
     images: [
