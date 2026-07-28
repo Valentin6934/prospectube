@@ -329,7 +329,7 @@ export default function CampaignsPage() {
 
       {!canGenerate ? (
         <div style={{ maxWidth: '760px', margin: '0 auto', padding: '3rem 1.5rem' }}>
-          <ProGate />
+          <ProGate context="campaigns" />
         </div>
       ) : (
       <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '2rem 1.5rem' }}>

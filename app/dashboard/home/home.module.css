@@ -120,7 +120,7 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 2rem;
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
   animation: enter 420ms ease both;
 }
 
@@ -162,6 +162,104 @@
 .heroSearchButton:hover {
   transform: translateY(-2px);
   box-shadow: 0 18px 42px rgba(83, 58, 183, 0.44);
+  filter: brightness(1.04);
+}
+
+.searchHero {
+  position: relative;
+  overflow: hidden;
+  margin: 1.2rem 0 1.35rem;
+  border: 1px solid rgba(139, 92, 246, 0.32);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(123, 99, 211, 0.22), transparent 34%),
+    linear-gradient(135deg, rgba(23, 20, 36, 0.98), rgba(13, 11, 22, 0.98));
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.26);
+  padding: 1.35rem;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  animation: enter 420ms ease both;
+}
+
+.searchHero::after {
+  content: '';
+  position: absolute;
+  inset: auto 1.2rem 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(167, 139, 250, 0.45), transparent);
+}
+
+.searchHeroIcon {
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  background: rgba(139, 92, 246, 0.16);
+  border: 1px solid rgba(167, 139, 250, 0.24);
+  color: #c4b5fd;
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.searchHeroContent {
+  min-width: 0;
+}
+
+.searchHeroContent h2 {
+  margin: 0;
+  font-family: var(--font-syne), sans-serif;
+  color: #f0edf8;
+  font-size: clamp(1.35rem, 2.4vw, 2rem);
+  line-height: 1.08;
+}
+
+.searchHeroContent p:not(.eyebrow) {
+  max-width: 660px;
+  margin: 0.55rem 0 0;
+  color: #a9a0c3;
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.searchHeroMeta {
+  margin-top: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.searchHeroMeta span {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  color: #c4bcdf;
+  padding: 0.28rem 0.62rem;
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+.searchHeroButton {
+  min-height: 50px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #533ab7, #7b63d3);
+  color: white;
+  padding: 0.85rem 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 850;
+  white-space: nowrap;
+  box-shadow: 0 16px 36px rgba(83, 58, 183, 0.34);
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+}
+
+.searchHeroButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 44px rgba(83, 58, 183, 0.44);
   filter: brightness(1.04);
 }
 
@@ -229,8 +327,8 @@
   overflow: hidden;
   min-height: 112px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  background: #12101c;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(22, 19, 34, 0.98), rgba(18, 16, 28, 0.98));
   padding: 1.15rem;
   display: flex;
   align-items: center;
@@ -318,8 +416,8 @@
 .goalsPanel,
 .tipPanel {
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  background: #12101c;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(22, 19, 34, 0.98), rgba(18, 16, 28, 0.98));
 }
 
 .activityPanel {
@@ -394,8 +492,8 @@
 .actionCard {
   min-height: 132px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  background: #12101c;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(22, 19, 34, 0.98), rgba(18, 16, 28, 0.98));
   color: #f0edf8;
   padding: 1rem;
   text-decoration: none;
@@ -566,6 +664,21 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 1rem;
+  }
+
+  .searchHero {
+    grid-template-columns: 1fr;
+    padding: 1.1rem;
+  }
+
+  .searchHeroIcon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+  }
+
+  .searchHeroButton {
+    width: 100%;
   }
 
   .welcome h1 {
