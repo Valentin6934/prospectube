@@ -214,6 +214,9 @@ export default async function DashboardHomePage({
             <p className={styles.eyebrow}>Vue d’ensemble</p>
             <h1>Bonjour {firstName(user.name, user.email)} 👋</h1>
             <p>Voici où en est votre prospection aujourd’hui.</p>
+            <Link href="/dashboard" className={styles.heroSearchButton}>
+              Rechercher des créateurs
+            </Link>
           </div>
           <div className={styles.currentPlan}>
             <span>Plan actuel</span>
@@ -232,6 +235,32 @@ export default async function DashboardHomePage({
             Paiement annulé. Votre plan Gratuit reste actif.
           </div>
         )}
+
+        <section className={styles.searchHero} aria-labelledby="new-search-title">
+          <div className={styles.searchHeroIcon} aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <path d="M10.8 18.2a7.4 7.4 0 1 0 0-14.8 7.4 7.4 0 0 0 0 14.8Z" stroke="currentColor" strokeWidth="2" />
+              <path d="m16.2 16.2 4.4 4.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path d="M8.4 10.6h4.8M10.8 8.2V13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </div>
+          <div className={styles.searchHeroContent}>
+            <p className={styles.eyebrow}>Action principale</p>
+            <h2 id="new-search-title">Nouvelle recherche</h2>
+            <p>
+              Lancez une prospection YouTube en choisissant une niche, une langue et une taille de chaîne.
+              ProspectTube analyse ensuite les créateurs, contacts et scores.
+            </p>
+            <div className={styles.searchHeroMeta} aria-label="Filtres disponibles">
+              <span>Niche</span>
+              <span>Langue</span>
+              <span>Abonnés min/max</span>
+            </div>
+          </div>
+          <Link href="/dashboard" className={styles.searchHeroButton}>
+            Rechercher des créateurs
+          </Link>
+        </section>
 
         <section className={styles.statsGrid} aria-label="Statistiques">
           {stats.map(stat => (

@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { PLAN_LIMITS, filterChannels } from '@/lib/data'
 import { searchYouTubeChannels } from '@/lib/youtube'
 import { getPlanName, isPro } from '@/lib/plan'
+import { selectDiverseProspectPreview } from '@/lib/freePreview'
 
 export const dynamic = 'force-dynamic'
 
@@ -101,8 +102,12 @@ export async function POST(req: NextRequest) {
 
     const cachedResults = cachedSearch ? parseCachedResults(cachedSearch.results) : []
 
-    if (cachedSearch && cachedResults.length > 0) {
-      await saveSearchHistory(user.id, niche, lang, minVal, maxVal, cachedResults)
+    if (cachedSearch && cachedResults.length > 0 && cachedResults.length >= limits.results) {
+      const visibleResults = proUser
+        ? cachedResults.slice(0, limits.results)
+        : selectDiverseProspectPreview(cachedResults, limits.results)
+
+      await saveSearchHistory(user.id, niche, lang, minVal, maxVal, visibleResults)
 
       const nextFreeSearchesRemaining = Math.max(0, user.searchesRemaining - 1)
       const searchesRemaining = proUser ? null : nextFreeSearchesRemaining
@@ -114,7 +119,7 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json({
-        results: cachedResults,
+        results: visibleResults,
         source,
         cached: true,
         searchesRemaining,
