@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import AppLoader from '@/components/AppLoader'
 import SubscriptionButton from '@/components/SubscriptionButton'
 import Toast, { useToast } from '@/components/Toast'
+import { isPro } from '@/lib/plan'
 
 type GmailStatus = {
   connected: boolean
@@ -25,7 +26,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
-  const proUser = plan === 'Pro'
+  const proUser = isPro(plan)
   const userEmail = session?.user?.email || ''
   const userName = session?.user?.name || userEmail.split('@')[0] || 'Utilisateur'
 

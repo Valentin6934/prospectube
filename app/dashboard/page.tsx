@@ -9,6 +9,7 @@ import ProspectSkeleton from '@/components/ProspectSkeleton'
 import Toast, { useToast } from '@/components/Toast'
 import ProGate from '@/components/ProGate'
 import { YOUTUBE_NICHES } from '@/lib/niches'
+import { getPlanName, isFree, isPro as isProPlan } from '@/lib/plan'
 
 const NICHES = ['Gaming', 'Finance & Business', 'Tech & Programmation', 'Fitness & Santé', 'Lifestyle & Vlog', 'Cuisine', 'Musique', 'Éducation', 'Voyage', 'Beauté & Mode']
 const LANGS = ['Français', 'Anglais', 'Espagnol', 'Portugais', 'Allemand']
@@ -88,14 +89,14 @@ export default function Dashboard() {
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const { toast, showToast } = useToast()
 
-  const isPro = plan === 'Pro'
+  const isPro = isProPlan(plan)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
     if (session?.user) {
-      const sessionPlan = (session.user as any).plan || 'Gratuit'
+      const sessionPlan = getPlanName((session.user as any).plan)
       setPlan(sessionPlan)
-      setSearchesLeft(sessionPlan === 'Pro' ? null : ((session.user as any).searchesRemaining ?? 5))
+      setSearchesLeft(isProPlan(sessionPlan) ? null : ((session.user as any).searchesRemaining ?? 5))
     }
   }, [status, session, router])
 
@@ -443,7 +444,7 @@ export default function Dashboard() {
             </a>
           </div>
         </section>
-        {plan === 'Gratuit' && (
+        {isFree(plan) && (
           <div style={{ background: 'rgba(83,58,183,0.15)', border: '1px solid rgba(83,58,183,0.4)', borderRadius: '12px', padding: '1rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
             <p style={{ color: '#a78bfa', fontSize: '0.9rem' }}>🔒 Passe au plan Pro pour débloquer Instagram, TikTok, Twitch, site web, messages IA, export CSV et plus de résultats</p>
             <Link href="/#pricing">
@@ -734,7 +735,7 @@ export default function Dashboard() {
                         </a>
                       )}
 
-                      {plan === 'Gratuit' ? (
+                      {isFree(plan) ? (
                         <>
                           <div style={{ color: '#6B5F96' }}>🔒 Instagram disponible en Pro</div>
                           <div style={{ color: '#6B5F96' }}>🔒 TikTok disponible en Pro</div>

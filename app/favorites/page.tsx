@@ -8,6 +8,7 @@ import ProspectCard from '@/components/ProspectCard'
 import AppLoader from '@/components/AppLoader'
 import EmptyState from '@/components/EmptyState'
 import Toast, { useToast } from '@/components/Toast'
+import { isPro } from '@/lib/plan'
 
 type Favorite = {
   id: string
@@ -148,7 +149,7 @@ export default function FavoritesPage() {
               channel={favorite}
               showRemoveButton
               removing={deletingId === favorite.id}
-              canUseCampaigns={plan === 'Pro'}
+              canUseCampaigns={isPro(plan)}
               onRemoveFavorite={() => deleteFavorite(favorite.id)}
             />
           ))

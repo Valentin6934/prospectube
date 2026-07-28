@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
         source,
         cached: true,
         searchesRemaining,
-        plan: user.plan,
+        plan,
         canGenerateEmail: limits.emailAI,
       })
     }
@@ -182,7 +182,7 @@ try {
     source,
     cached: false,
     searchesRemaining,
-    plan: user.plan,
+    plan,
     canGenerateEmail: limits.emailAI,
   })
 }
