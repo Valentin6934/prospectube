@@ -44,6 +44,12 @@ type CampaignDetails = CampaignSummary & {
   prospects: CampaignProspect[]
 }
 
+type GmailStatus = {
+  connected: boolean
+  email: string | null
+  sendMode?: 'draft' | 'send'
+}
+
 function formatDate(date: string): string {
   return new Intl.DateTimeFormat('fr-FR', {
     day: '2-digit',
@@ -69,6 +75,7 @@ export default function CampaignsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [scoreFilter, setScoreFilter] = useState('Tous')
   const [selectedProspectIds, setSelectedProspectIds] = useState<string[]>([])
+  const [gmail, setGmail] = useState<GmailStatus | null>(null)
   const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
   const canGenerate = plan === 'Pro'
@@ -112,10 +119,27 @@ export default function CampaignsPage() {
     if (status === 'unauthenticated') router.push('/login')
   }, [status, router])
 
+  useEffect(() => {
+    const result = new URLSearchParams(window.location.search).get('gmail')
+    if (!result) return
+
+    if (result === 'connected') showToast('Gmail connecté avec succès.')
+    else if (result === 'cancelled') showToast('Autorisation Gmail annulée.', 'info')
+    else showToast('La connexion Gmail a échoué. Réessayez.', 'error')
+
+    window.history.replaceState({}, '', '/campaigns')
+  }, [showToast])
+
   const loadCampaigns = async () => {
     const res = await fetch('/api/campaigns')
     const data = await res.json().catch(() => ({ campaigns: [] }))
     setCampaigns(res.ok ? data.campaigns || [] : [])
+  }
+
+  const loadGmailStatus = async () => {
+    const res = await fetch('/api/gmail')
+    const data = await res.json().catch(() => ({}))
+    if (res.ok) setGmail(data)
   }
 
   useEffect(() => {
@@ -125,7 +149,7 @@ export default function CampaignsPage() {
       return
     }
 
-    loadCampaigns().finally(() => setLoading(false))
+    Promise.all([loadCampaigns(), loadGmailStatus()]).finally(() => setLoading(false))
   }, [status, canGenerate])
 
   const createCampaign = async () => {
@@ -227,6 +251,11 @@ export default function CampaignsPage() {
     const selectedProspects = selectedCampaign.prospects.filter(prospect => prospectIds.includes(prospect.id))
     if (selectedProspects.every(prospect => !prospect.email)) {
       showToast('Aucun email disponible.', 'info')
+      return
+    }
+
+    if (!gmail?.connected) {
+      showToast('Connectez Gmail pour envoyer cette campagne.', 'info')
       return
     }
 
@@ -367,7 +396,7 @@ export default function CampaignsPage() {
                     </button>
                     <button
                       onClick={() => sendCampaignMessages(selectedProspectIds)}
-                      disabled={sendingProspectIds.length > 0 || selectedProspectIds.length === 0}
+                      disabled={sendingProspectIds.length > 0 || selectedProspectIds.length === 0 || !gmail?.connected}
                       className="btn btn-secondary"
                     >
                       {sendingProspectIds.length > 0
@@ -376,6 +405,24 @@ export default function CampaignsPage() {
                     </button>
                   </div>
                 </div>
+
+                {!gmail?.connected ? (
+                  <div style={{ marginBottom: '1rem', border: '1px solid rgba(56,189,248,0.22)', borderRadius: '12px', background: 'rgba(56,189,248,0.07)', padding: '1rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.92rem', marginBottom: '0.25rem' }}>Gmail n’est pas encore connecté</div>
+                      <div style={{ color: '#9CB8C8', fontSize: '0.8rem', lineHeight: 1.55 }}>
+                        Connectez Gmail pour créer des brouillons ou envoyer les messages générés de cette campagne. Votre connexion ProspectTube reste séparée.
+                      </div>
+                    </div>
+                    <button onClick={() => window.location.assign('/api/gmail/connect')} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem' }}>
+                      Connecter Gmail
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: '1rem', border: '1px solid rgba(34,197,94,0.22)', borderRadius: '12px', background: 'rgba(34,197,94,0.07)', padding: '0.75rem 1rem', color: '#86efac', fontSize: '0.8rem', fontWeight: 800 }}>
+                    Gmail connecté{gmail.email ? ` : ${gmail.email}` : ''}
+                  </div>
+                )}
 
                 {campaignStats && (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '0.55rem', marginBottom: '1rem' }}>

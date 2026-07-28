@@ -1,9 +1,22 @@
 import type { Metadata } from 'next'
+import { Inter, Space_Grotesk } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
 
 const description =
   'Trouvez des créateurs YouTube à contacter avec emails, réseaux sociaux, IA et campagnes.'
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-dm-sans',
+  display: 'swap',
+})
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ['latin'],
+  variable: '--font-syne',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://prospectube.vercel.app'),
@@ -48,7 +61,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr">
-      <body>
+      <body className={`${inter.variable} ${spaceGrotesk.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>

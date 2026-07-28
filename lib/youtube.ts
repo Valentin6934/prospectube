@@ -1,3 +1,6 @@
+import { selectDiverseProspectPreview } from '@/lib/freePreview'
+import { SMALL_CREATOR_NICHE_QUERIES, YOUTUBE_NICHE_QUERIES } from '@/lib/niches'
+
 const BASE_NICHE_QUERIES: Record<string, string> = {
   'Gaming': 'gaming gameplay streamer',
   'Finance & Business': 'finance business investing entrepreneur',
@@ -33,9 +36,9 @@ const SMALL_CREATOR_QUERIES: Record<string, string[]> = {
 }
 
 function buildQueries(niche: string, lang: string): string[] {
-  const base = BASE_NICHE_QUERIES[niche] || niche || 'youtube'
+  const base = YOUTUBE_NICHE_QUERIES[niche] || BASE_NICHE_QUERIES[niche] || niche || 'youtube'
   const langTerms = LANGUAGE_QUERIES[lang] || [lang]
-  const smallTerms = SMALL_CREATOR_QUERIES[niche] || []
+  const smallTerms = SMALL_CREATOR_NICHE_QUERIES[niche] || SMALL_CREATOR_QUERIES[niche] || []
 
   const queries = [
     `${base} ${langTerms[0] || ''}`,
@@ -454,7 +457,7 @@ export async function searchYouTubeChannels(
     })
   )
 
-  return enriched
+  const finalResults = enriched
     .filter((ch: any) => {
       const text = `${ch.name} ${ch.desc}`
       if (!looksLikeLanguage(text, lang)) {
@@ -463,5 +466,10 @@ export async function searchYouTubeChannels(
       return true
     })
     .sort((a: any, b: any) => b.score - a.score)
-    .slice(0, maxResults)
+
+  if (maxResults <= 3) {
+    return selectDiverseProspectPreview(finalResults, maxResults)
+  }
+
+  return finalResults.slice(0, maxResults)
 }

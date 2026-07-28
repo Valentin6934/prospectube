@@ -18,10 +18,20 @@ body {
   background: #0A0812;
   color: #F0EDF8;
   font-family: var(--font-dm-sans), sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  font-feature-settings: "ss01" 1, "cv01" 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .font-display {
   font-family: var(--font-syne), sans-serif;
+  letter-spacing: 0;
+}
+
+h1, h2, h3 {
+  letter-spacing: 0;
 }
 
 .grad-text {
@@ -37,9 +47,9 @@ body {
   border: none;
   padding: 0.75rem 2rem;
   border-radius: 10px;
-  font-weight: 500;
+  font-weight: 750;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease, opacity 160ms ease;
   box-shadow: 0 4px 20px rgba(83, 58, 183, 0.4);
 }
 
@@ -106,6 +116,10 @@ select:focus-visible {
   border: 1px solid rgba(83, 58, 183, 0.25);
   border-radius: 16px;
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.card:hover {
+  border-color: rgba(139, 92, 246, 0.34);
 }
 
 .prospect-card:hover {
@@ -313,6 +327,10 @@ input, select {
   appearance: none;
 }
 
+label {
+  letter-spacing: 0;
+}
+
 input:focus, select:focus {
   outline: none;
   border-color: #533AB7;
@@ -357,6 +375,11 @@ select option {
 
   .prospect-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .search-spotlight {
+    padding: 1.15rem !important;
+    border-radius: 14px !important;
   }
 
   .app-toast {

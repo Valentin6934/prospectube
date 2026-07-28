@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "test": "node --test tests/freePreview.test.js",
     "build": "next build",
     "start": "next start",
     "db:push": "prisma db push",

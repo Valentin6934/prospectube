@@ -214,6 +214,9 @@ export default async function DashboardHomePage({
             <p className={styles.eyebrow}>Vue d’ensemble</p>
             <h1>Bonjour {firstName(user.name, user.email)} 👋</h1>
             <p>Voici où en est votre prospection aujourd’hui.</p>
+            <Link href="/dashboard" className={styles.heroSearchButton}>
+              Rechercher des créateurs
+            </Link>
           </div>
           <div className={styles.currentPlan}>
             <span>Plan actuel</span>

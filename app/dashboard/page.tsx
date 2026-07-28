@@ -8,6 +8,7 @@ import EmptyState from '@/components/EmptyState'
 import ProspectSkeleton from '@/components/ProspectSkeleton'
 import Toast, { useToast } from '@/components/Toast'
 import ProGate from '@/components/ProGate'
+import { YOUTUBE_NICHES } from '@/lib/niches'
 
 const NICHES = ['Gaming', 'Finance & Business', 'Tech & Programmation', 'Fitness & Santé', 'Lifestyle & Vlog', 'Cuisine', 'Musique', 'Éducation', 'Voyage', 'Beauté & Mode']
 const LANGS = ['Français', 'Anglais', 'Espagnol', 'Portugais', 'Allemand']
@@ -427,7 +428,21 @@ export default function Dashboard() {
         </div>
       </nav>
 
-      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+      <div style={{ maxWidth: '960px', margin: '0 auto', padding: '2rem 1.5rem 5rem' }}>
+        <section className="search-spotlight" aria-labelledby="search-spotlight-title" style={{ position: 'relative', overflow: 'hidden', marginBottom: '1.25rem', border: '1px solid rgba(139,92,246,0.32)', borderRadius: '18px', padding: '1.6rem', background: 'radial-gradient(circle at top left, rgba(123,99,211,0.32), transparent 34%), linear-gradient(135deg, rgba(18,15,30,0.98), rgba(10,8,18,0.94))', boxShadow: '0 24px 70px rgba(0,0,0,0.28)' }}>
+          <div style={{ maxWidth: '680px' }}>
+            <p style={{ margin: '0 0 0.45rem', color: '#a78bfa', fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Nouvelle prospection</p>
+            <h1 id="search-spotlight-title" className="font-display" style={{ margin: 0, fontSize: 'clamp(1.55rem, 3vw, 2.35rem)', lineHeight: 1.1, color: '#F0EDF8' }}>
+              Trouvez vos prochains créateurs YouTube à contacter.
+            </h1>
+            <p style={{ margin: '0.75rem 0 1.2rem', color: '#B9B0D4', fontSize: '0.95rem', lineHeight: 1.65 }}>
+              Choisissez une niche, une langue et une taille de chaîne. ProspectTube analyse les contacts publics, les scores et les opportunités.
+            </p>
+            <a href="#search-form" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: '46px', padding: '0.85rem 1.25rem', textDecoration: 'none', fontSize: '0.95rem', fontWeight: 800 }}>
+              Rechercher des créateurs
+            </a>
+          </div>
+        </section>
         {plan === 'Gratuit' && (
           <div style={{ background: 'rgba(83,58,183,0.15)', border: '1px solid rgba(83,58,183,0.4)', borderRadius: '12px', padding: '1rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
             <p style={{ color: '#a78bfa', fontSize: '0.9rem' }}>🔒 Passe au plan Pro pour débloquer Instagram, TikTok, Twitch, site web, messages IA, export CSV et plus de résultats</p>
@@ -438,6 +453,9 @@ export default function Dashboard() {
         )}
 
         <div id="search-form" className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem', scrollMarginTop: '90px' }}>
+          <p style={{ color: '#8F86AA', fontSize: '0.86rem', lineHeight: 1.55, margin: '0 0 1.25rem' }}>
+            Renseignez vos critères principaux. L’aperçu gratuit affiche une sélection honnête et variée quand les scores disponibles le permettent.
+          </p>
           <h2 className="font-display" style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '1.25rem' }}>
             🔍 Rechercher des chaînes YouTube
           </h2>
@@ -447,7 +465,7 @@ export default function Dashboard() {
               <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Niche *</label>
               <select value={niche} onChange={e => setNiche(e.target.value)}>
                 <option value="">Choisir une niche...</option>
-                {NICHES.map(n => <option key={n}>{n}</option>)}
+                {YOUTUBE_NICHES.map(n => <option key={n}>{n}</option>)}
               </select>
             </div>
             <div>
