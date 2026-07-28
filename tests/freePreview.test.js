@@ -11,6 +11,7 @@ require.extensions['.ts'] = function transpile(module, filename) {
 }
 
 const { selectDiverseProspectPreview } = require('../lib/freePreview.ts')
+const { getPlanName, isFree, isPro, requireProResponse } = require('../lib/plan.ts')
 
 test('selects high, median and low scored prospects deterministically', () => {
   const prospects = [
@@ -84,4 +85,43 @@ test('is deterministic across repeated calls', () => {
   const second = selectDiverseProspectPreview(prospects).map(item => item.channelId)
 
   assert.deepEqual(first, second)
+})
+
+test('plan helpers reject free users and allow pro variants', () => {
+  const proValues = ['Pro', 'PRO', 'pro', ' Pro ']
+  const freeValues = ['Gratuit', 'FREE', '', '   ', null, undefined, 'Enterprise']
+
+  for (const value of proValues) {
+    assert.equal(isPro(value), true)
+    assert.equal(isFree(value), false)
+  }
+
+  for (const value of freeValues) {
+    assert.equal(isPro(value), false)
+    assert.equal(isFree(value), true)
+  }
+})
+
+test('getPlanName returns the canonical session value', () => {
+  assert.equal(getPlanName('Pro'), 'Pro')
+  assert.equal(getPlanName('PRO'), 'Pro')
+  assert.equal(getPlanName('pro'), 'Pro')
+  assert.equal(getPlanName(' Pro '), 'Pro')
+  assert.equal(getPlanName('Gratuit'), 'Gratuit')
+  assert.equal(getPlanName('FREE'), 'Gratuit')
+  assert.equal(getPlanName(''), 'Gratuit')
+  assert.equal(getPlanName(null), 'Gratuit')
+  assert.equal(getPlanName(undefined), 'Gratuit')
+  assert.equal(getPlanName('Enterprise'), 'Gratuit')
+})
+
+test('requireProResponse stays aligned with isPro free denial', async () => {
+  assert.equal(isPro('Gratuit'), false)
+
+  const response = requireProResponse()
+  const body = await response.json()
+
+  assert.equal(response.status, 403)
+  assert.equal(body.error, 'PRO_REQUIRED')
+  assert.equal(body.upgrade, true)
 })

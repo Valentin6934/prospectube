@@ -8,6 +8,7 @@ import AppLoader from '@/components/AppLoader'
 import EmptyState from '@/components/EmptyState'
 import Toast, { useToast } from '@/components/Toast'
 import ProGate from '@/components/ProGate'
+import { isPro } from '@/lib/plan'
 
 type CampaignSummary = {
   id: string
@@ -78,7 +79,7 @@ export default function CampaignsPage() {
   const [gmail, setGmail] = useState<GmailStatus | null>(null)
   const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
-  const canGenerate = plan === 'Pro'
+  const canGenerate = isPro(plan)
 
   const getScoreBucket = (prospect: CampaignProspect) => {
     const label = `${prospect.scoreLabel || ''} ${prospect.score || ''}`.toLowerCase()

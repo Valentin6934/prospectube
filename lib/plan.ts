@@ -1,7 +1,5 @@
-import { NextResponse } from 'next/server'
-
 export function isPro(plan?: string | null): boolean {
-  return plan === 'Pro'
+  return typeof plan === 'string' && plan.trim().toLowerCase() === 'pro'
 }
 
 export function isFree(plan?: string | null): boolean {
@@ -13,7 +11,7 @@ export function getPlanName(plan?: string | null): 'Gratuit' | 'Pro' {
 }
 
 export function requireProResponse() {
-  return NextResponse.json(
+  return Response.json(
     {
       error: 'PRO_REQUIRED',
       upgrade: true,

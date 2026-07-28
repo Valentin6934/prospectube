@@ -8,6 +8,7 @@ import ProspectCard, { ProspectChannel } from '@/components/ProspectCard'
 import AppLoader from '@/components/AppLoader'
 import EmptyState from '@/components/EmptyState'
 import Toast, { useToast } from '@/components/Toast'
+import { isPro } from '@/lib/plan'
 
 type HistoryItem = {
   id: string
@@ -257,7 +258,7 @@ export default function HistoryPage() {
                     showFavoriteButton
                     isFavorite={Boolean(channelId && favoriteIds.includes(channelId))}
                     favoriteLoading={favoriteLoadingId === channelId}
-                    canUseCampaigns={plan === 'Pro'}
+                    canUseCampaigns={isPro(plan)}
                     onAddFavorite={addFavorite}
                   />
                 )

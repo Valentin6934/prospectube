@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getPlanName, isPro } from '@/lib/plan'
 import HomeSignOutButton from '@/components/HomeSignOutButton'
 import SubscriptionButton from '@/components/SubscriptionButton'
 import LegalFooter from '@/components/LegalFooter'
@@ -43,7 +44,7 @@ function relativeDate(date: Date) {
 }
 
 function goalTargets(plan: string) {
-  if (plan === 'Pro') return { prospects: 100, emails: 50, campaigns: 10, messages: 50 }
+  if (isPro(plan)) return { prospects: 100, emails: 50, campaigns: 10, messages: 50 }
   return { prospects: 10, emails: 5, campaigns: 2, messages: 5 }
 }
 
@@ -163,7 +164,8 @@ export default async function DashboardHomePage({
   const savedProspects = favoriteCount + campaignProspectCount
   const emailsFound = favoriteEmailCount + campaignEmailCount
   const generatedMessages = generatedCampaignCount + generatedIndividualCount
-  const targets = goalTargets(user.plan)
+  const plan = getPlanName(user.plan)
+  const targets = goalTargets(plan)
 
   const stats = [
     { icon: '🔍', label: 'Recherches', value: searchCount, accent: styles.violet },
@@ -202,7 +204,7 @@ export default async function DashboardHomePage({
             </div>
             <Link href="/dashboard" className={styles.searchButton}>Nouvelle recherche</Link>
             <Link href="/settings" className={styles.settingsLink}>⚙ Paramètres</Link>
-            <span className={styles.planBadge}>Plan {user.plan}</span>
+            <span className={styles.planBadge}>Plan {plan}</span>
             <HomeSignOutButton className={styles.signOut} />
           </div>
         </div>
@@ -220,8 +222,8 @@ export default async function DashboardHomePage({
           </div>
           <div className={styles.currentPlan}>
             <span>Plan actuel</span>
-            <strong>{user.plan}</strong>
-            <SubscriptionButton plan={user.plan} />
+            <strong>{plan}</strong>
+            <SubscriptionButton plan={plan} />
           </div>
         </header>
 

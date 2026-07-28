@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { useState } from 'react'
 import LegalFooter from '@/components/LegalFooter'
+import { isPro } from '@/lib/plan'
 import styles from './landing.module.css'
 
 const features = [
@@ -83,7 +84,7 @@ export default function LandingPage() {
       router.push('/register')
       return
     }
-    if (plan === 'Pro') {
+    if (isPro(plan)) {
       router.push('/dashboard/home')
       return
     }
@@ -250,7 +251,7 @@ export default function LandingPage() {
                 <li>✓ Export CSV</li>
               </ul>
               <button onClick={openPro} disabled={checkoutLoading} className={styles.pricePrimary}>
-                {checkoutLoading ? 'Ouverture de Stripe...' : plan === 'Pro' ? 'Accéder au dashboard' : 'Passer Pro'}
+                {checkoutLoading ? 'Ouverture de Stripe...' : isPro(plan) ? 'Accéder au dashboard' : 'Passer Pro'}
               </button>
               {checkoutError && <div className={styles.checkoutError} role="alert">{checkoutError}</div>}
             </article>

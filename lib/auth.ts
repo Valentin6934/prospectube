@@ -1,6 +1,7 @@
 import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { prisma } from '@/lib/prisma'
+import { getPlanName } from '@/lib/plan'
 import bcrypt from 'bcryptjs'
 
 export const authOptions: NextAuthOptions = {
@@ -27,7 +28,7 @@ export const authOptions: NextAuthOptions = {
           id: user.id,
           email: user.email,
           name: user.name,
-          plan: user.plan,
+          plan: getPlanName(user.plan),
           searchesRemaining: user.searchesRemaining,
         }
       },
@@ -37,7 +38,7 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id
-        token.plan = (user as any).plan
+        token.plan = getPlanName((user as any).plan)
         token.searchesRemaining = (user as any).searchesRemaining
       } else if (token.email) {
         const databaseUser = await prisma.user.findUnique({
@@ -47,7 +48,7 @@ export const authOptions: NextAuthOptions = {
 
         if (databaseUser) {
           token.id = databaseUser.id
-          token.plan = databaseUser.plan
+          token.plan = getPlanName(databaseUser.plan)
           token.searchesRemaining = databaseUser.searchesRemaining
         }
       }

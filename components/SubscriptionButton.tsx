@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type CSSProperties } from 'react'
+import { isPro as isProPlan } from '@/lib/plan'
 
 type SubscriptionButtonProps = {
   plan: string
@@ -17,7 +18,7 @@ export default function SubscriptionButton({
 }: SubscriptionButtonProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const isPro = plan === 'Pro'
+  const isPro = isProPlan(plan)
 
   const openStripe = async () => {
     setLoading(true)
