@@ -48,6 +48,15 @@ type ProspectCardProps = {
   onRemoveFavorite?: (channel: ProspectChannel) => void
 }
 
+type CampaignOption = {
+  id: string
+  name: string
+  createdAt?: string
+  updatedAt?: string
+  _count?: { prospects: number }
+  prospectChannelIds?: string[]
+}
+
 function formatCompactNumber(n: number): string {
   if (n >= 1000000000) return `${(n / 1000000000).toFixed(1).replace('.0', '')}B`
   if (n >= 1000000) return `${(n / 1000000).toFixed(1).replace('.0', '')}M`
@@ -87,81 +96,125 @@ export default function ProspectCard({
 }: ProspectCardProps) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [campaignModalOpen, setCampaignModalOpen] = useState(false)
+  const [campaignOptions, setCampaignOptions] = useState<CampaignOption[]>([])
+  const [campaignLoading, setCampaignLoading] = useState(false)
+  const [campaignError, setCampaignError] = useState('')
+  const [newCampaignName, setNewCampaignName] = useState('')
   const score = channel.score || 0
   const color = channel.color || '#533AB7'
-  const name = channel.name || 'Chaîne inconnue'
+  const name = channel.name || 'Chaine inconnue'
   const avatar = channel.avatar || name.slice(0, 2).toUpperCase()
+  const channelId = channel.channelId || channel.id || ''
   const createdYear = getCreatedYear(channel.createdAt || channel.publishedAt || channel.channelCreatedAt)
   const contacts = [
-    channel.email ? { label: '📧 Email trouvé', href: `mailto:${channel.email}`, color: '#22c55e' } : null,
-    channel.instagram ? { label: '📱 Instagram', href: channel.instagram, color: '#e879f9' } : null,
-    channel.tiktok ? { label: '🎵 TikTok', href: channel.tiktok, color: '#f472b6' } : null,
-    channel.twitch ? { label: '🎮 Twitch', href: channel.twitch, color: '#9146FF' } : null,
-    channel.website ? { label: '🌍 Site', href: channel.website, color: '#38bdf8' } : null,
+    channel.email ? { label: 'Email trouve', href: `mailto:${channel.email}`, color: '#22c55e' } : null,
+    channel.instagram ? { label: 'Instagram', href: channel.instagram, color: '#e879f9' } : null,
+    channel.tiktok ? { label: 'TikTok', href: channel.tiktok, color: '#f472b6' } : null,
+    channel.twitch ? { label: 'Twitch', href: channel.twitch, color: '#9146FF' } : null,
+    channel.website ? { label: 'Site', href: channel.website, color: '#38bdf8' } : null,
   ].filter(Boolean) as { label: string; href: string; color: string }[]
   const stats = [
-    `👥 ${channel.subs || formatCompactNumber(channel.subsNum || 0)}`,
-    `👁 ${channel.totalViewsFormatted || formatCompactNumber(channel.totalViews || channel.viewCount || 0)}`,
-    `🎬 ${channel.videoCountFormatted || formatCompactNumber(channel.videoCount || 0)}`,
-    createdYear ? `📅 ${createdYear}` : null,
+    `${channel.subs || formatCompactNumber(channel.subsNum || 0)} abonnes`,
+    `${channel.totalViewsFormatted || formatCompactNumber(channel.totalViews || channel.viewCount || 0)} vues`,
+    `${channel.videoCountFormatted || formatCompactNumber(channel.videoCount || 0)} videos`,
+    createdYear ? `cree en ${createdYear}` : null,
   ].filter(Boolean)
   const actionColumns = showRemoveButton ? 3 : showFavoriteButton && onGenerateEmail ? 4 : 3
 
-  const addToCampaign = async (targetChannel: ProspectChannel) => {
+  const openCampaignPicker = async () => {
     if (!canUseCampaigns) {
       setUpgradeOpen(true)
       return
     }
 
-    const channelId = targetChannel.channelId || targetChannel.id
-    if (!channelId) return showToast('Cette chaîne ne peut pas être ajoutée.', 'error')
+    if (!channelId) return showToast('Cette chaine ne peut pas etre ajoutee.', 'error')
 
-    const campaignName = window.prompt('Nom de la campagne')
-    const name = campaignName?.trim()
-    if (!name) return
-
+    setCampaignModalOpen(true)
+    setCampaignError('')
+    setCampaignLoading(true)
     const listRes = await fetch('/api/campaigns')
     const listData = await listRes.json().catch(() => ({}))
+    setCampaignLoading(false)
+
     if (!listRes.ok) {
-      if (listData.upgrade) return setUpgradeOpen(true)
-      return showToast(listData.error || 'Impossible de charger les campagnes.', 'error')
+      if (listData.upgrade) {
+        setCampaignModalOpen(false)
+        setUpgradeOpen(true)
+        return
+      }
+      setCampaignError(listData.error || 'Impossible de charger les campagnes.')
+      return
     }
 
-    let campaign = (listData.campaigns || []).find((item: { id: string; name: string }) => item.name.toLowerCase() === name.toLowerCase())
+    setCampaignOptions(listData.campaigns || [])
+  }
 
-    if (!campaign) {
+  const addToCampaign = async (campaignId: string | 'new') => {
+    if (!channelId) return showToast('Cette chaine ne peut pas etre ajoutee.', 'error')
+
+    setCampaignLoading(true)
+    setCampaignError('')
+    let targetCampaignId = campaignId === 'new' ? '' : campaignId
+
+    if (!targetCampaignId) {
+      const campaignName = newCampaignName.trim()
+      if (!campaignName) {
+        setCampaignLoading(false)
+        setCampaignError('Nom de campagne requis.')
+        return
+      }
+
       const createRes = await fetch('/api/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name: campaignName }),
       })
       const createData = await createRes.json().catch(() => ({}))
       if (!createRes.ok) {
-        if (createData.upgrade) return setUpgradeOpen(true)
-        return showToast(createData.error || 'Impossible de créer la campagne.', 'error')
+        setCampaignLoading(false)
+        if (createData.upgrade) {
+          setCampaignModalOpen(false)
+          setUpgradeOpen(true)
+          return
+        }
+        setCampaignError(createData.error || 'Impossible de creer la campagne.')
+        return
       }
-      campaign = createData.campaign
+      targetCampaignId = createData.campaign.id
+      showToast('Campagne creee')
     }
 
-    const addRes = await fetch(`/api/campaigns/${campaign.id}/prospects`, {
+    const addRes = await fetch(`/api/campaigns/${targetCampaignId}/prospects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(targetChannel),
+      body: JSON.stringify(channel),
     })
     const addData = await addRes.json().catch(() => ({}))
+    setCampaignLoading(false)
     if (!addRes.ok) {
-      if (addData.upgrade) return setUpgradeOpen(true)
-      return showToast(addData.error || "Impossible d'ajouter ce prospect à la campagne.", 'error')
+      if (addData.upgrade) {
+        setCampaignModalOpen(false)
+        setUpgradeOpen(true)
+        return
+      }
+      setCampaignError(addData.error || "Impossible d'ajouter ce prospect a la campagne.")
+      return
     }
 
-    showToast('✓ Prospect ajouté')
+    setCampaignModalOpen(false)
+    setNewCampaignName('')
+    showToast(
+      addData.added ? 'Prospect ajoute a la campagne' : 'Ce prospect est deja present dans cette campagne.',
+      addData.added ? 'success' : 'info'
+    )
   }
 
   return (
     <div className="card prospect-card" style={{ padding: '1rem', marginBottom: '0.85rem', border: '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
       <div style={{ display: 'flex', gap: '0.9rem', minWidth: 0 }}>
         {channel.thumbnail ? (
-          <img src={channel.thumbnail} alt="" style={{ width: '54px', height: '54px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(83,58,183,0.35)', flexShrink: 0 }} />
+          <img src={channel.thumbnail} alt={`Photo de ${name}`} style={{ width: '54px', height: '54px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(83,58,183,0.35)', flexShrink: 0 }} />
         ) : (
           <div style={{ width: '54px', height: '54px', borderRadius: '50%', background: `${color}33`, border: `2px solid ${color}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.9rem', color, flexShrink: 0 }}>
             {avatar}
@@ -172,7 +225,7 @@ export default function ProspectCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
             <div style={{ fontWeight: 700, fontSize: '1rem', color: '#F0EDF8', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
             <span style={{ padding: '0.18rem 0.55rem', borderRadius: '999px', ...getScoreStyles(score), fontSize: '0.72rem', fontWeight: 700 }}>
-              {channel.scoreLabel || '🔴 Faible potentiel'}
+              {channel.scoreLabel || 'Faible potentiel'}
             </span>
             <span style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.9rem' }}>{score}/100</span>
           </div>
@@ -198,7 +251,7 @@ export default function ProspectCard({
       <div className="prospect-actions" style={{ display: 'grid', gridTemplateColumns: `repeat(${actionColumns}, minmax(0, 1fr))`, gap: '0.55rem', marginTop: '0.9rem' }}>
         {showFavoriteButton && (
           <button onClick={() => onAddFavorite?.(channel)} disabled={isFavorite || favoriteLoading} style={{ background: isFavorite ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.14)', color: isFavorite ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: isFavorite ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-            {isFavorite ? '⭐ Favori' : favoriteLoading ? 'Ajout...' : '☆ Favori'}
+            {isFavorite ? 'Favori' : favoriteLoading ? 'Ajout...' : 'Favori'}
           </button>
         )}
         {showRemoveButton && (
@@ -208,14 +261,14 @@ export default function ProspectCard({
         )}
         {onGenerateEmail && (
           <button onClick={() => onGenerateEmail(channel)} disabled={!canEmail} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: canEmail ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 700 }}>
-            {canEmail ? '✨ Message IA' : '🔒 IA Pro'}
+            {canEmail ? 'Message IA' : 'IA Pro'}
           </button>
         )}
-        <button onClick={() => addToCampaign(channel)} style={{ background: 'rgba(83,58,183,0.14)', color: '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-          Ajouter à campagne
+        <button onClick={openCampaignPicker} style={{ background: 'rgba(83,58,183,0.14)', color: '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+          Ajouter a campagne
         </button>
         <button onClick={() => setDetailsOpen(true)} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-          ▶ Voir la fiche
+          Voir la fiche
         </button>
       </div>
 
@@ -232,13 +285,57 @@ export default function ProspectCard({
         onGenerateEmail={onGenerateEmail}
         onAddFavorite={onAddFavorite}
         onRemoveFavorite={onRemoveFavorite}
-        onAddCampaign={addToCampaign}
+        onAddCampaign={() => openCampaignPicker()}
       />
+
+      {campaignModalOpen && (
+        <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(0,0,0,0.72)', display: 'grid', placeItems: 'center', padding: '1rem' }} onClick={() => !campaignLoading && setCampaignModalOpen(false)}>
+          <div className="modal-panel" style={{ width: '100%', maxWidth: '560px', position: 'relative' }} onClick={event => event.stopPropagation()}>
+            <button aria-label="Fermer" onClick={() => setCampaignModalOpen(false)} disabled={campaignLoading} style={{ position: 'absolute', top: '0.7rem', right: '0.7rem', zIndex: 1, border: 'none', background: 'transparent', color: '#A89FCC', cursor: campaignLoading ? 'default' : 'pointer', fontSize: '1rem' }}>x</button>
+            <h3 className="font-display" style={{ color: '#F0EDF8', fontSize: '1.1rem', marginBottom: '0.35rem' }}>Ajouter a une campagne</h3>
+            <p style={{ color: '#A89FCC', fontSize: '0.85rem', lineHeight: 1.55, marginBottom: '1rem' }}>Choisissez une campagne existante ou créez-en une nouvelle.</p>
+
+            {campaignLoading && <div style={{ color: '#A89FCC', fontSize: '0.85rem', marginBottom: '0.8rem' }}>Chargement...</div>}
+            {campaignError && <div style={{ color: '#ef4444', fontSize: '0.82rem', marginBottom: '0.8rem' }}>{campaignError}</div>}
+
+            <div style={{ display: 'grid', gap: '0.55rem', marginBottom: '1rem' }}>
+              {campaignOptions.length === 0 && !campaignLoading ? (
+                <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.85rem', color: '#A89FCC', fontSize: '0.84rem' }}>Aucune campagne pour l'instant.</div>
+              ) : campaignOptions.map(campaign => {
+                const alreadyPresent = (campaign.prospectChannelIds || []).includes(channelId)
+                return (
+                  <button
+                    key={campaign.id}
+                    onClick={() => addToCampaign(campaign.id)}
+                    disabled={campaignLoading || alreadyPresent}
+                    style={{ textAlign: 'left', border: alreadyPresent ? '1px solid rgba(34,197,94,0.25)' : '1px solid rgba(83,58,183,0.25)', borderRadius: '10px', padding: '0.85rem', background: alreadyPresent ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.035)', color: '#F0EDF8', cursor: campaignLoading || alreadyPresent ? 'default' : 'pointer' }}
+                  >
+                    <span style={{ display: 'block', fontWeight: 800 }}>{campaign.name}</span>
+                    <span style={{ display: 'block', color: alreadyPresent ? '#86efac' : '#A89FCC', fontSize: '0.78rem', marginTop: '0.25rem' }}>
+                      {alreadyPresent ? 'Deja present' : `${campaign._count?.prospects || 0} prospect${(campaign._count?.prospects || 0) !== 1 ? 's' : ''}`}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1rem' }}>
+              <div style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.85rem', marginBottom: '0.5rem' }}>Créer une nouvelle campagne</div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <input value={newCampaignName} onChange={event => setNewCampaignName(event.target.value)} placeholder="Nom de campagne" style={{ flex: 1, minWidth: '180px' }} />
+                <button onClick={() => addToCampaign('new')} disabled={campaignLoading || !newCampaignName.trim()} className="btn-primary" style={{ padding: '0.65rem 1rem' }}>
+                  {campaignLoading ? 'Ajout...' : 'Créer et ajouter'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {upgradeOpen && (
         <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(0,0,0,0.72)', display: 'grid', placeItems: 'center', padding: '1rem' }} onClick={() => setUpgradeOpen(false)}>
           <div className="modal-panel" style={{ width: '100%', maxWidth: '560px', position: 'relative' }} onClick={event => event.stopPropagation()}>
-            <button aria-label="Fermer" onClick={() => setUpgradeOpen(false)} style={{ position: 'absolute', top: '0.7rem', right: '0.7rem', zIndex: 1, border: 'none', background: 'transparent', color: '#A89FCC', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+            <button aria-label="Fermer" onClick={() => setUpgradeOpen(false)} style={{ position: 'absolute', top: '0.7rem', right: '0.7rem', zIndex: 1, border: 'none', background: 'transparent', color: '#A89FCC', cursor: 'pointer', fontSize: '1rem' }}>x</button>
             <ProGate compact />
           </div>
         </div>

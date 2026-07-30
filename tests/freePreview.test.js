@@ -12,6 +12,11 @@ require.extensions['.ts'] = function transpile(module, filename) {
 
 const { selectDiverseProspectPreview } = require('../lib/freePreview.ts')
 const { getPlanName, isFree, isPro, requireProResponse } = require('../lib/plan.ts')
+const {
+  getCampaignSendSummary,
+  isCampaignProspectSendEligible,
+  limitUniqueCampaignSelection,
+} = require('../lib/campaignWorkflow.ts')
 
 test('selects high, median and low scored prospects deterministically', () => {
   const prospects = [
@@ -124,4 +129,72 @@ test('requireProResponse stays aligned with isPro free denial', async () => {
   assert.equal(response.status, 403)
   assert.equal(body.error, 'PRO_REQUIRED')
   assert.equal(body.upgrade, true)
+})
+
+test('campaign send eligibility requires email, subject, body and unsent status', () => {
+  assert.equal(isCampaignProspectSendEligible({
+    email: 'creator@example.com',
+    generatedSubject: 'Collaboration',
+    generatedBody: 'Bonjour',
+    sendStatus: 'Non envoyé',
+  }), true)
+
+  assert.equal(isCampaignProspectSendEligible({
+    email: null,
+    generatedSubject: 'Collaboration',
+    generatedBody: 'Bonjour',
+    sendStatus: 'Non envoyé',
+  }), false)
+
+  assert.equal(isCampaignProspectSendEligible({
+    email: 'creator@example.com',
+    generatedSubject: '',
+    generatedBody: 'Bonjour',
+    sendStatus: 'Non envoyé',
+  }), false)
+
+  assert.equal(isCampaignProspectSendEligible({
+    email: 'creator@example.com',
+    generatedSubject: 'Collaboration',
+    generatedBody: '   ',
+    sendStatus: 'Non envoyé',
+  }), false)
+
+  assert.equal(isCampaignProspectSendEligible({
+    email: 'creator@example.com',
+    generatedSubject: 'Collaboration',
+    generatedBody: 'Bonjour',
+    sendStatus: 'Envoyé',
+  }), false)
+})
+
+test('campaign send summary counts successes, failures and skipped prospects', () => {
+  const summary = getCampaignSendSummary([
+    { success: true },
+    { success: false },
+    { success: false, skippedReason: 'no_email' },
+    { success: false, skippedReason: 'incomplete_message' },
+  ])
+
+  assert.equal(summary.successCount, 1)
+  assert.equal(summary.failureCount, 1)
+  assert.equal(summary.skippedNoEmailCount, 1)
+  assert.equal(summary.skippedIncompleteCount, 1)
+  assert.equal(summary.errorCount, 3)
+  assert.equal(summary.campaignResultStatus, 'Partiellement envoyee')
+})
+
+test('campaign send summary exposes final status labels', () => {
+  assert.equal(getCampaignSendSummary([{ success: true }]).campaignResultStatus, 'Envoyee')
+  assert.equal(getCampaignSendSummary([{ success: true }, { success: false }]).campaignResultStatus, 'Partiellement envoyee')
+  assert.equal(getCampaignSendSummary([{ success: false, skippedReason: 'no_email' }]).campaignResultStatus, 'Aucun email envoye')
+})
+
+test('campaign selection is deduplicated and limited to 20 prospects', () => {
+  const ids = ['a', 'b', 'a', ...Array.from({ length: 25 }, (_, index) => `p${index}`)]
+  const limited = limitUniqueCampaignSelection(ids)
+
+  assert.equal(limited.length, 20)
+  assert.equal(new Set(limited).size, limited.length)
+  assert.deepEqual(limited.slice(0, 3), ['a', 'b', 'p0'])
 })

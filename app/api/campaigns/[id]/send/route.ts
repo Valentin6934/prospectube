@@ -9,10 +9,16 @@ import {
   SEND_MODE,
 } from '@/lib/gmail'
 import { isPro, requireProResponse } from '@/lib/plan'
+import {
+  CAMPAIGN_SEND_LIMIT,
+  getCampaignSendSummary,
+  hasCompleteCampaignMessage,
+  hasValidCampaignEmail,
+  isCampaignProspectAlreadyProcessed,
+  limitUniqueCampaignSelection,
+} from '@/lib/campaignWorkflow'
 
 export const dynamic = 'force-dynamic'
-
-const MAX_BATCH_SIZE = 20
 
 async function getCurrentUser() {
   const session = await getServerSession(authOptions)
@@ -24,23 +30,27 @@ async function getCurrentUser() {
   })
 }
 
-function hasValidEmail(email: string | null): email is string {
-  return Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+type SendResult = {
+  prospectId: string
+  success: boolean
+  status: string
+  error?: string
+  skippedReason?: 'not_found' | 'no_email' | 'incomplete_message' | 'already_processed'
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getCurrentUser()
-  if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
+  if (!user) return NextResponse.json({ error: 'Non connecte' }, { status: 401 })
   if (!isPro(user.plan)) return requireProResponse()
 
   const body = await req.json().catch(() => ({}))
   const requestedIds: string[] = Array.isArray(body.prospectIds)
     ? body.prospectIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
     : []
-  const prospectIds = Array.from(new Set(requestedIds)).slice(0, MAX_BATCH_SIZE)
+  const prospectIds = limitUniqueCampaignSelection(requestedIds)
 
   if (prospectIds.length === 0) {
-    return NextResponse.json({ error: 'Sélectionnez au moins un prospect.' }, { status: 400 })
+    return NextResponse.json({ error: 'Selectionnez au moins un prospect.' }, { status: 400 })
   }
 
   const campaign = await prisma.campaign.findFirst({
@@ -76,40 +86,47 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     )
   }
 
-  const results: Array<{
-    prospectId: string
-    success: boolean
-    status: string
-    error?: string
-  }> = []
+  const foundIds = new Set(campaign.prospects.map(prospect => prospect.id))
+  const results: SendResult[] = prospectIds
+    .filter(id => !foundIds.has(id))
+    .map(id => ({
+      prospectId: id,
+      success: false,
+      status: 'Ignore',
+      error: 'Prospect introuvable dans cette campagne.',
+      skippedReason: 'not_found',
+    }))
 
   for (const prospect of campaign.prospects) {
-    if (!hasValidEmail(prospect.email)) {
+    if (!hasValidCampaignEmail(prospect.email)) {
       results.push({
         prospectId: prospect.id,
         success: false,
-        status: 'Non envoyé',
+        status: 'Non envoye',
         error: 'Aucun email disponible.',
+        skippedReason: 'no_email',
       })
       continue
     }
 
-    if (!prospect.generatedBody) {
+    if (!hasCompleteCampaignMessage(prospect)) {
       results.push({
         prospectId: prospect.id,
         success: false,
-        status: 'Non envoyé',
-        error: 'Aucun message IA disponible.',
+        status: 'Non envoye',
+        error: 'Sujet ou message incomplet.',
+        skippedReason: 'incomplete_message',
       })
       continue
     }
 
-    if (prospect.sendStatus === 'Envoyé') {
+    if (isCampaignProspectAlreadyProcessed(prospect)) {
       results.push({
         prospectId: prospect.id,
         success: false,
-        status: 'Envoyé',
-        error: 'Message déjà envoyé.',
+        status: prospect.sendStatus,
+        error: 'Message deja traite.',
+        skippedReason: 'already_processed',
       })
       continue
     }
@@ -118,7 +135,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const delivery = await deliverGmailMessage(accessToken, {
         to: prospect.email,
         subject: prospect.generatedSubject || `Collaboration avec ${prospect.name}`,
-        body: prospect.generatedBody,
+        body: prospect.generatedBody || '',
       })
       const sendStatus = delivery.mode === 'send' ? 'Envoyé' : 'Brouillon créé'
       const sentAt = delivery.mode === 'send' ? new Date() : null
@@ -139,7 +156,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               userId: user.id,
               channelName: prospect.name,
               channelEmail: prospect.email,
-              content: prospect.generatedBody,
+              content: prospect.generatedBody || '',
               status: 'Envoyé',
             },
           }),
@@ -175,14 +192,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
   }
 
-  const successCount = results.filter(result => result.success).length
-  const errorCount = results.length - successCount
+  const summary = getCampaignSendSummary(results)
 
   return NextResponse.json({
     results,
-    successCount,
-    errorCount,
+    ...summary,
     mode: SEND_MODE,
-    limited: requestedIds.length > MAX_BATCH_SIZE,
+    limited: requestedIds.length > CAMPAIGN_SEND_LIMIT,
   })
 }

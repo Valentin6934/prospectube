@@ -129,6 +129,8 @@ model CampaignProspect {
   twitch           String?
   website          String?
   channelUrl       String?
+  avatar           String?
+  thumbnail        String?
   score            Int?
   scoreLabel       String?
   scoreReason      String?

@@ -8,15 +8,20 @@ import { isPro, requireProResponse } from '@/lib/plan'
 export const dynamic = 'force-dynamic'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const MAX_BATCH_SIZE = 20
 
 async function getCurrentUser() {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return null
 
-  return prisma.user.findUnique({ where: { email: session.user.email } })
+  return prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true, plan: true },
+  })
 }
 
-async function generateMessage(prospect: {
+type ProspectForGeneration = {
+  id: string
   name: string
   email: string | null
   instagram: string | null
@@ -27,32 +32,38 @@ async function generateMessage(prospect: {
   score: number | null
   scoreLabel: string | null
   scoreReason: string | null
-}) {
+}
+
+async function generateMessage(prospect: ProspectForGeneration) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('Configuration IA manquante.')
+  }
+
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 700,
     messages: [
       {
         role: 'user',
-        content: `Tu es un monteur vidéo freelance qui prospecte des créateurs YouTube.
+        content: `Tu es un monteur video freelance qui prospecte des createurs YouTube.
 
-Génère un message de prospection court, naturel et personnalisé pour ce prospect :
+Genere un message de prospection court, naturel et personnalise pour ce prospect :
 
 Nom : ${prospect.name}
-Email : ${prospect.email || 'Non trouvé'}
-Instagram : ${prospect.instagram || 'Non trouvé'}
-TikTok : ${prospect.tiktok || 'Non trouvé'}
-Twitch : ${prospect.twitch || 'Non trouvé'}
-Site web : ${prospect.website || 'Non trouvé'}
-Chaîne YouTube : ${prospect.channelUrl || 'Non trouvé'}
+Email : ${prospect.email || 'Non trouve'}
+Instagram : ${prospect.instagram || 'Non trouve'}
+TikTok : ${prospect.tiktok || 'Non trouve'}
+Twitch : ${prospect.twitch || 'Non trouve'}
+Site web : ${prospect.website || 'Non trouve'}
+Chaine YouTube : ${prospect.channelUrl || 'Non trouve'}
 Score prospect : ${prospect.score || 0}/100
-Label score : ${prospect.scoreLabel || 'Non trouvé'}
-Raison score : ${prospect.scoreReason || 'Non trouvé'}
+Label score : ${prospect.scoreLabel || 'Non trouve'}
+Raison score : ${prospect.scoreReason || 'Non trouve'}
 
-Règles :
+Regles :
 - Message court : maximum 120 mots
 - Ton professionnel mais humain
-- Propose clairement ton aide pour améliorer le montage vidéo
+- Propose clairement ton aide pour ameliorer le montage video
 - Ne dis pas "je suis une IA"
 - Ne force pas trop la vente
 - Format exact :
@@ -63,28 +74,33 @@ Objet: [sujet]
     ],
   })
 
-  const text = message.content[0].type === 'text' ? message.content[0].text : ''
+  const text = message.content[0]?.type === 'text' ? message.content[0].text.trim() : ''
   const lines = text.split('\n')
   const subject =
     lines[0]
       ?.replace('Objet:', '')
       .replace('Subject:', '')
       .trim() || `Collaboration avec ${prospect.name}`
-  const body = lines.slice(1).join('\n').trim()
+  const body = lines.slice(1).join('\n').trim() || text
+
+  if (!body) {
+    throw new Error('La reponse IA est vide.')
+  }
 
   return { subject, body }
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getCurrentUser()
-  if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
-
+  if (!user) return NextResponse.json({ error: 'Non connecte' }, { status: 401 })
   if (!isPro(user.plan)) return requireProResponse()
 
   const body = await req.json().catch(() => ({}))
-  const prospectIds = Array.isArray(body.prospectIds)
+  const requestedIds = Array.isArray(body.prospectIds)
     ? body.prospectIds.filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0)
     : []
+  const prospectIds: string[] = Array.from(new Set<string>(requestedIds)).slice(0, MAX_BATCH_SIZE)
+  const overwrite = body.overwrite === true
 
   const campaign = await prisma.campaign.findFirst({
     where: {
@@ -94,11 +110,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     include: {
       prospects: {
         where: {
-          generatedBody: null,
           ...(prospectIds.length > 0 ? { id: { in: prospectIds } } : {}),
+          ...(overwrite ? {} : { generatedBody: null }),
         },
         orderBy: { createdAt: 'asc' },
-        take: 20,
+        take: MAX_BATCH_SIZE,
       },
     },
   })
@@ -107,20 +123,48 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Campagne introuvable' }, { status: 404 })
   }
 
+  if (campaign.prospects.length === 0) {
+    return NextResponse.json({
+      generated: [],
+      generatedCount: 0,
+      skippedCount: requestedIds.length,
+      message: overwrite
+        ? 'Aucun prospect selectionne dans cette campagne.'
+        : 'Tous les prospects selectionnes ont deja un message.',
+    })
+  }
+
   const generated = []
 
   for (const prospect of campaign.prospects) {
-    const result = await generateMessage(prospect)
-    const updated = await prisma.campaignProspect.update({
-      where: { id: prospect.id },
-      data: {
-        generatedSubject: result.subject,
-        generatedBody: result.body,
-        status: 'Message généré',
-      },
-    })
-    generated.push(updated)
+    try {
+      const result = await generateMessage(prospect)
+      const updated = await prisma.campaignProspect.update({
+        where: { id: prospect.id },
+        data: {
+          generatedSubject: result.subject,
+          generatedBody: result.body,
+          status: 'Message pret',
+          sendError: null,
+        },
+      })
+      generated.push(updated)
+    } catch (error) {
+      console.error('POST /api/campaigns/[id]/generate error:', {
+        campaignId: campaign.id,
+        prospectId: prospect.id,
+        message: error instanceof Error ? error.message : String(error),
+      })
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Impossible de generer le message.' },
+        { status: 500 }
+      )
+    }
   }
 
-  return NextResponse.json({ generated })
+  return NextResponse.json({
+    generated,
+    generatedCount: generated.length,
+    limited: requestedIds.length > MAX_BATCH_SIZE,
+  })
 }
