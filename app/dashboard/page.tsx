@@ -280,7 +280,19 @@ export default function Dashboard() {
     const res = await fetch('/api/campaigns')
     const data = await res.json().catch(() => ({}))
     setBulkCampaignsLoading(false)
-    if (res.ok) setCampaigns(data.campaigns || [])
+    if (res.ok) {
+      const loadedCampaigns = data.campaigns || []
+      setCampaigns(loadedCampaigns)
+      const targetChannelIds = results
+        .filter(channel => targetIds.includes(channel.channelId) || targetIds.includes(channel.id))
+        .map(channel => channel.channelId || channel.id)
+        .filter(Boolean)
+      const firstSelectable = loadedCampaigns.find((campaign: CampaignOption) => {
+        const existingIds = new Set(campaign.prospectChannelIds || [])
+        return targetChannelIds.some(channelId => !existingIds.has(channelId))
+      })
+      setBulkCampaignId(firstSelectable?.id || 'new')
+    }
     else if (data.upgrade) {
       setBulkModalOpen(false)
       setUpgradeOpen(true)

@@ -26,7 +26,13 @@ export async function GET() {
         select: { prospects: true },
       },
       prospects: {
-        select: { channelId: true },
+        select: {
+          channelId: true,
+          email: true,
+          generatedBody: true,
+          sendStatus: true,
+          sendError: true,
+        },
       },
     },
   })
@@ -34,6 +40,7 @@ export async function GET() {
   const campaigns = campaignRecords.map(({ prospects, ...campaign }) => ({
     ...campaign,
     prospectChannelIds: prospects.map(prospect => prospect.channelId),
+    prospects,
   }))
 
   return NextResponse.json({ campaigns })

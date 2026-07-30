@@ -56,6 +56,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     twitch: toNullableString(channel.twitch),
     website: toNullableString(channel.website),
     channelUrl: toNullableString(channel.channelUrl),
+    avatar: toNullableString(channel.avatar),
+    thumbnail: toNullableString(channel.thumbnail),
     score: toNullableInt(channel.score),
     scoreLabel: toNullableString(channel.scoreLabel),
     scoreReason: toNullableString(channel.scoreReason),
