@@ -75,17 +75,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Campagne introuvable' }, { status: 404 })
   }
 
-  let accessToken: string
-  try {
-    accessToken = await getValidGmailAccessToken(user.id)
-  } catch (error) {
-    const gmailError = error instanceof GmailError ? error : new GmailError('Erreur Gmail.')
-    return NextResponse.json(
-      { error: gmailError.message, gmailNotConnected: gmailError.status === 400 },
-      { status: gmailError.status }
-    )
-  }
-
   const foundIds = new Set(campaign.prospects.map(prospect => prospect.id))
   const results: SendResult[] = prospectIds
     .filter(id => !foundIds.has(id))
@@ -130,10 +119,41 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       })
       continue
     }
+  }
 
+  const eligibleProspects = campaign.prospects.filter(prospect =>
+    hasValidCampaignEmail(prospect.email) &&
+    hasCompleteCampaignMessage(prospect) &&
+    !isCampaignProspectAlreadyProcessed(prospect)
+  )
+
+  if (eligibleProspects.length === 0) {
+    const summary = getCampaignSendSummary(results)
+    return NextResponse.json({
+      results,
+      ...summary,
+      mode: SEND_MODE,
+      limited: requestedIds.length > CAMPAIGN_SEND_LIMIT,
+      message: 'Aucun prospect eligible. Verifiez email, sujet et message.',
+    })
+  }
+
+  let accessToken: string
+  try {
+    accessToken = await getValidGmailAccessToken(user.id)
+  } catch (error) {
+    const gmailError = error instanceof GmailError ? error : new GmailError('Erreur Gmail.')
+    return NextResponse.json(
+      { error: gmailError.message, gmailNotConnected: gmailError.status === 400 },
+      { status: gmailError.status }
+    )
+  }
+
+  for (const prospect of eligibleProspects) {
     try {
+      const email = prospect.email as string
       const delivery = await deliverGmailMessage(accessToken, {
-        to: prospect.email,
+        to: email,
         subject: prospect.generatedSubject || `Collaboration avec ${prospect.name}`,
         body: prospect.generatedBody || '',
       })
@@ -155,7 +175,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             data: {
               userId: user.id,
               channelName: prospect.name,
-              channelEmail: prospect.email,
+              channelEmail: email,
               content: prospect.generatedBody || '',
               status: 'Envoyé',
             },

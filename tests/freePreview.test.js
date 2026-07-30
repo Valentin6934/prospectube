@@ -23,6 +23,11 @@ const {
   getCampaignFromApiResponse,
   getCampaignIdFromCreateResponse,
 } = require('../lib/campaignClient.ts')
+const {
+  buildCampaignAiPrompt,
+  getCampaignAiConfigError,
+  parseCampaignAiText,
+} = require('../lib/campaignMessaging.ts')
 
 test('selects high, median and low scored prospects deterministically', () => {
   const prospects = [
@@ -228,4 +233,58 @@ test('campaign detail url and api parsing are stable', () => {
   assert.equal(buildCampaignDetailUrl('campaign 123'), '/campaigns?campaignId=campaign%20123')
   assert.deepEqual(getCampaignFromApiResponse({ campaign: { id: 'campaign_123' } }), { id: 'campaign_123' })
   assert.equal(getCampaignFromApiResponse({ error: 'Campagne introuvable' }), null)
+})
+
+test('campaign AI prompt includes prospect context without exposing configuration', () => {
+  const prompt = buildCampaignAiPrompt({
+    name: 'Creator Pro',
+    email: 'creator@example.com',
+    instagram: 'https://instagram.com/creator',
+    tiktok: null,
+    twitch: null,
+    website: null,
+    channelUrl: 'https://youtube.com/@creator',
+    score: 84,
+    scoreLabel: 'Excellent prospect',
+    scoreReason: 'Email professionnel trouvé',
+  })
+
+  assert.match(prompt, /Creator Pro/)
+  assert.match(prompt, /creator@example\.com/)
+  assert.match(prompt, /84\/100/)
+  assert.doesNotMatch(prompt, /ANTHROPIC_API_KEY|OPENAI_API_KEY/)
+})
+
+test('campaign AI response parsing handles subject, body and empty responses', () => {
+  assert.deepEqual(parseCampaignAiText('Objet: Collaboration video\n\nBonjour Thomas', 'Creator'), {
+    subject: 'Collaboration video',
+    body: 'Bonjour Thomas',
+  })
+
+  assert.deepEqual(parseCampaignAiText('Bonjour Thomas', 'Creator'), {
+    subject: 'Collaboration avec Creator',
+    body: 'Bonjour Thomas',
+  })
+
+  assert.throws(() => parseCampaignAiText('   ', 'Creator'), /vide/)
+})
+
+test('campaign AI configuration error hides broken generation states', () => {
+  assert.equal(getCampaignAiConfigError('secret'), null)
+  assert.equal(getCampaignAiConfigError(''), 'La generation IA est temporairement indisponible.')
+  assert.equal(getCampaignAiConfigError(undefined), 'La generation IA est temporairement indisponible.')
+})
+
+test('gmail send summary stays clear when Gmail is not needed for ineligible prospects', () => {
+  const summary = getCampaignSendSummary([
+    { success: false, skippedReason: 'no_email' },
+    { success: false, skippedReason: 'incomplete_message' },
+    { success: false, skippedReason: 'already_processed' },
+  ])
+
+  assert.equal(summary.successCount, 0)
+  assert.equal(summary.skippedNoEmailCount, 1)
+  assert.equal(summary.skippedIncompleteCount, 1)
+  assert.equal(summary.skippedAlreadyProcessedCount, 1)
+  assert.equal(summary.campaignResultStatus, 'Aucun email envoye')
 })

@@ -10,6 +10,12 @@ import ProGate from '@/components/ProGate'
 import MainAppNav from '@/components/MainAppNav'
 import { isPro } from '@/lib/plan'
 import { buildCampaignDetailUrl, getCampaignFromApiResponse } from '@/lib/campaignClient'
+import {
+  hasCompleteCampaignMessage,
+  hasValidCampaignEmail,
+  isCampaignProspectAlreadyProcessed,
+  isCampaignProspectSendEligible,
+} from '@/lib/campaignWorkflow'
 
 type CampaignSummaryProspect = {
   channelId: string
@@ -113,19 +119,19 @@ function isValidUrl(value: string | null) {
 }
 
 function hasValidEmail(email: string | null) {
-  return Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+  return hasValidCampaignEmail(email)
 }
 
 function hasCompleteMessage(prospect: CampaignProspect) {
-  return Boolean(prospect.generatedSubject?.trim() && prospect.generatedBody?.trim())
+  return hasCompleteCampaignMessage(prospect)
 }
 
 function isAlreadyProcessed(prospect: CampaignProspect) {
-  return prospect.sendStatus === 'Envoyé' || prospect.sendStatus === 'Brouillon créé'
+  return isCampaignProspectAlreadyProcessed(prospect)
 }
 
 function isSendEligible(prospect: CampaignProspect) {
-  return hasValidEmail(prospect.email) && hasCompleteMessage(prospect) && !isAlreadyProcessed(prospect)
+  return isCampaignProspectSendEligible(prospect)
 }
 
 function getScoreBucket(prospect: Pick<CampaignProspect, 'score' | 'scoreLabel'>) {
@@ -411,7 +417,7 @@ export default function CampaignsPage() {
 
     if (!res.ok) {
       if (data.upgrade) return showToast('Plan Pro requis pour les campagnes IA.', 'info')
-      return showToast(data.error || 'Impossible de générer les messages.', 'error')
+      return showToast(data.error || 'La génération IA est temporairement indisponible.', 'error')
     }
 
     await refreshSelectedCampaign(true)
@@ -438,12 +444,22 @@ export default function CampaignsPage() {
     const selectedProspects = selectedCampaign.prospects.filter(prospect => prospectIds.includes(prospect.id))
     const eligibleCount = selectedProspects.filter(isSendEligible).length
     if (eligibleCount === 0) {
-      showToast('Aucun prospect éligible : vérifiez email, sujet et message.', 'info')
+      const first = selectedProspects[0]
+      const reason = first
+        ? !hasValidEmail(first.email)
+          ? "Ce prospect n'a pas d'adresse email."
+          : !hasCompleteMessage(first)
+            ? 'Ajoutez un sujet et un message avant l’envoi.'
+            : isAlreadyProcessed(first)
+              ? 'Ce prospect a déjà été traité.'
+              : 'Aucun prospect éligible.'
+        : 'Aucun prospect éligible.'
+      showToast(reason, 'info')
       return
     }
 
     if (!gmail?.connected) {
-      showToast('Connectez Gmail pour envoyer cette campagne.', 'info')
+      showToast('Connectez Gmail avant d’envoyer une campagne.', 'info')
       return
     }
 
@@ -742,19 +758,22 @@ export default function CampaignsPage() {
                         const selected = selectedProspectIds.includes(prospect.id)
                         const eligible = isSendEligible(prospect)
                         return (
-                          <div key={prospect.id} style={{ border: selected ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.22)', borderRadius: '12px', padding: '0.95rem', background: 'rgba(255,255,255,0.025)' }}>
+                          <div key={prospect.id} className="prospect-card" style={{ border: selected ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.24)', borderRadius: '12px', padding: '1rem', background: selected ? 'linear-gradient(135deg, rgba(83,58,183,0.18), rgba(255,255,255,0.035))' : 'rgba(255,255,255,0.03)', boxShadow: '0 16px 40px rgba(0,0,0,0.16)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'start', marginBottom: '0.75rem' }}>
                               <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'start', minWidth: 0 }}>
                                 <input type="checkbox" checked={selected} onChange={() => toggleSelectedProspect(prospect.id)} aria-label={`Sélectionner ${prospect.name}`} style={{ marginTop: '0.35rem', accentColor: '#7B63D3', cursor: 'pointer' }} />
                                 {prospect.thumbnail ? (
-                                  <img src={prospect.thumbnail} alt={`Photo de ${prospect.name}`} style={{ width: '46px', height: '46px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(83,58,183,0.35)', flexShrink: 0 }} />
+                                  <img src={prospect.thumbnail} alt={`Photo de ${prospect.name}`} style={{ width: '54px', height: '54px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(83,58,183,0.35)', flexShrink: 0 }} />
                                 ) : (
-                                  <div aria-hidden="true" style={{ width: '46px', height: '46px', borderRadius: '50%', background: 'rgba(83,58,183,0.2)', border: '2px solid rgba(83,58,183,0.35)', color: '#a78bfa', display: 'grid', placeItems: 'center', fontWeight: 900, flexShrink: 0 }}>{prospect.avatar || getInitials(prospect.name)}</div>
+                                  <div aria-hidden="true" style={{ width: '54px', height: '54px', borderRadius: '50%', background: 'rgba(83,58,183,0.2)', border: '2px solid rgba(83,58,183,0.35)', color: '#a78bfa', display: 'grid', placeItems: 'center', fontWeight: 900, flexShrink: 0 }}>{prospect.avatar || getInitials(prospect.name)}</div>
                                 )}
                                 <div style={{ minWidth: 0 }}>
-                                  <div style={{ color: '#F0EDF8', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>{prospect.name}</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap' }}>
+                                    <div style={{ color: '#F0EDF8', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>{prospect.name}</div>
+                                    <span style={{ color: '#F0EDF8', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '0.18rem 0.55rem', fontSize: '0.72rem', fontWeight: 800 }}>{prospect.score || 0}/100</span>
+                                  </div>
                                   <div style={{ color: '#A89FCC', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-                                    {prospect.scoreLabel || 'Score inconnu'} · {prospect.score || 0}/100
+                                    {prospect.scoreLabel || 'Score inconnu'}
                                   </div>
                                   <div style={{ color: '#C4BCDF', fontSize: '0.78rem', marginTop: '0.35rem', lineHeight: 1.5 }}>{prospect.scoreReason || 'Aucune analyse disponible.'}</div>
                                 </div>
@@ -764,17 +783,18 @@ export default function CampaignsPage() {
                               </span>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.85rem' }}>
                               {prospect.email && <a href={`mailto:${prospect.email}`} style={{ color: '#22c55e', textDecoration: 'none', fontSize: '0.8rem' }}>Email</a>}
+                              {!prospect.email && <span style={{ color: '#eab308', background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.22)', borderRadius: '999px', padding: '0.22rem 0.55rem', fontSize: '0.78rem', fontWeight: 700 }}>Email non trouvé</span>}
                               {links.map(link => (
                                 <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', textDecoration: 'none', fontSize: '0.8rem' }}>{link.label.replace('Ouvrir ', '').replace('Voir la chaîne YouTube', 'YouTube')}</a>
                               ))}
                             </div>
 
-                            <div style={{ display: 'grid', gap: '0.6rem' }}>
+                            <div style={{ display: 'grid', gap: '0.65rem', background: 'rgba(10,8,18,0.34)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.85rem' }}>
                               <label style={{ color: '#F0EDF8', fontSize: '0.78rem', fontWeight: 800 }}>
                                 Sujet
-                                <input value={draft.subject} onChange={event => updateDraft(prospect.id, 'subject', event.target.value)} placeholder="Sujet de l'email" style={{ marginTop: '0.35rem', width: '100%' }} />
+                                <input value={draft.subject} onChange={event => updateDraft(prospect.id, 'subject', event.target.value)} placeholder="Sujet de l'email" style={{ marginTop: '0.35rem', width: '100%', background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.1)' }} />
                               </label>
                               <label style={{ color: '#F0EDF8', fontSize: '0.78rem', fontWeight: 800 }}>
                                 Message

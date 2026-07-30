@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isPro, requireProResponse } from '@/lib/plan'
+import { buildCampaignAiPrompt, getCampaignAiConfigError, parseCampaignAiText } from '@/lib/campaignMessaging'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,9 +36,8 @@ type ProspectForGeneration = {
 }
 
 async function generateMessage(prospect: ProspectForGeneration) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('Configuration IA manquante.')
-  }
+  const configError = getCampaignAiConfigError(process.env.ANTHROPIC_API_KEY)
+  if (configError) throw new Error(configError)
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -45,49 +45,13 @@ async function generateMessage(prospect: ProspectForGeneration) {
     messages: [
       {
         role: 'user',
-        content: `Tu es un monteur video freelance qui prospecte des createurs YouTube.
-
-Genere un message de prospection court, naturel et personnalise pour ce prospect :
-
-Nom : ${prospect.name}
-Email : ${prospect.email || 'Non trouve'}
-Instagram : ${prospect.instagram || 'Non trouve'}
-TikTok : ${prospect.tiktok || 'Non trouve'}
-Twitch : ${prospect.twitch || 'Non trouve'}
-Site web : ${prospect.website || 'Non trouve'}
-Chaine YouTube : ${prospect.channelUrl || 'Non trouve'}
-Score prospect : ${prospect.score || 0}/100
-Label score : ${prospect.scoreLabel || 'Non trouve'}
-Raison score : ${prospect.scoreReason || 'Non trouve'}
-
-Regles :
-- Message court : maximum 120 mots
-- Ton professionnel mais humain
-- Propose clairement ton aide pour ameliorer le montage video
-- Ne dis pas "je suis une IA"
-- Ne force pas trop la vente
-- Format exact :
-Objet: [sujet]
-
-[corps du message]`,
+        content: buildCampaignAiPrompt(prospect),
       },
     ],
   })
 
   const text = message.content[0]?.type === 'text' ? message.content[0].text.trim() : ''
-  const lines = text.split('\n')
-  const subject =
-    lines[0]
-      ?.replace('Objet:', '')
-      .replace('Subject:', '')
-      .trim() || `Collaboration avec ${prospect.name}`
-  const body = lines.slice(1).join('\n').trim() || text
-
-  if (!body) {
-    throw new Error('La reponse IA est vide.')
-  }
-
-  return { subject, body }
+  return parseCampaignAiText(text, prospect.name)
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -115,6 +79,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         },
         orderBy: { createdAt: 'asc' },
         take: MAX_BATCH_SIZE,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          instagram: true,
+          tiktok: true,
+          twitch: true,
+          website: true,
+          channelUrl: true,
+          score: true,
+          scoreLabel: true,
+          scoreReason: true,
+        },
       },
     },
   })
@@ -155,9 +132,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         prospectId: prospect.id,
         message: error instanceof Error ? error.message : String(error),
       })
+      const message = error instanceof Error ? error.message : 'Impossible de generer le message.'
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : 'Impossible de generer le message.' },
-        { status: 500 }
+        { error: message },
+        { status: message.includes('temporairement indisponible') ? 503 : 500 }
       )
     }
   }
