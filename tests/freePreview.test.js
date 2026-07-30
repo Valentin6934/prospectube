@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 const ts = require('typescript')
+const fs = require('node:fs')
 
 require.extensions['.ts'] = function transpile(module, filename) {
   const source = require('node:fs').readFileSync(filename, 'utf8')
@@ -456,6 +457,43 @@ test('prospect presentation uses thumbnail before initials when avatar is not an
 
   assert.equal(getProspectInitials('Creator Two', 'CT'), 'CT')
   assert.equal(normalizeProspectPresentation({ name: 'Creator Two', avatar: null, thumbnail: null }).initials, 'CT')
+})
+
+test('prospect presentation image fallback keeps campaign cards visually stable', () => {
+  assert.equal(getProspectImageUrl({
+    avatar: null,
+    thumbnail: null,
+    imageUrl: 'https://yt.example.com/image.jpg',
+  }), 'https://yt.example.com/image.jpg')
+
+  const fallback = normalizeProspectPresentation({
+    name: 'Fallback Creator',
+    avatar: null,
+    thumbnail: null,
+    imageUrl: null,
+  })
+
+  assert.equal(fallback.imageUrl, null)
+  assert.equal(fallback.initials, 'FC')
+})
+
+test('main app navigation uses the shared premium labels and emojis', () => {
+  const nav = fs.readFileSync('components/MainAppNav.tsx', 'utf8')
+  const signOut = fs.readFileSync('components/HomeSignOutButton.tsx', 'utf8')
+
+  for (const label of [
+    '🏠 Accueil',
+    '⭐ Favoris',
+    '🕘 Historique',
+    '🎯 Campagnes',
+    '🔍 Nouvelle recherche',
+    '⚙️ Paramètres',
+    '⭐ Plan {plan}',
+  ]) {
+    assert.match(nav, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+
+  assert.match(signOut, /🚪 Déconnexion/)
 })
 
 test('gmail send summary stays clear when Gmail is not needed for ineligible prospects', () => {

@@ -22,8 +22,8 @@ export default function ProspectPresentation({ channel, compact = false, selecte
   const avatarSize = compact ? 46 : 54
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', alignItems: 'flex-start', minWidth: 0 }}>
-      <div style={{ display: 'flex', gap: compact ? '0.65rem' : '0.9rem', minWidth: 0, flex: 1 }}>
+    <div style={{ width: '100%', maxWidth: '100%', display: 'flex', justifyContent: 'space-between', gap: '0.8rem', alignItems: 'flex-start', flexWrap: 'wrap', minWidth: 0, flex: '1 1 0', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', gap: compact ? '0.65rem' : '0.9rem', minWidth: 0, flex: '1 1 260px', maxWidth: '100%' }}>
         {prospect.imageUrl ? (
           <img
             src={prospect.imageUrl}
@@ -39,7 +39,7 @@ export default function ProspectPresentation({ channel, compact = false, selecte
           </div>
         )}
 
-        <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ minWidth: 0, flex: '1 1 0', maxWidth: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
             <div style={{ fontWeight: 800, fontSize: compact ? '0.95rem' : '1rem', color: '#F0EDF8', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prospect.name}</div>
             <span style={{ padding: '0.18rem 0.55rem', borderRadius: '999px', ...getScoreStyles(prospect.score), fontSize: '0.72rem', fontWeight: 800 }}>
@@ -77,7 +77,11 @@ export default function ProspectPresentation({ channel, compact = false, selecte
         </div>
       </div>
 
-      {rightSlot}
+      {rightSlot && (
+        <div style={{ flex: '0 1 auto', maxWidth: '100%', marginLeft: 'auto' }}>
+          {rightSlot}
+        </div>
+      )}
     </div>
   )
 }

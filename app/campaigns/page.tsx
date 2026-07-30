@@ -811,8 +811,8 @@ export default function CampaignsPage() {
                         const prospectWithDraft = getCampaignProspectWithDraft(prospect, draft)
                         const eligible = isSendEligible(prospectWithDraft)
                         return (
-                          <div key={prospect.id} className="prospect-card" style={{ border: selected ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.24)', borderRadius: '12px', padding: '1rem', background: selected ? 'linear-gradient(135deg, rgba(83,58,183,0.18), rgba(255,255,255,0.035))' : 'rgba(255,255,255,0.03)', boxShadow: '0 16px 40px rgba(0,0,0,0.16)' }}>
-                            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                          <div key={prospect.id} className="prospect-card campaign-prospect-card" style={{ border: selected ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.24)', borderRadius: '12px', padding: '1rem', background: selected ? 'linear-gradient(135deg, rgba(83,58,183,0.18), rgba(255,255,255,0.035))' : 'rgba(255,255,255,0.03)', boxShadow: '0 16px 40px rgba(0,0,0,0.16)', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+                            <div className="campaign-prospect-header">
                               <input type="checkbox" checked={selected} onChange={() => toggleSelectedProspect(prospect.id)} aria-label={`Sélectionner ${prospect.name}`} style={{ marginTop: '0.35rem', accentColor: '#7B63D3', cursor: 'pointer', flexShrink: 0 }} />
                               <ProspectPresentation
                                 channel={prospect}
@@ -825,21 +825,21 @@ export default function CampaignsPage() {
                                 )}
                               />
                             </div>
-                            <div style={{ color: '#C4BCDF', fontSize: '0.78rem', marginBottom: '0.85rem', lineHeight: 1.5 }}>{prospect.scoreReason || 'Aucune analyse disponible.'}</div>
+                            <div className="campaign-score-reason">{prospect.scoreReason || 'Aucune analyse disponible.'}</div>
 
-                            <div style={{ display: 'grid', gap: '0.65rem', background: 'rgba(10,8,18,0.34)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.85rem' }}>
+                            <div className="campaign-message-editor">
                               <label style={{ color: '#F0EDF8', fontSize: '0.78rem', fontWeight: 800 }}>
                                 Sujet
-                                <input value={draft.subject} onChange={event => updateDraft(prospect.id, 'subject', event.target.value)} placeholder="Sujet de l'email" style={{ marginTop: '0.35rem', width: '100%', background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                                <input value={draft.subject} onChange={event => updateDraft(prospect.id, 'subject', event.target.value)} placeholder="Sujet de l'email" style={{ marginTop: '0.35rem', width: '100%', minWidth: 0, background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.1)' }} />
                               </label>
                               <label style={{ color: '#F0EDF8', fontSize: '0.78rem', fontWeight: 800 }}>
                                 Message
-                                <textarea value={draft.body} onChange={event => updateDraft(prospect.id, 'body', event.target.value)} placeholder="Rédigez le message à envoyer." rows={5} style={{ marginTop: '0.35rem', width: '100%', resize: 'vertical' }} />
+                                <textarea value={draft.body} onChange={event => updateDraft(prospect.id, 'body', event.target.value)} placeholder="Rédigez le message à envoyer." rows={5} style={{ marginTop: '0.35rem', width: '100%', minWidth: 0, resize: 'vertical' }} />
                               </label>
                             </div>
 
-                            <div style={{ marginTop: '0.7rem', paddingTop: '0.65rem', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
-                              <div>
+                            <div className="campaign-prospect-footer">
+                              <div style={{ minWidth: 0 }}>
                                 <span style={{ color: prospect.sendStatus === 'Envoyé' || prospect.sendStatus === 'Brouillon créé' ? '#22c55e' : prospect.sendStatus === 'Erreur' ? '#ef4444' : '#A89FCC', fontSize: '0.76rem', fontWeight: 800 }}>
                                   {prospect.sendStatus || 'Non envoyé'}
                                 </span>
@@ -850,7 +850,7 @@ export default function CampaignsPage() {
                                   <span style={{ display: 'block', color: '#ef4444', fontSize: '0.7rem', marginTop: '0.2rem' }}>{prospect.sendError}</span>
                                 )}
                               </div>
-                              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                              <div className="campaign-prospect-actions">
                                 {CAMPAIGN_AI_ENABLED && (
                                   <button onClick={() => generateCampaignEmails([prospect.id])} disabled={generatingIds.includes(prospect.id) || sendingProspectIds.length > 0} className="btn btn-secondary">
                                     {generatingIds.includes(prospect.id) ? 'Génération...' : 'Générer avec l’IA'}

@@ -15,6 +15,7 @@ export type ProspectPresentationInput = {
   channelUrl?: string | null
   avatar?: string | null
   thumbnail?: string | null
+  imageUrl?: string | null
   color?: string | null
   totalViews?: number | null
   viewCount?: number | null
@@ -86,6 +87,7 @@ export function getProspectInitials(name?: string | null, avatar?: string | null
 export function getProspectImageUrl(channel: ProspectPresentationInput): string | null {
   if (isHttpUrl(channel.avatar)) return channel.avatar || null
   if (isHttpUrl(channel.thumbnail)) return channel.thumbnail || null
+  if (isHttpUrl(channel.imageUrl)) return channel.imageUrl || null
   return null
 }
 
