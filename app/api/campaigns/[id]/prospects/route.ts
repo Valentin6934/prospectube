@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
+import { Prisma } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isPro, requireProResponse } from '@/lib/plan'
@@ -13,6 +14,34 @@ function toNullableString(value: unknown): string | null {
 function toNullableInt(value: unknown): number | null {
   const number = Number(value)
   return Number.isFinite(number) ? Math.round(number) : null
+}
+
+function isMissingColumnError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2022'
+}
+
+const prospectSelect = {
+  id: true,
+  campaignId: true,
+  channelId: true,
+  name: true,
+  email: true,
+  instagram: true,
+  tiktok: true,
+  twitch: true,
+  website: true,
+  channelUrl: true,
+  score: true,
+  scoreLabel: true,
+  scoreReason: true,
+  generatedSubject: true,
+  generatedBody: true,
+  status: true,
+  sendStatus: true,
+  sentAt: true,
+  sendError: true,
+  gmailMessageId: true,
+  createdAt: true,
 }
 
 async function getCurrentUser() {
@@ -63,10 +92,32 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     scoreReason: toNullableString(channel.scoreReason),
   }
 
-  const result = await prisma.campaignProspect.createMany({
-    data: [prospectData],
-    skipDuplicates: true,
-  })
+  let result
+  try {
+    result = await prisma.campaignProspect.createMany({
+      data: [prospectData],
+      skipDuplicates: true,
+    })
+  } catch (error) {
+    if (!isMissingColumnError(error)) {
+      console.error('POST /api/campaigns/[id]/prospects error:', {
+        campaignId: campaign.id,
+        userId: user.id,
+        message: error instanceof Error ? error.message : String(error),
+      })
+      return NextResponse.json({ error: "Impossible d'ajouter ce prospect a la campagne." }, { status: 500 })
+    }
+
+    console.error('POST /api/campaigns/[id]/prospects missing media columns:', {
+      campaignId: campaign.id,
+      userId: user.id,
+    })
+    const { avatar: _avatar, thumbnail: _thumbnail, ...fallbackData } = prospectData
+    result = await prisma.campaignProspect.createMany({
+      data: [fallbackData],
+      skipDuplicates: true,
+    })
+  }
 
   const prospect = await prisma.campaignProspect.findUnique({
     where: {
@@ -75,7 +126,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         channelId,
       },
     },
+    select: prospectSelect,
   })
 
-  return NextResponse.json({ prospect, added: result.count === 1 })
+  return NextResponse.json({
+    prospect: prospect ? { ...prospect, avatar: null, thumbnail: null } : null,
+    added: result.count === 1,
+  })
 }

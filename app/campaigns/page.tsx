@@ -1,14 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useSession, signOut } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import AppLoader from '@/components/AppLoader'
 import EmptyState from '@/components/EmptyState'
 import Toast, { useToast } from '@/components/Toast'
 import ProGate from '@/components/ProGate'
+import MainAppNav from '@/components/MainAppNav'
 import { isPro } from '@/lib/plan'
+import { buildCampaignDetailUrl, getCampaignFromApiResponse } from '@/lib/campaignClient'
 
 type CampaignSummaryProspect = {
   channelId: string
@@ -279,6 +280,14 @@ export default function CampaignsPage() {
     Promise.all([loadCampaigns(), loadGmailStatus()]).finally(() => setLoading(false))
   }, [status, canUseCampaigns])
 
+  useEffect(() => {
+    const campaignId = new URLSearchParams(window.location.search).get('campaignId')
+    if (status !== 'authenticated' || !canUseCampaigns || !campaignId || loading) return
+    if (selectedCampaign?.id === campaignId || openingId === campaignId) return
+
+    openCampaign(campaignId)
+  }, [status, canUseCampaigns, loading, selectedCampaign?.id, openingId])
+
   const createCampaign = async () => {
     const name = newCampaignName.trim()
     if (!name) return
@@ -310,13 +319,28 @@ export default function CampaignsPage() {
     setOpeningId(null)
 
     if (!res.ok) {
-      showToast(data.error || 'Impossible de charger la campagne.', 'error')
+      const message =
+        res.status === 401 ? 'Connectez-vous pour ouvrir cette campagne.' :
+        res.status === 403 ? 'Cette campagne est réservée au plan Pro.' :
+        res.status === 404 ? 'Campagne introuvable ou inaccessible.' :
+        data.error || 'Impossible de charger la campagne.'
+      showToast(message, 'error')
       return
     }
 
-    setSelectedCampaign(data.campaign)
+    const campaign = getCampaignFromApiResponse<CampaignDetails>(data)
+    if (!campaign) {
+      showToast('Réponse campagne invalide.', 'error')
+      return
+    }
+
+    setSelectedCampaign(campaign)
     setSendSummary(null)
     if (!preserveSelection) setSelectedProspectIds([])
+    const url = buildCampaignDetailUrl(campaignId)
+    if (window.location.pathname + window.location.search !== url) {
+      router.replace(url)
+    }
   }
 
   const refreshSelectedCampaign = async (preserveSelection = true) => {
@@ -492,27 +516,7 @@ export default function CampaignsPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#0A0812' }}>
-      <nav className="app-nav" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
-        <Link href="/dashboard/home" style={{ textDecoration: 'none' }}>
-          <div className="font-display" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#F0EDF8' }}>
-            Prospect<span className="grad-text">Tube</span>
-          </div>
-        </Link>
-        <div className="app-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Link href="/dashboard/home" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>Accueil</Link>
-          <Link href="/dashboard" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>Nouvelle recherche</Link>
-          <Link href="/favorites" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>Mes favoris</Link>
-          <Link href="/history" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>Historique</Link>
-          <Link href="/campaigns" style={{ color: '#a78bfa', textDecoration: 'none', fontSize: '0.85rem' }}>Campagnes</Link>
-          <Link href="/settings" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>Paramètres</Link>
-          <div style={{ background: 'rgba(83,58,183,0.2)', border: '1px solid rgba(83,58,183,0.4)', color: '#a78bfa', padding: '0.2rem 0.75rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 500 }}>
-            Plan {plan}
-          </div>
-          <button onClick={() => signOut({ callbackUrl: '/' })} style={{ background: 'none', border: '1px solid rgba(83,58,183,0.3)', color: '#A89FCC', padding: '0.4rem 1rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-            Déconnexion
-          </button>
-        </div>
-      </nav>
+      <MainAppNav plan={plan} active="campaigns" />
 
       {!canUseCampaigns ? (
         <div style={{ maxWidth: '760px', margin: '0 auto', padding: '3rem 1.5rem' }}>

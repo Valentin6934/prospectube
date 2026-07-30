@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import CreatorDetails from './CreatorDetails'
 import ProGate from './ProGate'
+import { buildCampaignProspectPayload, getCampaignIdFromCreateResponse } from '@/lib/campaignClient'
 
 export type ProspectChannel = {
   id?: string
@@ -181,14 +182,20 @@ export default function ProspectCard({
         setCampaignError(createData.error || 'Impossible de creer la campagne.')
         return
       }
-      targetCampaignId = createData.campaign.id
+      const createdCampaignId = getCampaignIdFromCreateResponse(createData)
+      if (!createdCampaignId) {
+        setCampaignLoading(false)
+        setCampaignError("La campagne a ete creee, mais son identifiant est introuvable.")
+        return
+      }
+      targetCampaignId = createdCampaignId
       showToast('Campagne creee')
     }
 
     const addRes = await fetch(`/api/campaigns/${targetCampaignId}/prospects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(channel),
+      body: JSON.stringify(buildCampaignProspectPayload(channel as Record<string, unknown>)),
     })
     const addData = await addRes.json().catch(() => ({}))
     setCampaignLoading(false)

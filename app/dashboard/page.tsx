@@ -10,6 +10,7 @@ import Toast, { useToast } from '@/components/Toast'
 import ProGate from '@/components/ProGate'
 import { YOUTUBE_NICHES } from '@/lib/niches'
 import { getPlanName, isFree, isPro as isProPlan } from '@/lib/plan'
+import { buildCampaignProspectPayload, getCampaignIdFromCreateResponse } from '@/lib/campaignClient'
 
 const NICHES = ['Gaming', 'Finance & Business', 'Tech & Programmation', 'Fitness & Santé', 'Lifestyle & Vlog', 'Cuisine', 'Musique', 'Éducation', 'Voyage', 'Beauté & Mode']
 const LANGS = ['Français', 'Anglais', 'Espagnol', 'Portugais', 'Allemand']
@@ -343,7 +344,13 @@ export default function Dashboard() {
         setBulkError(createData.error || 'Impossible de créer la campagne.')
         return
       }
-      campaignId = createData.campaign.id
+      const createdCampaignId = getCampaignIdFromCreateResponse(createData)
+      if (!createdCampaignId) {
+        setBulkLoading(false)
+        setBulkError("La campagne a ete creee, mais son identifiant est introuvable.")
+        return
+      }
+      campaignId = createdCampaignId
       showToast('✓ Campagne créée')
     }
 
@@ -351,7 +358,7 @@ export default function Dashboard() {
       const response = await fetch(`/api/campaigns/${campaignId}/prospects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(channel),
+        body: JSON.stringify(buildCampaignProspectPayload(channel)),
       })
       const data = await response.json().catch(() => ({}))
       return { response, data }
