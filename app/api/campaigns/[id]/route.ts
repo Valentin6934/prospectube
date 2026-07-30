@@ -38,42 +38,57 @@ const campaignProspectSelect = {
   createdAt: true,
 }
 
+const campaignProspectSelectWithMedia = {
+  ...campaignProspectSelect,
+  avatar: true,
+  thumbnail: true,
+}
+
+function isMissingColumnError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2022'
+}
+
+async function findCampaign(params: { id: string; userId: string }, includeMedia: boolean) {
+  return prisma.campaign.findFirst({
+    where: {
+      id: params.id,
+      userId: params.userId,
+    },
+    include: {
+      prospects: {
+        orderBy: { createdAt: 'desc' },
+        select: includeMedia ? campaignProspectSelectWithMedia : campaignProspectSelect,
+      },
+      _count: {
+        select: { prospects: true },
+      },
+    },
+  })
+}
+
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
   if (!isPro(user.plan)) return requireProResponse()
 
   try {
-    const campaign = await prisma.campaign.findFirst({
-      where: {
-        id: params.id,
+    let campaign
+    try {
+      campaign = await findCampaign({ id: params.id, userId: user.id }, true)
+    } catch (error) {
+      if (!isMissingColumnError(error)) throw error
+      console.error('GET /api/campaigns/[id] missing media columns:', {
+        campaignId: params.id,
         userId: user.id,
-      },
-      include: {
-        prospects: {
-          orderBy: { createdAt: 'desc' },
-          select: campaignProspectSelect,
-        },
-        _count: {
-          select: { prospects: true },
-        },
-      },
-    })
+      })
+      campaign = await findCampaign({ id: params.id, userId: user.id }, false)
+    }
 
     if (!campaign) {
       return NextResponse.json({ error: 'Campagne introuvable' }, { status: 404 })
     }
 
-    return NextResponse.json({
-      campaign: {
-        ...campaign,
-        prospects: campaign.prospects.map(prospect => ({
-          ...prospect,
-          avatar: null,
-          thumbnail: null,
-        })),
-      },
-    })
+    return NextResponse.json({ campaign })
   } catch (error) {
     console.error('GET /api/campaigns/[id] error:', {
       campaignId: params.id,

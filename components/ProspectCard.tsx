@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import CreatorDetails from './CreatorDetails'
 import ProGate from './ProGate'
+import ProspectPresentation from './ProspectPresentation'
 import { buildCampaignProspectPayload, getCampaignIdFromCreateResponse } from '@/lib/campaignClient'
 
 export type ProspectChannel = {
@@ -58,26 +59,6 @@ type CampaignOption = {
   prospectChannelIds?: string[]
 }
 
-function formatCompactNumber(n: number): string {
-  if (n >= 1000000000) return `${(n / 1000000000).toFixed(1).replace('.0', '')}B`
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1).replace('.0', '')}M`
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace('.0', '')}K`
-  return String(n || 0)
-}
-
-function getCreatedYear(createdAt: string | null | undefined): string {
-  if (!createdAt) return ''
-  const year = new Date(createdAt).getFullYear()
-  return Number.isFinite(year) ? String(year) : ''
-}
-
-function getScoreStyles(score: number) {
-  if (score >= 80) return { background: 'rgba(34,197,94,0.15)', color: '#22c55e' }
-  if (score >= 65) return { background: 'rgba(234,179,8,0.15)', color: '#eab308' }
-  if (score >= 50) return { background: 'rgba(249,115,22,0.15)', color: '#f97316' }
-  return { background: 'rgba(239,68,68,0.15)', color: '#ef4444' }
-}
-
 function showToast(message: string, type: 'success' | 'error' | 'info' = 'success') {
   window.dispatchEvent(new CustomEvent('prospectube-toast', { detail: { message, type } }))
 }
@@ -102,25 +83,8 @@ export default function ProspectCard({
   const [campaignLoading, setCampaignLoading] = useState(false)
   const [campaignError, setCampaignError] = useState('')
   const [newCampaignName, setNewCampaignName] = useState('')
-  const score = channel.score || 0
-  const color = channel.color || '#533AB7'
   const name = channel.name || 'Chaine inconnue'
-  const avatar = channel.avatar || name.slice(0, 2).toUpperCase()
   const channelId = channel.channelId || channel.id || ''
-  const createdYear = getCreatedYear(channel.createdAt || channel.publishedAt || channel.channelCreatedAt)
-  const contacts = [
-    channel.email ? { label: 'Email trouve', href: `mailto:${channel.email}`, color: '#22c55e' } : null,
-    channel.instagram ? { label: 'Instagram', href: channel.instagram, color: '#e879f9' } : null,
-    channel.tiktok ? { label: 'TikTok', href: channel.tiktok, color: '#f472b6' } : null,
-    channel.twitch ? { label: 'Twitch', href: channel.twitch, color: '#9146FF' } : null,
-    channel.website ? { label: 'Site', href: channel.website, color: '#38bdf8' } : null,
-  ].filter(Boolean) as { label: string; href: string; color: string }[]
-  const stats = [
-    `${channel.subs || formatCompactNumber(channel.subsNum || 0)} abonnes`,
-    `${channel.totalViewsFormatted || formatCompactNumber(channel.totalViews || channel.viewCount || 0)} vues`,
-    `${channel.videoCountFormatted || formatCompactNumber(channel.videoCount || 0)} videos`,
-    createdYear ? `cree en ${createdYear}` : null,
-  ].filter(Boolean)
   const actionColumns = showRemoveButton ? 3 : showFavoriteButton && onGenerateEmail ? 4 : 3
 
   const openCampaignPicker = async () => {
@@ -219,41 +183,7 @@ export default function ProspectCard({
 
   return (
     <div className="card prospect-card" style={{ padding: '1rem', marginBottom: '0.85rem', border: '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
-      <div style={{ display: 'flex', gap: '0.9rem', minWidth: 0 }}>
-        {channel.thumbnail ? (
-          <img src={channel.thumbnail} alt={`Photo de ${name}`} style={{ width: '54px', height: '54px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(83,58,183,0.35)', flexShrink: 0 }} />
-        ) : (
-          <div style={{ width: '54px', height: '54px', borderRadius: '50%', background: `${color}33`, border: `2px solid ${color}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.9rem', color, flexShrink: 0 }}>
-            {avatar}
-          </div>
-        )}
-
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
-            <div style={{ fontWeight: 700, fontSize: '1rem', color: '#F0EDF8', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
-            <span style={{ padding: '0.18rem 0.55rem', borderRadius: '999px', ...getScoreStyles(score), fontSize: '0.72rem', fontWeight: 700 }}>
-              {channel.scoreLabel || 'Faible potentiel'}
-            </span>
-            <span style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.9rem' }}>{score}/100</span>
-          </div>
-
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.55rem' }}>
-            {stats.map(stat => (
-              <span key={stat} style={{ fontSize: '0.75rem', color: '#C4BCDF', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '0.22rem 0.55rem' }}>{stat}</span>
-            ))}
-          </div>
-
-          {contacts.length > 0 && (
-            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-              {contacts.map(contact => (
-                <a key={contact.label} href={contact.href} target={contact.href.startsWith('http') ? '_blank' : undefined} rel={contact.href.startsWith('http') ? 'noopener noreferrer' : undefined} style={{ fontSize: '0.75rem', color: contact.color, background: `${contact.color}1F`, border: `1px solid ${contact.color}3D`, borderRadius: '999px', padding: '0.22rem 0.55rem', textDecoration: 'none', fontWeight: 600 }}>
-                  {contact.label}
-                </a>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <ProspectPresentation channel={channel} />
 
       <div className="prospect-actions" style={{ display: 'grid', gridTemplateColumns: `repeat(${actionColumns}, minmax(0, 1fr))`, gap: '0.55rem', marginTop: '0.9rem' }}>
         {showFavoriteButton && (

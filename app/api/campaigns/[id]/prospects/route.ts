@@ -44,6 +44,12 @@ const prospectSelect = {
   createdAt: true,
 }
 
+const prospectSelectWithMedia = {
+  ...prospectSelect,
+  avatar: true,
+  thumbnail: true,
+}
+
 async function getCurrentUser() {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return null
@@ -119,18 +125,36 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     })
   }
 
-  const prospect = await prisma.campaignProspect.findUnique({
-    where: {
-      campaignId_channelId: {
-        campaignId: campaign.id,
-        channelId,
+  let prospect
+  try {
+    prospect = await prisma.campaignProspect.findUnique({
+      where: {
+        campaignId_channelId: {
+          campaignId: campaign.id,
+          channelId,
+        },
       },
-    },
-    select: prospectSelect,
-  })
+      select: prospectSelectWithMedia,
+    })
+  } catch (error) {
+    if (!isMissingColumnError(error)) throw error
+    console.error('POST /api/campaigns/[id]/prospects find missing media columns:', {
+      campaignId: campaign.id,
+      userId: user.id,
+    })
+    prospect = await prisma.campaignProspect.findUnique({
+      where: {
+        campaignId_channelId: {
+          campaignId: campaign.id,
+          channelId,
+        },
+      },
+      select: prospectSelect,
+    })
+  }
 
   return NextResponse.json({
-    prospect: prospect ? { ...prospect, avatar: null, thumbnail: null } : null,
+    prospect: prospect ? { avatar: null, thumbnail: null, ...prospect } : null,
     added: result.count === 1,
   })
 }

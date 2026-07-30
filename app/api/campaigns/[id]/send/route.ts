@@ -12,10 +12,9 @@ import { isPro, requireProResponse } from '@/lib/plan'
 import {
   CAMPAIGN_SEND_LIMIT,
   getCampaignSendSummary,
-  hasCompleteCampaignMessage,
-  hasValidCampaignEmail,
-  isCampaignProspectAlreadyProcessed,
+  getCampaignProspectSkipReason,
   limitUniqueCampaignSelection,
+  type CampaignSkipReason,
 } from '@/lib/campaignWorkflow'
 
 export const dynamic = 'force-dynamic'
@@ -35,7 +34,16 @@ type SendResult = {
   success: boolean
   status: string
   error?: string
-  skippedReason?: 'not_found' | 'no_email' | 'incomplete_message' | 'already_processed'
+  skippedReason?: CampaignSkipReason
+}
+
+function getSkipMessage(reason: CampaignSkipReason): string {
+  if (reason === 'no_email') return 'Aucun email disponible.'
+  if (reason === 'no_subject') return 'Sujet manquant.'
+  if (reason === 'no_body') return 'Message manquant.'
+  if (reason === 'already_processed') return 'Message deja traite.'
+  if (reason === 'not_found') return 'Prospect introuvable dans cette campagne.'
+  return 'Sujet ou message incomplet.'
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -87,44 +95,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }))
 
   for (const prospect of campaign.prospects) {
-    if (!hasValidCampaignEmail(prospect.email)) {
+    const skippedReason = getCampaignProspectSkipReason(prospect)
+    if (skippedReason) {
       results.push({
         prospectId: prospect.id,
         success: false,
-        status: 'Non envoye',
-        error: 'Aucun email disponible.',
-        skippedReason: 'no_email',
+        status: skippedReason === 'already_processed' ? prospect.sendStatus : 'Non envoye',
+        error: getSkipMessage(skippedReason),
+        skippedReason,
       })
-      continue
-    }
-
-    if (!hasCompleteCampaignMessage(prospect)) {
-      results.push({
-        prospectId: prospect.id,
-        success: false,
-        status: 'Non envoye',
-        error: 'Sujet ou message incomplet.',
-        skippedReason: 'incomplete_message',
-      })
-      continue
-    }
-
-    if (isCampaignProspectAlreadyProcessed(prospect)) {
-      results.push({
-        prospectId: prospect.id,
-        success: false,
-        status: prospect.sendStatus,
-        error: 'Message deja traite.',
-        skippedReason: 'already_processed',
-      })
-      continue
     }
   }
 
   const eligibleProspects = campaign.prospects.filter(prospect =>
-    hasValidCampaignEmail(prospect.email) &&
-    hasCompleteCampaignMessage(prospect) &&
-    !isCampaignProspectAlreadyProcessed(prospect)
+    getCampaignProspectSkipReason(prospect) === null
   )
 
   if (eligibleProspects.length === 0) {
