@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { SEND_MODE } from '@/lib/gmail'
+import { buildDisconnectedGmailStatus, buildGmailStatus } from '@/lib/gmailStatus'
 import { isPro, requireProResponse } from '@/lib/plan'
 
 export const dynamic = 'force-dynamic'
@@ -35,24 +36,10 @@ export async function GET() {
     })
 
     if (!account) {
-      return NextResponse.json({
-        connected: false,
-        email: null,
-        hasRefreshToken: false,
-        expiryDate: null,
-        updatedAt: null,
-        sendMode: SEND_MODE,
-      })
+      return NextResponse.json(buildDisconnectedGmailStatus(SEND_MODE))
     }
 
-    return NextResponse.json({
-      connected: true,
-      email: account.email || null,
-      hasRefreshToken: Boolean(account.refreshToken),
-      expiryDate: account.expiryDate?.toISOString() || null,
-      updatedAt: account.updatedAt.toISOString(),
-      sendMode: SEND_MODE,
-    })
+    return NextResponse.json(buildGmailStatus(account, SEND_MODE))
   } catch (error) {
     console.error('GET /api/gmail error:', error)
 
@@ -60,16 +47,10 @@ export async function GET() {
       error instanceof Prisma.PrismaClientKnownRequestError &&
       (error.code === 'P2021' || error.code === 'P2022')
 
-    return NextResponse.json({
-      connected: false,
-      email: null,
-      hasRefreshToken: false,
-      expiryDate: null,
-      updatedAt: null,
-      sendMode: SEND_MODE,
+    return NextResponse.json(buildGmailStatus(null, SEND_MODE, {
       unavailable: !setupRequired,
       setupRequired,
-    })
+    }))
   }
 }
 
@@ -93,5 +74,5 @@ export async function DELETE() {
     await prisma.googleAccount.delete({ where: { userId: user.id } })
   }
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, gmail: buildDisconnectedGmailStatus(SEND_MODE) })
 }

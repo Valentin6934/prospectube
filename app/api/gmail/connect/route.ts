@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic'
 
 const OAUTH_STATE_COOKIE = 'gmail_oauth_state'
 const OAUTH_VERIFIER_COOKIE = 'gmail_oauth_verifier'
+const OAUTH_RETURN_COOKIE = 'gmail_oauth_return'
 const OAUTH_COOKIE_MAX_AGE = 10 * 60
 
 function base64Url(buffer: Buffer) {
@@ -24,6 +25,11 @@ function callbackUrl(req: NextRequest) {
   const origin = configuredUrl || req.nextUrl.origin
 
   return `${origin.replace(/\/$/, '')}/api/gmail/callback`
+}
+
+function getReturnPath(req: NextRequest) {
+  const value = req.nextUrl.searchParams.get('returnTo') || '/settings'
+  return value.startsWith('/') && !value.startsWith('//') ? value : '/settings'
 }
 
 export async function GET(req: NextRequest) {
@@ -93,6 +99,7 @@ export async function GET(req: NextRequest) {
     }
     response.cookies.set(OAUTH_STATE_COOKIE, state, cookieOptions)
     response.cookies.set(OAUTH_VERIFIER_COOKIE, verifier, cookieOptions)
+    response.cookies.set(OAUTH_RETURN_COOKIE, getReturnPath(req), cookieOptions)
 
     console.log('GET /api/gmail/connect: redirecting to Google with status 302')
     return response

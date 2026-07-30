@@ -43,6 +43,12 @@ const {
   getCampaignAiConfigError,
   parseCampaignAiText,
 } = require('../lib/campaignMessaging.ts')
+const {
+  buildDisconnectedGmailStatus,
+  buildGmailStatus,
+  getSafeGmailErrorMessage,
+  shouldDisableGmailDrafts,
+} = require('../lib/gmailStatus.ts')
 
 test('selects high, median and low scored prospects deterministically', () => {
   const prospects = [
@@ -423,6 +429,69 @@ test('campaign Gmail labels reflect draft mode instead of implying a real send',
   assert.equal(getCampaignGmailActionLabel('send', 21), 'Envoyer (20)')
   assert.equal(getCampaignGmailSingleActionLabel('send'), 'Envoyer')
   assert.equal(getCampaignGmailProgressLabel('send'), 'Envoi...')
+})
+
+
+test('gmail status exposes connected accounts without leaking tokens', () => {
+  const status = buildGmailStatus({
+    email: 'creator@gmail.com',
+    accessToken: 'access-token-should-not-leak',
+    refreshToken: 'refresh-token-should-not-leak',
+    expiryDate: new Date('2030-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  }, 'draft')
+
+  assert.equal(status.connected, true)
+  assert.equal(status.state, 'connected')
+  assert.equal(status.email, 'creator@gmail.com')
+  assert.equal(status.hasRefreshToken, true)
+  assert.equal(shouldDisableGmailDrafts(status), false)
+  assert.equal(Object.prototype.hasOwnProperty.call(status, 'accessToken'), false)
+  assert.equal(Object.prototype.hasOwnProperty.call(status, 'refreshToken'), false)
+})
+
+test('gmail status distinguishes disconnected and expired connections', () => {
+  const disconnected = buildDisconnectedGmailStatus('draft')
+  assert.equal(disconnected.connected, false)
+  assert.equal(disconnected.state, 'disconnected')
+  assert.equal(shouldDisableGmailDrafts(disconnected), true)
+
+  const expired = buildGmailStatus({
+    email: 'creator@gmail.com',
+    refreshToken: null,
+    expiryDate: new Date('2025-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  }, 'draft')
+
+  assert.equal(expired.connected, false)
+  assert.equal(expired.state, 'expired')
+  assert.equal(expired.reconnectRequired, true)
+  assert.match(expired.message, /connexion Gmail a expir/)
+  assert.equal(shouldDisableGmailDrafts(expired), true)
+})
+
+test('gmail user-facing errors stay safe for refresh token failures', () => {
+  assert.match(getSafeGmailErrorMessage('invalid_refresh_token'), /connexion Gmail a expir/)
+  assert.match(getSafeGmailErrorMessage('missing_refresh_token'), /connexion Gmail a expir/)
+  assert.match(getSafeGmailErrorMessage('revoked_access'), /Reconnectez votre compte/)
+  assert.match(getSafeGmailErrorMessage('google_temporary'), /Google est temporairement indisponible/)
+})
+
+test('gmail OAuth reconnect and disconnect routes preserve ownership and replace tokens', () => {
+  const connectRoute = fs.readFileSync('app/api/gmail/connect/route.ts', 'utf8')
+  const callbackRoute = fs.readFileSync('app/api/gmail/callback/route.ts', 'utf8')
+  const gmailRoute = fs.readFileSync('app/api/gmail/route.ts', 'utf8')
+
+  assert.match(connectRoute, /access_type:\s*'offline'/)
+  assert.match(connectRoute, /prompt:\s*'consent'/)
+  assert.match(connectRoute, /getServerSession\(authOptions\)/)
+  assert.match(callbackRoute, /getServerSession\(authOptions\)/)
+  assert.match(callbackRoute, /prisma\.googleAccount\.upsert/)
+  assert.match(callbackRoute, /accessToken:\s*tokens\.access_token/)
+  assert.match(callbackRoute, /refreshToken,/)
+  assert.match(gmailRoute, /export async function DELETE/)
+  assert.match(gmailRoute, /where:\s*\{\s*userId:\s*user\.id\s*\}/)
+  assert.match(gmailRoute, /buildDisconnectedGmailStatus/)
 })
 
 test('prospect presentation normalizes media, contacts and fallback identity', () => {

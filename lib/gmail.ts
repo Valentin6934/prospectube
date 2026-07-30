@@ -1,9 +1,19 @@
 import { prisma } from '@/lib/prisma'
+import { getSafeGmailErrorMessage } from '@/lib/gmailStatus'
 
 export const SEND_MODE = process.env.GMAIL_SEND_MODE === 'send' ? 'send' : 'draft'
 
+export type GmailErrorCode =
+  | 'missing_account'
+  | 'missing_refresh_token'
+  | 'invalid_refresh_token'
+  | 'revoked_access'
+  | 'oauth_config'
+  | 'google_temporary'
+  | 'delivery_error'
+
 export class GmailError extends Error {
-  constructor(message: string, public status = 500) {
+  constructor(message: string, public status = 500, public code: GmailErrorCode = 'delivery_error') {
     super(message)
     this.name = 'GmailError'
   }
@@ -43,7 +53,7 @@ async function refreshAccessToken(userId: string, refreshToken: string) {
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
   if (!clientId || !clientSecret) {
-    throw new GmailError('Configuration Gmail incomplète.', 500)
+    throw new GmailError(getSafeGmailErrorMessage('oauth_config'), 500, 'oauth_config')
   }
 
   const response = await fetch('https://oauth2.googleapis.com/token', {
@@ -60,7 +70,14 @@ async function refreshAccessToken(userId: string, refreshToken: string) {
   const data = await response.json().catch(() => ({}))
 
   if (!response.ok || typeof data.access_token !== 'string') {
-    throw new GmailError('Impossible de renouveler automatiquement la connexion Gmail.', 401)
+    const googleError = typeof data.error === 'string' ? data.error : ''
+    const code: GmailErrorCode =
+      googleError === 'invalid_grant'
+        ? 'invalid_refresh_token'
+        : response.status >= 500
+          ? 'google_temporary'
+          : 'revoked_access'
+    throw new GmailError(getSafeGmailErrorMessage(code), response.status >= 500 ? 503 : 401, code)
   }
 
   const expiryDate = new Date(Date.now() + Number(data.expires_in || 3600) * 1000)
@@ -78,7 +95,7 @@ async function refreshAccessToken(userId: string, refreshToken: string) {
 
 export async function getValidGmailAccessToken(userId: string) {
   const account = await prisma.googleAccount.findUnique({ where: { userId } })
-  if (!account) throw new GmailError('Gmail n’est pas connecté.', 400)
+  if (!account) throw new GmailError(getSafeGmailErrorMessage('missing_account'), 400, 'missing_account')
 
   const tokenIsValid = account.expiryDate
     ? account.expiryDate.getTime() > Date.now() + 60_000
@@ -86,7 +103,7 @@ export async function getValidGmailAccessToken(userId: string) {
 
   if (tokenIsValid) return account.accessToken
   if (!account.refreshToken) {
-    throw new GmailError('La connexion Gmail ne possède pas de jeton de renouvellement.', 401)
+    throw new GmailError(getSafeGmailErrorMessage('missing_refresh_token'), 401, 'missing_refresh_token')
   }
 
   return refreshAccessToken(userId, account.refreshToken)
@@ -114,7 +131,8 @@ export async function deliverGmailMessage(accessToken: string, message: GmailMes
     const reason = data?.error?.message
     throw new GmailError(
       typeof reason === 'string' ? `Erreur Gmail : ${reason}` : 'Erreur Gmail lors de l’envoi.',
-      response.status
+      response.status,
+      'delivery_error'
     )
   }
 

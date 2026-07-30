@@ -128,7 +128,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   } catch (error) {
     const gmailError = error instanceof GmailError ? error : new GmailError('Erreur Gmail.')
     return NextResponse.json(
-      { error: gmailError.message, gmailNotConnected: gmailError.status === 400 },
+      {
+        error: gmailError.message,
+        gmailNotConnected: gmailError.code === 'missing_account',
+        gmailExpired: ['missing_refresh_token', 'invalid_refresh_token', 'revoked_access'].includes(gmailError.code),
+        reconnectRequired: ['missing_refresh_token', 'invalid_refresh_token', 'revoked_access'].includes(gmailError.code),
+        code: gmailError.code,
+      },
       { status: gmailError.status }
     )
   }

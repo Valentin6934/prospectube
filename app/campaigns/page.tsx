@@ -25,6 +25,7 @@ import {
   isCampaignProspectSendEligible,
   normalizeCampaignMessage,
 } from '@/lib/campaignWorkflow'
+import { shouldDisableGmailDrafts } from '@/lib/gmailStatus'
 
 type CampaignSummaryProspect = {
   channelId: string
@@ -75,8 +76,11 @@ type CampaignDetails = Omit<CampaignSummary, 'prospects'> & {
 
 type GmailStatus = {
   connected: boolean
+  state?: 'connected' | 'expired' | 'disconnected' | 'unavailable'
   email: string | null
   sendMode?: 'draft' | 'send'
+  message?: string
+  reconnectRequired?: boolean
 }
 
 type DraftMessage = {
@@ -230,6 +234,8 @@ export default function CampaignsPage() {
   const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
   const canUseCampaigns = isPro(plan)
+  const gmailDraftsDisabled = shouldDisableGmailDrafts(gmail)
+  const gmailNeedsReconnect = gmail?.state === 'expired' || Boolean(gmail?.reconnectRequired)
 
   const overview = useMemo(() => {
     const campaignCount = campaigns.length
@@ -253,6 +259,11 @@ export default function CampaignsPage() {
   const campaignStats = selectedCampaign ? getDetailedStats(selectedCampaign.prospects) : null
   const manualProspects = (selectedCampaign?.prospects || []).filter(prospect => !hasValidEmail(prospect.email))
 
+  const connectGmail = () => {
+    const returnTo = typeof window === 'undefined' ? '/campaigns' : `${window.location.pathname}${window.location.search}`
+    window.location.assign(`/api/gmail/connect?returnTo=${encodeURIComponent(returnTo)}`)
+  }
+
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
   }, [status, router])
@@ -261,11 +272,14 @@ export default function CampaignsPage() {
     const result = new URLSearchParams(window.location.search).get('gmail')
     if (!result) return
 
-    if (result === 'connected') showToast('Gmail connecté avec succès.')
+    if (result === 'connected') showToast('Gmail reconnecté avec succès.')
     else if (result === 'cancelled') showToast('Autorisation Gmail annulée.', 'info')
+    else if (result === 'refresh_token_error') showToast('Google n’a pas renvoyé de refresh token. Réessayez avec Reconnecter Gmail.', 'error')
     else showToast('La connexion Gmail a échoué. Réessayez.', 'error')
 
-    window.history.replaceState({}, '', '/campaigns')
+    const url = new URL(window.location.href)
+    url.searchParams.delete('gmail')
+    window.history.replaceState({}, '', `${url.pathname}${url.search}`)
   }, [showToast])
 
   useEffect(() => {
@@ -501,12 +515,17 @@ export default function CampaignsPage() {
       return
     }
 
-    if (!gmail?.connected) {
+    if (gmailNeedsReconnect) {
+      showToast(gmail?.message || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.', 'error')
+      return
+    }
+
+    if (gmailDraftsDisabled) {
       showToast('Connectez Gmail avant d’envoyer une campagne.', 'info')
       return
     }
 
-    const modeText = gmail.sendMode === 'send' ? 'envoyer' : 'créer des brouillons pour'
+    const modeText = gmail?.sendMode === 'send' ? 'envoyer' : 'créer des brouillons pour'
     if (!window.confirm(`Confirmer et ${modeText} ${eligibleCount} prospect${eligibleCount > 1 ? 's' : ''} ?`)) return
 
     setSendingProspectIds(ids)
@@ -526,6 +545,18 @@ export default function CampaignsPage() {
     setSendingProspectIds([])
 
     if (!response.ok) {
+      if (data.reconnectRequired || data.gmailExpired) {
+        setGmail(current => ({
+          connected: false,
+          state: 'expired',
+          email: current?.email || null,
+          sendMode: current?.sendMode || 'draft',
+          message: data.error || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.',
+          reconnectRequired: true,
+        }))
+        showToast(data.error || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.', 'error')
+        return
+      }
       if (data.gmailNotConnected) {
         showToast('Connectez Gmail depuis les Paramètres avant l’envoi.', 'info')
         return
@@ -719,17 +750,25 @@ export default function CampaignsPage() {
                     Les emails seront envoyés uniquement aux prospects avec email valide, sujet et message prêts. Pour les autres créateurs, utilisez les réseaux sociaux ou le site renseignés dans leur fiche.
                   </div>
 
-                  {!gmail?.connected ? (
+                  {gmailNeedsReconnect ? (
+                    <div style={{ marginBottom: '1rem', border: '1px solid rgba(245,158,11,0.26)', borderRadius: '12px', background: 'rgba(245,158,11,0.08)', padding: '1rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.92rem', marginBottom: '0.25rem' }}>Connexion Gmail expirée</div>
+                        <div style={{ color: '#FBBF24', fontSize: '0.8rem', lineHeight: 1.55 }}>{gmail?.message || 'Reconnectez Gmail pour créer les brouillons ou envoyer les messages de cette campagne.'}</div>
+                      </div>
+                      <button onClick={connectGmail} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem' }}>Reconnecter Gmail</button>
+                    </div>
+                  ) : gmailDraftsDisabled ? (
                     <div style={{ marginBottom: '1rem', border: '1px solid rgba(234,179,8,0.22)', borderRadius: '12px', background: 'rgba(234,179,8,0.07)', padding: '1rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <div>
+                      <div style={{ minWidth: 0 }}>
                         <div style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.92rem', marginBottom: '0.25rem' }}>Gmail n'est pas connecté</div>
                         <div style={{ color: '#D8C896', fontSize: '0.8rem', lineHeight: 1.55 }}>Connectez Gmail pour créer les brouillons ou envoyer les messages de cette campagne.</div>
                       </div>
-                      <button onClick={() => window.location.assign('/api/gmail/connect')} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem' }}>Connecter Gmail</button>
+                      <button onClick={connectGmail} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem' }}>Connecter Gmail</button>
                     </div>
                   ) : (
                     <div style={{ marginBottom: '1rem', border: '1px solid rgba(34,197,94,0.22)', borderRadius: '12px', background: 'rgba(34,197,94,0.07)', padding: '0.75rem 1rem', color: '#86efac', fontSize: '0.8rem', fontWeight: 800 }}>
-                      Gmail connecté{gmail.email ? ` : ${gmail.email}` : ''} · Mode {gmail.sendMode === 'send' ? 'envoi réel' : 'brouillon'}
+                      Gmail connecté{gmail?.email ? ` : ${gmail.email}` : ''} · Mode {gmail?.sendMode === 'send' ? 'envoi réel' : 'brouillon'}
                     </div>
                   )}
 
@@ -766,7 +805,7 @@ export default function CampaignsPage() {
                         {generatingIds.length > 0 ? <span className="button-loader"><span className="app-spinner" /> Génération...</span> : `Générer avec l'IA (${selectedProspectIds.length})`}
                       </button>
                     )}
-                    <button onClick={() => sendCampaignMessages(selectedProspectIds)} disabled={sendingProspectIds.length > 0 || selectedProspectIds.length === 0 || !gmail?.connected} className="btn btn-secondary">
+                    <button onClick={() => sendCampaignMessages(selectedProspectIds)} disabled={sendingProspectIds.length > 0 || selectedProspectIds.length === 0 || gmailDraftsDisabled} className="btn btn-secondary">
                       {sendingProspectIds.length > 0 ? <span className="button-loader"><span className="app-spinner" /> {getCampaignGmailProgressLabel(gmail?.sendMode)}</span> : getCampaignGmailActionLabel(gmail?.sendMode, selectedProspectIds.length)}
                     </button>
                   </div>
@@ -860,7 +899,7 @@ export default function CampaignsPage() {
                                   {savingIds.includes(prospect.id) ? 'Sauvegarde...' : 'Enregistrer'}
                                 </button>
                                 <button onClick={() => copyMessage(prospect)} disabled={!draft.body.trim()} className="btn btn-secondary">Copier</button>
-                                <button onClick={() => sendCampaignMessages([prospect.id])} disabled={sendingProspectIds.includes(prospect.id) || !eligible || !gmail?.connected} className="btn btn-secondary">
+                                <button onClick={() => sendCampaignMessages([prospect.id])} disabled={sendingProspectIds.includes(prospect.id) || !eligible || gmailDraftsDisabled} className="btn btn-secondary">
                                   {sendingProspectIds.includes(prospect.id) ? getCampaignGmailProgressLabel(gmail?.sendMode) : isAlreadyProcessed(prospect) ? 'Déjà traité' : getCampaignGmailSingleActionLabel(gmail?.sendMode)}
                                 </button>
                               </div>
