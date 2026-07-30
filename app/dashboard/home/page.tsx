@@ -5,7 +5,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getPlanName, isPro } from '@/lib/plan'
-import HomeSignOutButton from '@/components/HomeSignOutButton'
+import MainAppNav from '@/components/MainAppNav'
 import SubscriptionButton from '@/components/SubscriptionButton'
 import LegalFooter from '@/components/LegalFooter'
 import styles from './home.module.css'
@@ -190,25 +190,7 @@ export default async function DashboardHomePage({
 
   return (
     <main className={styles.page}>
-      <nav className={styles.nav}>
-        <div className={styles.navInner}>
-          <Link href="/dashboard/home" className={styles.logo}>
-            Prospect<span>Tube</span>
-          </Link>
-          <div className={styles.navActions}>
-            <div className={styles.secondaryNav}>
-              <Link href="/dashboard/home" aria-current="page">🏠 Accueil</Link>
-              <Link href="/favorites">Favoris</Link>
-              <Link href="/history">Historique</Link>
-              <Link href="/campaigns">Campagnes</Link>
-            </div>
-            <Link href="/dashboard" className={styles.searchButton}>Nouvelle recherche</Link>
-            <Link href="/settings" className={styles.settingsLink}>⚙ Paramètres</Link>
-            <span className={styles.planBadge}>Plan {plan}</span>
-            <HomeSignOutButton className={styles.signOut} />
-          </div>
-        </div>
-      </nav>
+      <MainAppNav plan={plan} active="home" />
 
       <div className={styles.container}>
         <header className={styles.welcome}>

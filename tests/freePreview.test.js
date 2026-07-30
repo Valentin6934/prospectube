@@ -17,6 +17,12 @@ const {
   isCampaignProspectSendEligible,
   limitUniqueCampaignSelection,
 } = require('../lib/campaignWorkflow.ts')
+const {
+  buildCampaignDetailUrl,
+  buildCampaignProspectPayload,
+  getCampaignFromApiResponse,
+  getCampaignIdFromCreateResponse,
+} = require('../lib/campaignClient.ts')
 
 test('selects high, median and low scored prospects deterministically', () => {
   const prospects = [
@@ -197,4 +203,29 @@ test('campaign selection is deduplicated and limited to 20 prospects', () => {
   assert.equal(limited.length, 20)
   assert.equal(new Set(limited).size, limited.length)
   assert.deepEqual(limited.slice(0, 3), ['a', 'b', 'p0'])
+})
+
+test('campaign creation response exposes the real campaign id for immediate assignment', () => {
+  assert.equal(getCampaignIdFromCreateResponse({ campaign: { id: 'campaign_123' } }), 'campaign_123')
+  assert.equal(getCampaignIdFromCreateResponse({ campaign: { id: '' } }), null)
+  assert.equal(getCampaignIdFromCreateResponse({ error: 'not found' }), null)
+})
+
+test('campaign prospect payload normalizes channel ids for existing and new campaigns', () => {
+  assert.deepEqual(buildCampaignProspectPayload({ id: 'yt_1', name: 'Creator' }), {
+    id: 'yt_1',
+    channelId: 'yt_1',
+    name: 'Creator',
+  })
+
+  assert.deepEqual(buildCampaignProspectPayload({ channelId: 'yt_2', id: 'ignored' }), {
+    channelId: 'yt_2',
+    id: 'ignored',
+  })
+})
+
+test('campaign detail url and api parsing are stable', () => {
+  assert.equal(buildCampaignDetailUrl('campaign 123'), '/campaigns?campaignId=campaign%20123')
+  assert.deepEqual(getCampaignFromApiResponse({ campaign: { id: 'campaign_123' } }), { id: 'campaign_123' })
+  assert.equal(getCampaignFromApiResponse({ error: 'Campagne introuvable' }), null)
 })
