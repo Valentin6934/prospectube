@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import {
+  buildGmailOAuthStatusRedirect,
+  getStableGmailOAuthCallbackUrl,
+  verifyGmailOAuthState,
+  type GmailOAuthStatePayload,
+} from '@/lib/gmailOAuthUrl'
 import { isPro } from '@/lib/plan'
 
 export const dynamic = 'force-dynamic'
@@ -11,28 +15,8 @@ const OAUTH_VERIFIER_COOKIE = 'gmail_oauth_verifier'
 const OAUTH_RETURN_COOKIE = 'gmail_oauth_return'
 const OAUTH_ORIGIN_COOKIE = 'gmail_oauth_origin'
 
-function getRequestOrigin(req: NextRequest) {
-  const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
-  const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
-  const host = forwardedHost || req.headers.get('host')
-  const protocol = forwardedProto || req.nextUrl.protocol.replace(':', '')
-
-  return (host ? `${protocol}://${host}` : req.nextUrl.origin).replace(/\/$/, '')
-}
-
-function callbackUrl(req: NextRequest) {
-  return `${getRequestOrigin(req)}/api/gmail/callback`
-}
-
-function safeReturnPath(req: NextRequest) {
-  const value = req.cookies.get(OAUTH_RETURN_COOKIE)?.value || '/settings'
-  return value.startsWith('/') && !value.startsWith('//') ? value : '/settings'
-}
-
-function oauthRedirect(req: NextRequest, status: string) {
-  const returnPath = safeReturnPath(req)
-  const separator = returnPath.includes('?') ? '&' : '?'
-  return NextResponse.redirect(new URL(`${returnPath}${separator}gmail=${status}`, getSafeReturnOrigin(req)))
+function oauthRedirect(status: string, payload?: GmailOAuthStatePayload | null) {
+  return NextResponse.redirect(buildGmailOAuthStatusRedirect(status, payload))
 }
 
 function clearOAuthCookies(response: NextResponse) {
@@ -43,60 +27,35 @@ function clearOAuthCookies(response: NextResponse) {
   return response
 }
 
-function getSafeReturnOrigin(req: NextRequest) {
-  const currentOrigin = getRequestOrigin(req)
-  const storedOrigin = req.cookies.get(OAUTH_ORIGIN_COOKIE)?.value
-  if (!storedOrigin) return currentOrigin
-
-  try {
-    const url = new URL(storedOrigin)
-    const current = new URL(currentOrigin)
-    const isHttp = url.protocol === 'https:' || url.protocol === 'http:'
-    const isSameHost = url.host === current.host
-    const isVercelPreview = url.hostname.endsWith('.vercel.app')
-    const isLocalDev = process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1'].includes(url.hostname)
-
-    if (isHttp && (isSameHost || isVercelPreview || isLocalDev)) {
-      return url.origin
-    }
-  } catch {
-    return currentOrigin
-  }
-
-  return currentOrigin
-}
-
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email) {
-    return clearOAuthCookies(oauthRedirect(req, 'unauthorized'))
-  }
-
-  const currentUser = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true, plan: true },
-  })
-  if (!currentUser) return clearOAuthCookies(oauthRedirect(req, 'user_error'))
-  if (!isPro(currentUser.plan)) return clearOAuthCookies(oauthRedirect(req, 'pro_required'))
-
   const error = req.nextUrl.searchParams.get('error')
   const code = req.nextUrl.searchParams.get('code')
   const state = req.nextUrl.searchParams.get('state')
-  const expectedState = req.cookies.get(OAUTH_STATE_COOKIE)?.value
-  const verifier = req.cookies.get(OAUTH_VERIFIER_COOKIE)?.value
+  const payload = verifyGmailOAuthState(state)
 
-  if (error) return clearOAuthCookies(oauthRedirect(req, 'cancelled'))
-  if (!code || !state || !expectedState || state !== expectedState || !verifier) {
-    return clearOAuthCookies(oauthRedirect(req, 'invalid_state'))
+  if (!payload) {
+    return clearOAuthCookies(oauthRedirect('invalid_state'))
   }
+  if (error) return clearOAuthCookies(oauthRedirect('cancelled', payload))
+  if (!code) {
+    return clearOAuthCookies(oauthRedirect('invalid_state', payload))
+  }
+
+  const currentUser = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    select: { id: true, plan: true },
+  })
+  if (!currentUser) return clearOAuthCookies(oauthRedirect('user_error', payload))
+  if (!isPro(currentUser.plan)) return clearOAuthCookies(oauthRedirect('pro_required', payload))
 
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
   if (!clientId || !clientSecret) {
-    return clearOAuthCookies(oauthRedirect(req, 'config_error'))
+    return clearOAuthCookies(oauthRedirect('config_error', payload))
   }
 
   try {
+    const redirectUri = getStableGmailOAuthCallbackUrl()
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -104,16 +63,15 @@ export async function GET(req: NextRequest) {
         code,
         client_id: clientId,
         client_secret: clientSecret,
-        redirect_uri: callbackUrl(req),
+        redirect_uri: redirectUri,
         grant_type: 'authorization_code',
-        code_verifier: verifier,
       }),
       cache: 'no-store',
     })
     const tokens = await tokenResponse.json().catch(() => ({}))
 
     if (!tokenResponse.ok || typeof tokens.access_token !== 'string') {
-      return clearOAuthCookies(oauthRedirect(req, 'token_error'))
+      return clearOAuthCookies(oauthRedirect('token_error', payload))
     }
 
     const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
@@ -122,7 +80,7 @@ export async function GET(req: NextRequest) {
     })
     const profile = await profileResponse.json().catch(() => ({}))
     if (!profileResponse.ok || typeof profile.sub !== 'string') {
-      return clearOAuthCookies(oauthRedirect(req, 'profile_error'))
+      return clearOAuthCookies(oauthRedirect('profile_error', payload))
     }
 
     const existingAccount = await prisma.googleAccount.findUnique({
@@ -134,7 +92,7 @@ export async function GET(req: NextRequest) {
       : existingAccount?.refreshToken || null
 
     if (!refreshToken) {
-      return clearOAuthCookies(oauthRedirect(req, 'refresh_token_error'))
+      return clearOAuthCookies(oauthRedirect('refresh_token_error', payload))
     }
 
     await prisma.googleAccount.upsert({
@@ -158,9 +116,9 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    return clearOAuthCookies(oauthRedirect(req, 'connected'))
+    return clearOAuthCookies(oauthRedirect('connected', payload))
   } catch (error) {
     console.error('Gmail OAuth callback failed:', error)
-    return clearOAuthCookies(oauthRedirect(req, 'oauth_error'))
+    return clearOAuthCookies(oauthRedirect('oauth_error', payload))
   }
 }

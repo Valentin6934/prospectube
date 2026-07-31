@@ -1,48 +1,34 @@
-import { createHash, randomBytes } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { REQUIRED_GMAIL_DRAFT_SCOPE } from '@/lib/gmailStatus'
+import {
+  createGmailOAuthState,
+  getRequestOriginFromParts,
+  getSafeGmailOAuthReturnPath,
+  getStableGmailOAuthCallbackUrl,
+} from '@/lib/gmailOAuthUrl'
 import { isPro, requireProResponse } from '@/lib/plan'
 
 export const dynamic = 'force-dynamic'
 
-const OAUTH_STATE_COOKIE = 'gmail_oauth_state'
-const OAUTH_VERIFIER_COOKIE = 'gmail_oauth_verifier'
-const OAUTH_RETURN_COOKIE = 'gmail_oauth_return'
-const OAUTH_ORIGIN_COOKIE = 'gmail_oauth_origin'
-const OAUTH_COOKIE_MAX_AGE = 10 * 60
-
-function base64Url(buffer: Buffer) {
-  return buffer
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '')
-}
-
 function getRequestOrigin(req: NextRequest) {
-  const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
-  const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
-  const host = forwardedHost || req.headers.get('host')
-  const protocol = forwardedProto || req.nextUrl.protocol.replace(':', '')
-
-  return (host ? `${protocol}://${host}` : req.nextUrl.origin).replace(/\/$/, '')
-}
-
-function callbackUrl(req: NextRequest) {
-  return `${getRequestOrigin(req)}/api/gmail/callback`
+  return getRequestOriginFromParts({
+    forwardedHost: req.headers.get('x-forwarded-host'),
+    forwardedProto: req.headers.get('x-forwarded-proto'),
+    host: req.headers.get('host'),
+    fallbackOrigin: req.nextUrl.origin,
+  })
 }
 
 function getReturnPath(req: NextRequest) {
-  const value = req.nextUrl.searchParams.get('returnTo') || '/settings'
-  return value.startsWith('/') && !value.startsWith('//') ? value : '/settings'
+  return getSafeGmailOAuthReturnPath(req.nextUrl.searchParams.get('returnTo') || '/settings')
 }
 
 export async function GET(req: NextRequest) {
   console.log('GET /api/gmail/connect: route entered')
-  console.log('GET /api/gmail/connect: NEXTAUTH_URL:', process.env.NEXTAUTH_URL || '(missing)')
+  console.log('GET /api/gmail/connect: NEXTAUTH_URL present:', Boolean(process.env.NEXTAUTH_URL))
   console.log('GET /api/gmail/connect: GOOGLE_CLIENT_ID present:', Boolean(process.env.GOOGLE_CLIENT_ID))
 
   try {
@@ -57,7 +43,7 @@ export async function GET(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { plan: true },
+      select: { id: true, plan: true },
     })
     if (!user) {
       return NextResponse.json({ error: 'Utilisateur introuvable.' }, { status: 404 })
@@ -71,14 +57,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: message }, { status: 500 })
     }
 
-    const state = base64Url(randomBytes(32))
-    const verifier = base64Url(randomBytes(64))
-    const challenge = base64Url(createHash('sha256').update(verifier).digest())
+    const state = createGmailOAuthState({
+      userId: user.id,
+      origin: getRequestOrigin(req),
+      returnPath: getReturnPath(req),
+    })
+    const redirectUri = getStableGmailOAuthCallbackUrl()
     const authorizationUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
 
     authorizationUrl.search = new URLSearchParams({
       client_id: clientId,
-      redirect_uri: callbackUrl(req),
+      redirect_uri: redirectUri,
       response_type: 'code',
       access_type: 'offline',
       prompt: 'consent',
@@ -90,24 +79,12 @@ export async function GET(req: NextRequest) {
         REQUIRED_GMAIL_DRAFT_SCOPE,
       ].join(' '),
       state,
-      code_challenge: challenge,
-      code_challenge_method: 'S256',
     }).toString()
 
-    console.log('GET /api/gmail/connect: OAuth URL generated:', authorizationUrl.toString())
+    console.log('GET /api/gmail/connect: OAuth redirect_uri:', redirectUri)
+    console.log('GET /api/gmail/connect: OAuth URL generated for Google')
 
     const response = NextResponse.redirect(authorizationUrl, { status: 302 })
-    const cookieOptions = {
-      httpOnly: true,
-      sameSite: 'lax' as const,
-      secure: process.env.NODE_ENV === 'production',
-      path: '/',
-      maxAge: OAUTH_COOKIE_MAX_AGE,
-    }
-    response.cookies.set(OAUTH_STATE_COOKIE, state, cookieOptions)
-    response.cookies.set(OAUTH_VERIFIER_COOKIE, verifier, cookieOptions)
-    response.cookies.set(OAUTH_RETURN_COOKIE, getReturnPath(req), cookieOptions)
-    response.cookies.set(OAUTH_ORIGIN_COOKIE, getRequestOrigin(req), cookieOptions)
 
     console.log('GET /api/gmail/connect: redirecting to Google with status 302')
     return response
