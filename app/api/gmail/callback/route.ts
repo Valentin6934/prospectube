@@ -11,6 +11,9 @@ const OAUTH_VERIFIER_COOKIE = 'gmail_oauth_verifier'
 const OAUTH_RETURN_COOKIE = 'gmail_oauth_return'
 
 function callbackUrl(req: NextRequest) {
+  const configuredUrl = process.env.NEXTAUTH_URL?.trim()
+  if (configuredUrl) return `${configuredUrl.replace(/\/$/, '')}/api/gmail/callback`
+
   const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
   const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
   const host = forwardedHost || req.headers.get('host')

@@ -43,6 +43,7 @@ const {
   getCampaignAiConfigError,
   parseCampaignAiText,
 } = require('../lib/campaignMessaging.ts')
+const { encodeGmailMessage } = require('../lib/gmailMessage.ts')
 const {
   buildDisconnectedGmailStatus,
   buildGmailStatus,
@@ -442,7 +443,9 @@ test('gmail status exposes connected accounts without leaking tokens', () => {
   }, 'draft')
 
   assert.equal(status.connected, true)
+  assert.equal(status.status, 'connected')
   assert.equal(status.state, 'connected')
+  assert.equal(status.canUseGmail, true)
   assert.equal(status.email, 'creator@gmail.com')
   assert.equal(status.hasRefreshToken, true)
   assert.equal(shouldDisableGmailDrafts(status), false)
@@ -453,7 +456,9 @@ test('gmail status exposes connected accounts without leaking tokens', () => {
 test('gmail status distinguishes disconnected and expired connections', () => {
   const disconnected = buildDisconnectedGmailStatus('draft')
   assert.equal(disconnected.connected, false)
+  assert.equal(disconnected.status, 'disconnected')
   assert.equal(disconnected.state, 'disconnected')
+  assert.equal(disconnected.canUseGmail, false)
   assert.equal(shouldDisableGmailDrafts(disconnected), true)
 
   const expired = buildGmailStatus({
@@ -464,7 +469,9 @@ test('gmail status distinguishes disconnected and expired connections', () => {
   }, 'draft')
 
   assert.equal(expired.connected, false)
+  assert.equal(expired.status, 'expired')
   assert.equal(expired.state, 'expired')
+  assert.equal(expired.canUseGmail, false)
   assert.equal(expired.reconnectRequired, true)
   assert.match(expired.message, /connexion Gmail a expir/)
   assert.equal(shouldDisableGmailDrafts(expired), true)
@@ -492,6 +499,67 @@ test('gmail OAuth reconnect and disconnect routes preserve ownership and replace
   assert.match(gmailRoute, /export async function DELETE/)
   assert.match(gmailRoute, /where:\s*\{\s*userId:\s*user\.id\s*\}/)
   assert.match(gmailRoute, /buildDisconnectedGmailStatus/)
+})
+
+test('settings and campaigns read the same uncached Gmail status endpoint', () => {
+  const settingsPage = fs.readFileSync('app/settings/page.tsx', 'utf8')
+  const campaignsPage = fs.readFileSync('app/campaigns/page.tsx', 'utf8')
+  const gmailRoute = fs.readFileSync('app/api/gmail/route.ts', 'utf8')
+
+  assert.match(settingsPage, /fetch\('\/api\/gmail', \{ cache: 'no-store' \}\)/)
+  assert.match(campaignsPage, /fetch\('\/api\/gmail', \{ cache: 'no-store' \}\)/)
+  assert.match(gmailRoute, /Cache-Control': 'no-store, max-age=0'/)
+  assert.match(gmailRoute, /buildGmailStatus\(account, SEND_MODE\)/)
+})
+
+test('campaign V1 interface does not expose AI generation controls', () => {
+  const campaignsPage = fs.readFileSync('app/campaigns/page.tsx', 'utf8')
+
+  assert.doesNotMatch(campaignsPage, /CAMPAIGN_AI_ENABLED/)
+  assert.doesNotMatch(campaignsPage, /generateCampaignEmails/)
+  assert.doesNotMatch(campaignsPage, /generatingIds/)
+  assert.doesNotMatch(campaignsPage, /\/generate/)
+  assert.doesNotMatch(campaignsPage, /Générer avec/)
+})
+
+test('gmail MIME uses required headers and base64url encoding', () => {
+  const raw = encodeGmailMessage({
+    to: 'creator@example.com',
+    subject: 'Collaboration vidéo',
+    body: 'Bonjour Thomas',
+  })
+
+  assert.doesNotMatch(raw, /[+/=]/)
+  const decoded = Buffer.from(raw.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+  assert.match(decoded, /To: creator@example\.com/)
+  assert.match(decoded, /Subject: =\?UTF-8\?B\?/)
+  assert.match(decoded, /MIME-Version: 1\.0/)
+  assert.match(decoded, /Content-Type: text\/plain; charset="UTF-8"/)
+  assert.match(decoded, /Bonjour Thomas/)
+})
+
+test('gmail draft validation rejects invalid payloads before calling Gmail', () => {
+  assert.throws(() => encodeGmailMessage({ to: '', subject: 'Sujet', body: 'Message' }), /GMAIL_DRAFT_INVALID/)
+  assert.throws(() => encodeGmailMessage({ to: 'creator@example.com', subject: '', body: 'Message' }), /GMAIL_DRAFT_INVALID/)
+  assert.throws(() => encodeGmailMessage({ to: 'creator@example.com', subject: 'Sujet', body: '   ' }), /GMAIL_DRAFT_INVALID/)
+})
+
+test('campaign send route returns functional Gmail error codes', () => {
+  const sendRoute = fs.readFileSync('app/api/campaigns/[id]/send/route.ts', 'utf8')
+
+  for (const code of [
+    'GMAIL_NOT_CONNECTED',
+    'GMAIL_CONNECTION_EXPIRED',
+    'GMAIL_SCOPE_MISSING',
+    'GMAIL_DRAFT_INVALID',
+    'GMAIL_API_REJECTED',
+    'GMAIL_TEMPORARY_ERROR',
+  ]) {
+    assert.match(sendRoute, new RegExp(code))
+  }
+
+  assert.match(sendRoute, /forceRefresh: true/)
+  assert.doesNotMatch(sendRoute, /Erreur Gmail/)
 })
 
 test('prospect presentation normalizes media, contacts and fallback identity', () => {

@@ -8,6 +8,7 @@ import { buildDisconnectedGmailStatus, buildGmailStatus } from '@/lib/gmailStatu
 import { isPro, requireProResponse } from '@/lib/plan'
 
 export const dynamic = 'force-dynamic'
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store, max-age=0' }
 
 async function getCurrentUser() {
   const session = await getServerSession(authOptions)
@@ -36,10 +37,10 @@ export async function GET() {
     })
 
     if (!account) {
-      return NextResponse.json(buildDisconnectedGmailStatus(SEND_MODE))
+      return NextResponse.json(buildDisconnectedGmailStatus(SEND_MODE), { headers: NO_STORE_HEADERS })
     }
 
-    return NextResponse.json(buildGmailStatus(account, SEND_MODE))
+    return NextResponse.json(buildGmailStatus(account, SEND_MODE), { headers: NO_STORE_HEADERS })
   } catch (error) {
     console.error('GET /api/gmail error:', error)
 
@@ -47,10 +48,13 @@ export async function GET() {
       error instanceof Prisma.PrismaClientKnownRequestError &&
       (error.code === 'P2021' || error.code === 'P2022')
 
-    return NextResponse.json(buildGmailStatus(null, SEND_MODE, {
-      unavailable: !setupRequired,
-      setupRequired,
-    }))
+    return NextResponse.json(
+      buildGmailStatus(null, SEND_MODE, {
+        unavailable: !setupRequired,
+        setupRequired,
+      }),
+      { headers: NO_STORE_HEADERS }
+    )
   }
 }
 
@@ -74,5 +78,5 @@ export async function DELETE() {
     await prisma.googleAccount.delete({ where: { userId: user.id } })
   }
 
-  return NextResponse.json({ ok: true, gmail: buildDisconnectedGmailStatus(SEND_MODE) })
+  return NextResponse.json({ ok: true, gmail: buildDisconnectedGmailStatus(SEND_MODE) }, { headers: NO_STORE_HEADERS })
 }

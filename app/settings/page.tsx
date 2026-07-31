@@ -12,7 +12,9 @@ import { shouldDisableGmailDrafts } from '@/lib/gmailStatus'
 
 type GmailStatus = {
   connected: boolean
+  status: 'connected' | 'expired' | 'disconnected' | 'unavailable'
   state: 'connected' | 'expired' | 'disconnected' | 'unavailable'
+  canUseGmail: boolean
   email: string | null
   hasRefreshToken: boolean
   expiryDate: string | null
@@ -68,7 +70,7 @@ export default function SettingsPage() {
 
   const loadGmailStatus = async () => {
     try {
-      const response = await fetch('/api/gmail')
+      const response = await fetch('/api/gmail', { cache: 'no-store' })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.error || 'Impossible de vérifier Gmail.')
       setGmail(data)
@@ -83,12 +85,14 @@ export default function SettingsPage() {
     if (!window.confirm('Déconnecter Gmail de ProspectTube ?')) return
     setDisconnecting(true)
     try {
-      const response = await fetch('/api/gmail', { method: 'DELETE' })
+      const response = await fetch('/api/gmail', { method: 'DELETE', cache: 'no-store' })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data.error || 'Impossible de déconnecter Gmail.')
       setGmail(data.gmail || {
         connected: false,
+        status: 'disconnected',
         state: 'disconnected',
+        canUseGmail: false,
         email: null,
         hasRefreshToken: false,
         expiryDate: null,

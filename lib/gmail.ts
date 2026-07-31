@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { getSafeGmailErrorMessage } from '@/lib/gmailStatus'
+import { encodeGmailMessage, type GmailMessage } from '@/lib/gmailMessage'
 
 export const SEND_MODE = process.env.GMAIL_SEND_MODE === 'send' ? 'send' : 'draft'
 
@@ -10,43 +11,44 @@ export type GmailErrorCode =
   | 'revoked_access'
   | 'oauth_config'
   | 'google_temporary'
+  | 'access_token_expired'
+  | 'scope_missing'
+  | 'draft_invalid'
+  | 'api_rejected'
+  | 'status_persist_failed'
   | 'delivery_error'
 
 export class GmailError extends Error {
-  constructor(message: string, public status = 500, public code: GmailErrorCode = 'delivery_error') {
+  constructor(
+    message: string,
+    public status = 500,
+    public code: GmailErrorCode = 'delivery_error',
+    public gmailStatus?: number
+  ) {
     super(message)
     this.name = 'GmailError'
   }
 }
 
-type GmailMessage = {
-  to: string
-  subject: string
-  body: string
-}
+function getGmailApiError(responseStatus: number, reason?: string): GmailError {
+  if (responseStatus === 400) {
+    return new GmailError('Le brouillon est invalide : vérifiez le destinataire, le sujet et le message.', 400, 'draft_invalid', responseStatus)
+  }
+  if (responseStatus === 401) {
+    return new GmailError('Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.', 401, 'access_token_expired', responseStatus)
+  }
+  if (responseStatus === 403) {
+    return new GmailError('L’autorisation Gmail ne permet pas de créer des brouillons.', 403, 'scope_missing', responseStatus)
+  }
+  if (responseStatus >= 500) {
+    return new GmailError('Google Gmail a temporairement refusé la requête. Réessayez.', 503, 'google_temporary', responseStatus)
+  }
 
-function encodeSubject(subject: string) {
-  const cleanSubject = subject.replace(/[\r\n]+/g, ' ').trim()
-  return `=?UTF-8?B?${Buffer.from(cleanSubject, 'utf8').toString('base64')}?=`
-}
-
-function encodeMessage({ to, subject, body }: GmailMessage) {
-  const cleanRecipient = to.replace(/[\r\n]+/g, '').trim()
-  const mime = [
-    `To: ${cleanRecipient}`,
-    `Subject: ${encodeSubject(subject)}`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset="UTF-8"',
-    'Content-Transfer-Encoding: 8bit',
-    '',
-    body,
-  ].join('\r\n')
-
-  return Buffer.from(mime, 'utf8')
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '')
+  console.error('Gmail API rejected request:', {
+    status: responseStatus,
+    reason: reason ? reason.slice(0, 160) : null,
+  })
+  return new GmailError('Google Gmail a refusé la requête.', responseStatus, 'api_rejected', responseStatus)
 }
 
 async function refreshAccessToken(userId: string, refreshToken: string) {
@@ -93,7 +95,7 @@ async function refreshAccessToken(userId: string, refreshToken: string) {
   return data.access_token as string
 }
 
-export async function getValidGmailAccessToken(userId: string) {
+export async function getValidGmailAccessToken(userId: string, options: { forceRefresh?: boolean } = {}) {
   const account = await prisma.googleAccount.findUnique({ where: { userId } })
   if (!account) throw new GmailError(getSafeGmailErrorMessage('missing_account'), 400, 'missing_account')
 
@@ -101,7 +103,7 @@ export async function getValidGmailAccessToken(userId: string) {
     ? account.expiryDate.getTime() > Date.now() + 60_000
     : true
 
-  if (tokenIsValid) return account.accessToken
+  if (tokenIsValid && !options.forceRefresh) return account.accessToken
   if (!account.refreshToken) {
     throw new GmailError(getSafeGmailErrorMessage('missing_refresh_token'), 401, 'missing_refresh_token')
   }
@@ -110,7 +112,12 @@ export async function getValidGmailAccessToken(userId: string) {
 }
 
 export async function deliverGmailMessage(accessToken: string, message: GmailMessage) {
-  const raw = encodeMessage(message)
+  let raw: string
+  try {
+    raw = encodeGmailMessage(message)
+  } catch {
+    throw new GmailError('Le brouillon est invalide : vérifiez le destinataire, le sujet et le message.', 400, 'draft_invalid')
+  }
   const endpoint = SEND_MODE === 'send'
     ? 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'
     : 'https://gmail.googleapis.com/gmail/v1/users/me/drafts'
@@ -129,11 +136,7 @@ export async function deliverGmailMessage(accessToken: string, message: GmailMes
 
   if (!response.ok) {
     const reason = data?.error?.message
-    throw new GmailError(
-      typeof reason === 'string' ? `Erreur Gmail : ${reason}` : 'Erreur Gmail lors de l’envoi.',
-      response.status,
-      'delivery_error'
-    )
+    throw getGmailApiError(response.status, typeof reason === 'string' ? reason : undefined)
   }
 
   const messageId = SEND_MODE === 'send' ? data.id : data.message?.id || data.id

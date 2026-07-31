@@ -34,7 +34,19 @@ type SendResult = {
   success: boolean
   status: string
   error?: string
+  code?: string
   skippedReason?: CampaignSkipReason
+}
+
+function getFunctionalGmailCode(error: GmailError) {
+  if (error.code === 'missing_account') return 'GMAIL_NOT_CONNECTED'
+  if (['missing_refresh_token', 'invalid_refresh_token', 'revoked_access', 'access_token_expired'].includes(error.code)) return 'GMAIL_CONNECTION_EXPIRED'
+  if (error.code === 'google_temporary') return 'GMAIL_TEMPORARY_ERROR'
+  if (error.code === 'oauth_config') return 'GMAIL_OAUTH_CONFIG'
+  if (error.code === 'scope_missing') return 'GMAIL_SCOPE_MISSING'
+  if (error.code === 'draft_invalid') return 'GMAIL_DRAFT_INVALID'
+  if (error.code === 'status_persist_failed') return 'GMAIL_STATUS_PERSIST_FAILED'
+  return 'GMAIL_API_REJECTED'
 }
 
 function getSkipMessage(reason: CampaignSkipReason): string {
@@ -126,13 +138,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   try {
     accessToken = await getValidGmailAccessToken(user.id)
   } catch (error) {
-    const gmailError = error instanceof GmailError ? error : new GmailError('Erreur Gmail.')
+    const gmailError = error instanceof GmailError ? error : new GmailError('Google Gmail a refusé la requête.', 500, 'api_rejected')
     return NextResponse.json(
       {
         error: gmailError.message,
+        functionalCode: getFunctionalGmailCode(gmailError),
         gmailNotConnected: gmailError.code === 'missing_account',
-        gmailExpired: ['missing_refresh_token', 'invalid_refresh_token', 'revoked_access'].includes(gmailError.code),
-        reconnectRequired: ['missing_refresh_token', 'invalid_refresh_token', 'revoked_access'].includes(gmailError.code),
+        gmailExpired: ['missing_refresh_token', 'invalid_refresh_token', 'revoked_access', 'access_token_expired'].includes(gmailError.code),
+        reconnectRequired: ['missing_refresh_token', 'invalid_refresh_token', 'revoked_access', 'access_token_expired'].includes(gmailError.code),
         code: gmailError.code,
       },
       { status: gmailError.status }
@@ -142,50 +155,65 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   for (const prospect of eligibleProspects) {
     try {
       const email = prospect.email as string
-      const delivery = await deliverGmailMessage(accessToken, {
+      const messagePayload = {
         to: email,
         subject: prospect.generatedSubject || `Collaboration avec ${prospect.name}`,
         body: prospect.generatedBody || '',
-      })
+      }
+      let delivery
+      try {
+        delivery = await deliverGmailMessage(accessToken, messagePayload)
+      } catch (error) {
+        if (error instanceof GmailError && error.code === 'access_token_expired') {
+          accessToken = await getValidGmailAccessToken(user.id, { forceRefresh: true })
+          delivery = await deliverGmailMessage(accessToken, messagePayload)
+        } else {
+          throw error
+        }
+      }
       const sendStatus = delivery.mode === 'send' ? 'Envoyé' : 'Brouillon créé'
       const sentAt = delivery.mode === 'send' ? new Date() : null
 
-      if (delivery.mode === 'send') {
-        await prisma.$transaction([
-          prisma.campaignProspect.update({
+      try {
+        if (delivery.mode === 'send') {
+          await prisma.$transaction([
+            prisma.campaignProspect.update({
+              where: { id: prospect.id },
+              data: {
+                sendStatus,
+                sentAt,
+                sendError: null,
+                gmailMessageId: delivery.id,
+              },
+            }),
+            prisma.emailSent.create({
+              data: {
+                userId: user.id,
+                channelName: prospect.name,
+                channelEmail: email,
+                content: prospect.generatedBody || '',
+                status: 'Envoyé',
+              },
+            }),
+          ])
+        } else {
+          await prisma.campaignProspect.update({
             where: { id: prospect.id },
             data: {
               sendStatus,
-              sentAt,
+              sentAt: null,
               sendError: null,
               gmailMessageId: delivery.id,
             },
-          }),
-          prisma.emailSent.create({
-            data: {
-              userId: user.id,
-              channelName: prospect.name,
-              channelEmail: email,
-              content: prospect.generatedBody || '',
-              status: 'Envoyé',
-            },
-          }),
-        ])
-      } else {
-        await prisma.campaignProspect.update({
-          where: { id: prospect.id },
-          data: {
-            sendStatus,
-            sentAt: null,
-            sendError: null,
-            gmailMessageId: delivery.id,
-          },
-        })
+          })
+        }
+      } catch {
+        throw new GmailError('Le brouillon a été créé dans Gmail, mais le statut n’a pas pu être enregistré.', 500, 'status_persist_failed')
       }
 
       results.push({ prospectId: prospect.id, success: true, status: sendStatus })
     } catch (error) {
-      const message = error instanceof GmailError ? error.message : 'Erreur Gmail.'
+      const message = error instanceof GmailError ? error.message : 'Google Gmail a refusé la requête.'
       await prisma.campaignProspect.update({
         where: { id: prospect.id },
         data: {
@@ -198,6 +226,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         success: false,
         status: 'Erreur',
         error: message,
+        code: error instanceof GmailError ? getFunctionalGmailCode(error) : 'GMAIL_API_REJECTED',
       })
     }
   }

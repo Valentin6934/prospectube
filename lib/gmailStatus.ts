@@ -2,7 +2,9 @@ export type GmailConnectionState = 'connected' | 'expired' | 'disconnected' | 'u
 
 export type GmailStatusResponse = {
   connected: boolean
+  status: GmailConnectionState
   state: GmailConnectionState
+  canUseGmail: boolean
   email: string | null
   hasRefreshToken: boolean
   expiryDate: string | null
@@ -40,7 +42,9 @@ function toIso(value?: Date | string | null) {
 export function buildDisconnectedGmailStatus(sendMode: 'draft' | 'send'): GmailStatusResponse {
   return {
     connected: false,
+    status: 'disconnected',
     state: 'disconnected',
+    canUseGmail: false,
     email: null,
     hasRefreshToken: false,
     expiryDate: null,
@@ -58,6 +62,8 @@ export function buildGmailStatus(
     return {
       ...buildDisconnectedGmailStatus(sendMode),
       state: options.unavailable ? 'unavailable' : 'disconnected',
+      status: options.unavailable ? 'unavailable' : 'disconnected',
+      canUseGmail: false,
       unavailable: options.unavailable,
       setupRequired: options.setupRequired,
     }
@@ -68,7 +74,9 @@ export function buildGmailStatus(
 
   return {
     connected: state === 'connected',
+    status: state,
     state,
+    canUseGmail: state === 'connected',
     email: account.email || null,
     hasRefreshToken,
     expiryDate: toIso(account.expiryDate),
@@ -79,6 +87,8 @@ export function buildGmailStatus(
   }
 }
 
-export function shouldDisableGmailDrafts(status?: { connected?: boolean; state?: GmailConnectionState; reconnectRequired?: boolean } | null): boolean {
-  return !status?.connected || status.state === 'expired' || Boolean(status.reconnectRequired)
+export function shouldDisableGmailDrafts(status?: { connected?: boolean; canUseGmail?: boolean; state?: GmailConnectionState; status?: GmailConnectionState; reconnectRequired?: boolean } | null): boolean {
+  if (!status) return true
+  if (typeof status.canUseGmail === 'boolean') return !status.canUseGmail
+  return !status.connected || status.state === 'expired' || status.status === 'expired' || Boolean(status.reconnectRequired)
 }

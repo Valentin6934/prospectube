@@ -11,7 +11,6 @@ import MainAppNav from '@/components/MainAppNav'
 import ProspectPresentation from '@/components/ProspectPresentation'
 import { isPro } from '@/lib/plan'
 import { buildCampaignDetailUrl, getCampaignFromApiResponse } from '@/lib/campaignClient'
-import { CAMPAIGN_AI_ENABLED } from '@/lib/campaignFeatures'
 import {
   getCampaignProspectSkipReason,
   getCampaignProspectWithDraft,
@@ -76,7 +75,9 @@ type CampaignDetails = Omit<CampaignSummary, 'prospects'> & {
 
 type GmailStatus = {
   connected: boolean
+  status?: 'connected' | 'expired' | 'disconnected' | 'unavailable'
   state?: 'connected' | 'expired' | 'disconnected' | 'unavailable'
+  canUseGmail?: boolean
   email: string | null
   sendMode?: 'draft' | 'send'
   message?: string
@@ -98,7 +99,7 @@ type SendSummary = {
   skippedAlreadyProcessedCount: number
   skippedNotFoundCount: number
   mode?: 'draft' | 'send'
-  results?: Array<{ prospectId: string; success: boolean; status: string; error?: string }>
+  results?: Array<{ prospectId: string; success: boolean; status: string; error?: string; code?: string }>
 }
 
 const ONBOARDING_KEY = 'prospecttube-campaign-onboarding-v1'
@@ -157,6 +158,10 @@ function getSendBlockedMessage(prospect?: CampaignProspect) {
   if (reason === 'no_body') return 'Ajoutez un message avant l’envoi.'
   if (reason === 'already_processed') return 'Ce prospect a deja ete traite.'
   return 'Aucun prospect eligible.'
+}
+
+function isGmailConnectionError(code?: string) {
+  return code === 'GMAIL_CONNECTION_EXPIRED' || code === 'GMAIL_NOT_CONNECTED'
 }
 
 function getScoreBucket(prospect: Pick<CampaignProspect, 'score' | 'scoreLabel'>) {
@@ -220,7 +225,6 @@ export default function CampaignsPage() {
   const [creating, setCreating] = useState(false)
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [generatingIds, setGeneratingIds] = useState<string[]>([])
   const [savingIds, setSavingIds] = useState<string[]>([])
   const [sendingProspectIds, setSendingProspectIds] = useState<string[]>([])
   const [newCampaignName, setNewCampaignName] = useState('')
@@ -306,7 +310,7 @@ export default function CampaignsPage() {
   }
 
   const loadGmailStatus = async () => {
-    const res = await fetch('/api/gmail')
+    const res = await fetch('/api/gmail', { cache: 'no-store' })
     const data = await res.json().catch(() => ({}))
     if (res.ok) setGmail(data)
   }
@@ -461,28 +465,7 @@ export default function CampaignsPage() {
     return true
   }
 
-  const generateCampaignEmails = async (ids = selectedProspectIds) => {
-    if (!selectedCampaign) return
-    if (!canUseCampaigns) return showToast('Le plan Pro est requis pour générer des messages IA en campagne.', 'info')
-    if (ids.length === 0) return showToast('Sélectionnez au moins un prospect à générer.', 'info')
 
-    setGeneratingIds(ids)
-    const res = await fetch(`/api/campaigns/${selectedCampaign.id}/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prospectIds: ids, overwrite: true }),
-    })
-    const data = await res.json().catch(() => ({}))
-    setGeneratingIds([])
-
-    if (!res.ok) {
-      if (data.upgrade) return showToast('Plan Pro requis pour les campagnes IA.', 'info')
-      return showToast(data.error || 'La génération IA est temporairement indisponible.', 'error')
-    }
-
-    await refreshSelectedCampaign(true)
-    showToast(data.generatedCount > 0 ? `${data.generatedCount} message${data.generatedCount > 1 ? 's' : ''} généré${data.generatedCount > 1 ? 's' : ''}` : data.message || 'Aucun message généré.', data.generatedCount > 0 ? 'success' : 'info')
-  }
 
   const copyMessage = async (prospect: CampaignProspect) => {
     const draft = draftMessages[prospect.id]
@@ -548,7 +531,9 @@ export default function CampaignsPage() {
       if (data.reconnectRequired || data.gmailExpired) {
         setGmail(current => ({
           connected: false,
+          status: 'expired',
           state: 'expired',
+          canUseGmail: false,
           email: current?.email || null,
           sendMode: current?.sendMode || 'draft',
           message: data.error || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.',
@@ -561,15 +546,32 @@ export default function CampaignsPage() {
         showToast('Connectez Gmail depuis les Paramètres avant l’envoi.', 'info')
         return
       }
-      showToast(data.error || 'Erreur Gmail.', 'error')
+      showToast(data.error || 'Google Gmail a refusé la requête.', 'error')
       return
     }
 
     setSendSummary(data)
     await refreshSelectedCampaign(true)
 
+    const gmailFailure = (data.results || []).find((result: { code?: string; error?: string }) => isGmailConnectionError(result.code))
+    if (gmailFailure) {
+      setGmail(current => ({
+        connected: false,
+        status: 'expired',
+        state: 'expired',
+        canUseGmail: false,
+        email: current?.email || null,
+        sendMode: current?.sendMode || 'draft',
+        message: gmailFailure.error || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.',
+        reconnectRequired: true,
+      }))
+      showToast(gmailFailure.error || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.', 'error')
+      return
+    }
+
     if (data.successCount === 0) {
-      showToast('Aucun email envoyé.', 'info')
+      const firstError = (data.results || []).find((result: { error?: string }) => Boolean(result.error))?.error
+      showToast(firstError || 'Aucun email envoyé.', firstError ? 'error' : 'info')
       return
     }
 
@@ -800,11 +802,6 @@ export default function CampaignsPage() {
                   </div>
 
                   <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                    {CAMPAIGN_AI_ENABLED && (
-                      <button onClick={() => generateCampaignEmails()} disabled={generatingIds.length > 0 || selectedProspectIds.length === 0 || sendingProspectIds.length > 0} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.85rem' }}>
-                        {generatingIds.length > 0 ? <span className="button-loader"><span className="app-spinner" /> Génération...</span> : `Générer avec l'IA (${selectedProspectIds.length})`}
-                      </button>
-                    )}
                     <button onClick={() => sendCampaignMessages(selectedProspectIds)} disabled={sendingProspectIds.length > 0 || selectedProspectIds.length === 0 || gmailDraftsDisabled} className="btn btn-secondary">
                       {sendingProspectIds.length > 0 ? <span className="button-loader"><span className="app-spinner" /> {getCampaignGmailProgressLabel(gmail?.sendMode)}</span> : getCampaignGmailActionLabel(gmail?.sendMode, selectedProspectIds.length)}
                     </button>
@@ -890,11 +887,6 @@ export default function CampaignsPage() {
                                 )}
                               </div>
                               <div className="campaign-prospect-actions">
-                                {CAMPAIGN_AI_ENABLED && (
-                                  <button onClick={() => generateCampaignEmails([prospect.id])} disabled={generatingIds.includes(prospect.id) || sendingProspectIds.length > 0} className="btn btn-secondary">
-                                    {generatingIds.includes(prospect.id) ? 'Génération...' : 'Générer avec l’IA'}
-                                  </button>
-                                )}
                                 <button onClick={() => saveProspectMessage(prospect.id)} disabled={savingIds.includes(prospect.id)} className="btn btn-secondary">
                                   {savingIds.includes(prospect.id) ? 'Sauvegarde...' : 'Enregistrer'}
                                 </button>
