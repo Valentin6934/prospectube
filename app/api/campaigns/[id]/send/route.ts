@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
+import { Prisma } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import {
@@ -36,7 +37,30 @@ type SendResult = {
   error?: string
   code?: string
   gmailMessageId?: string
+  gmailDraftId?: string
+  prismaCode?: string
+  prismaMessage?: string
+  failingOperation?: string
   skippedReason?: CampaignSkipReason
+}
+
+type CampaignDeliveryProspect = {
+  id: string
+  name: string
+  email: string | null
+  generatedBody: string | null
+}
+
+type GmailDeliveryResult = {
+  id: string
+  mode: 'draft' | 'send'
+}
+
+function toGmailDeliveryResult(delivery: { id: string; mode: string }): GmailDeliveryResult {
+  return {
+    id: delivery.id,
+    mode: delivery.mode === 'send' ? 'send' : 'draft',
+  }
 }
 
 function getFunctionalGmailCode(error: GmailError) {
@@ -63,10 +87,178 @@ function getSkipMessage(reason: CampaignSkipReason): string {
 
 function getStructuredDraftState(results: SendResult[]) {
   return {
-    created: results.filter(result => result.code === 'DRAFT_CREATED'),
+    created: results.filter(result => result.code === 'DRAFT_CREATED' || result.code === 'DRAFT_CREATED_STATUS_RECOVERED'),
     alreadyCreated: results.filter(result => result.code === 'DRAFT_ALREADY_CREATED'),
     statusSaveFailed: results.filter(result => result.code === 'DRAFT_CREATED_STATUS_NOT_SAVED'),
     failed: results.filter(result => !result.success && !result.skippedReason),
+  }
+}
+
+function getPrismaErrorDetails(error: unknown) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return {
+      prismaCode: error.code,
+      prismaMessage: error.message,
+      prismaMeta: error.meta || null,
+      stack: error.stack || null,
+    }
+  }
+
+  if (error instanceof Error) {
+    return {
+      prismaCode: null,
+      prismaMessage: error.message,
+      prismaMeta: null,
+      stack: error.stack || null,
+    }
+  }
+
+  return {
+    prismaCode: null,
+    prismaMessage: String(error),
+    prismaMeta: null,
+    stack: null,
+  }
+}
+
+function logCampaignStatusPersistFailure(input: {
+  campaignId: string
+  prospectId: string
+  userId: string
+  gmailDraftId: string | null
+  gmailMessageId: string | null
+  failingOperation: string
+  prismaQuery: unknown
+  prospectBelongsToCampaign: boolean
+  error: unknown
+}) {
+  const details = getPrismaErrorDetails(input.error)
+  console.error('POST /api/campaigns/[id]/send Prisma status persist failed:', {
+    campaignId: input.campaignId,
+    prospectId: input.prospectId,
+    userId: input.userId,
+    gmailDraftId: input.gmailDraftId,
+    gmailMessageId: input.gmailMessageId,
+    prospectBelongsToCampaign: input.prospectBelongsToCampaign,
+    failingOperation: input.failingOperation,
+    prismaQuery: input.prismaQuery,
+    prismaCode: details.prismaCode,
+    prismaMessage: details.prismaMessage,
+    prismaMeta: details.prismaMeta,
+    stack: details.stack,
+  })
+}
+
+async function persistCampaignDeliveryStatus(input: {
+  campaignId: string
+  userId: string
+  prospect: CampaignDeliveryProspect
+  delivery: GmailDeliveryResult
+  sendStatus: string
+  sentAt: Date | null
+}) {
+  const gmailMessageId = input.delivery.id
+  const gmailDraftId = input.delivery.mode === 'draft' ? input.delivery.id : null
+  const prospectBelongsToCampaign = true
+  const richUpdateQuery = {
+    where: {
+      id: input.prospect.id,
+      campaignId: input.campaignId,
+    },
+    data: {
+      sendStatus: input.sendStatus,
+      sentAt: input.sentAt,
+      sendError: null,
+      gmailMessageId,
+    },
+  }
+
+  try {
+    const result = await prisma.campaignProspect.updateMany(richUpdateQuery)
+    if (result.count !== 1) {
+      throw new Prisma.PrismaClientKnownRequestError(
+        'CampaignProspect status update matched no row for the current campaign.',
+        {
+          code: 'P2025',
+          clientVersion: Prisma.prismaVersion.client,
+          meta: { campaignId: input.campaignId, prospectId: input.prospect.id, count: result.count },
+        }
+      )
+    }
+
+    if (input.delivery.mode === 'send') {
+      await prisma.emailSent.create({
+        data: {
+          userId: input.userId,
+          channelName: input.prospect.name,
+          channelEmail: input.prospect.email as string,
+          content: input.prospect.generatedBody || '',
+          status: 'Envoyé',
+        },
+      })
+    }
+
+    return { recovered: false }
+  } catch (error) {
+    logCampaignStatusPersistFailure({
+      campaignId: input.campaignId,
+      prospectId: input.prospect.id,
+      userId: input.userId,
+      gmailDraftId,
+      gmailMessageId,
+      prospectBelongsToCampaign,
+      failingOperation: 'campaignProspect.updateMany.deliveryStatusFull',
+      prismaQuery: richUpdateQuery,
+      error,
+    })
+
+    const minimalUpdateQuery = {
+      where: {
+        id: input.prospect.id,
+        campaignId: input.campaignId,
+      },
+      data: {
+        sendStatus: input.sendStatus,
+        gmailMessageId,
+      },
+    }
+
+    try {
+      const result = await prisma.campaignProspect.updateMany(minimalUpdateQuery)
+      if (result.count !== 1) {
+        throw new Prisma.PrismaClientKnownRequestError(
+          'CampaignProspect minimal status update matched no row for the current campaign.',
+          {
+            code: 'P2025',
+            clientVersion: Prisma.prismaVersion.client,
+            meta: { campaignId: input.campaignId, prospectId: input.prospect.id, count: result.count },
+          }
+        )
+      }
+
+      return { recovered: true }
+    } catch (fallbackError) {
+      logCampaignStatusPersistFailure({
+        campaignId: input.campaignId,
+        prospectId: input.prospect.id,
+        userId: input.userId,
+        gmailDraftId,
+        gmailMessageId,
+        prospectBelongsToCampaign,
+        failingOperation: 'campaignProspect.updateMany.deliveryStatusMinimal',
+        prismaQuery: minimalUpdateQuery,
+        error: fallbackError,
+      })
+
+      const details = getPrismaErrorDetails(fallbackError)
+      return {
+        recovered: false,
+        failed: true,
+        prismaCode: details.prismaCode || undefined,
+        prismaMessage: details.prismaMessage,
+        failingOperation: 'campaignProspect.updateMany.deliveryStatusMinimal',
+      }
+    }
   }
 }
 
@@ -179,13 +371,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         subject: prospect.generatedSubject || `Collaboration avec ${prospect.name}`,
         body: prospect.generatedBody || '',
       }
-      let delivery
+      let delivery: GmailDeliveryResult
       try {
-        delivery = await deliverGmailMessage(accessToken, messagePayload)
+        delivery = toGmailDeliveryResult(await deliverGmailMessage(accessToken, messagePayload))
       } catch (error) {
         if (error instanceof GmailError && error.code === 'access_token_expired') {
           accessToken = await getValidGmailAccessToken(user.id, { forceRefresh: true })
-          delivery = await deliverGmailMessage(accessToken, messagePayload)
+          delivery = toGmailDeliveryResult(await deliverGmailMessage(accessToken, messagePayload))
         } else {
           throw error
         }
@@ -193,47 +385,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const sendStatus = delivery.mode === 'send' ? 'Envoyé' : 'Brouillon créé'
       const sentAt = delivery.mode === 'send' ? new Date() : null
 
-      try {
-        if (delivery.mode === 'send') {
-          await prisma.$transaction([
-            prisma.campaignProspect.update({
-              where: { id: prospect.id },
-              data: {
-                sendStatus,
-                sentAt,
-                sendError: null,
-                gmailMessageId: delivery.id,
-              },
-            }),
-            prisma.emailSent.create({
-              data: {
-                userId: user.id,
-                channelName: prospect.name,
-                channelEmail: email,
-                content: prospect.generatedBody || '',
-                status: 'Envoyé',
-              },
-            }),
-          ])
-        } else {
-          await prisma.campaignProspect.update({
-            where: { id: prospect.id },
-            data: {
-              sendStatus,
-              sentAt: null,
-              sendError: null,
-              gmailMessageId: delivery.id,
-            },
-          })
-        }
-      } catch (error) {
-        console.error('POST /api/campaigns/[id]/send status persist failed:', {
-          campaignId: params.id,
-          prospectId: prospect.id,
-          userId: user.id,
-          mode: delivery.mode,
-          error,
-        })
+      const persistResult = await persistCampaignDeliveryStatus({
+        campaignId: campaign.id,
+        userId: user.id,
+        prospect,
+        delivery,
+        sendStatus,
+        sentAt,
+      })
+
+      if (persistResult.failed) {
         results.push({
           prospectId: prospect.id,
           success: true,
@@ -241,6 +402,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           error: 'Le brouillon a ete cree dans Gmail, mais le statut n’a pas pu etre enregistre dans ProspectTube.',
           code: 'DRAFT_CREATED_STATUS_NOT_SAVED',
           gmailMessageId: delivery.id,
+          gmailDraftId: delivery.mode === 'draft' ? delivery.id : undefined,
+          prismaCode: persistResult.prismaCode,
+          prismaMessage: persistResult.prismaMessage,
+          failingOperation: persistResult.failingOperation,
         })
         continue
       }
@@ -249,8 +414,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         prospectId: prospect.id,
         success: true,
         status: sendStatus,
-        code: 'DRAFT_CREATED',
+        code: persistResult.recovered ? 'DRAFT_CREATED_STATUS_RECOVERED' : 'DRAFT_CREATED',
         gmailMessageId: delivery.id,
+        gmailDraftId: delivery.mode === 'draft' ? delivery.id : undefined,
       })
     } catch (error) {
       const message = error instanceof GmailError ? error.message : 'Google Gmail a refusé la requête.'
