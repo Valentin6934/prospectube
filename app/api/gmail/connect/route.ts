@@ -27,13 +27,8 @@ function getReturnPath(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  console.log('GET /api/gmail/connect: route entered')
-  console.log('GET /api/gmail/connect: NEXTAUTH_URL present:', Boolean(process.env.NEXTAUTH_URL))
-  console.log('GET /api/gmail/connect: GOOGLE_CLIENT_ID present:', Boolean(process.env.GOOGLE_CLIENT_ID))
-
   try {
     const session = await getServerSession(authOptions)
-    console.log('GET /api/gmail/connect: session found:', Boolean(session?.user?.email))
 
     if (!session?.user?.email) {
       const message = 'Session ProspectTube introuvable dans GET /api/gmail/connect.'
@@ -81,12 +76,8 @@ export async function GET(req: NextRequest) {
       state,
     }).toString()
 
-    console.log('GET /api/gmail/connect: OAuth redirect_uri:', redirectUri)
-    console.log('GET /api/gmail/connect: OAuth URL generated for Google')
-
     const response = NextResponse.redirect(authorizationUrl, { status: 302 })
 
-    console.log('GET /api/gmail/connect: redirecting to Google with status 302')
     return response
   } catch (error) {
     console.error('GET /api/gmail/connect error:', error)
