@@ -8,8 +8,23 @@ import EmptyState from '@/components/EmptyState'
 import Toast, { useToast } from '@/components/Toast'
 import ProGate from '@/components/ProGate'
 import MainAppNav from '@/components/MainAppNav'
+import ProspectPresentation from '@/components/ProspectPresentation'
 import { isPro } from '@/lib/plan'
 import { buildCampaignDetailUrl, getCampaignFromApiResponse } from '@/lib/campaignClient'
+import {
+  getCampaignProspectSkipReason,
+  getCampaignDraftCreationPlan,
+  getCampaignProspectWithDraft,
+  getCampaignGmailProgressLabel,
+  getCampaignGmailSingleActionLabel,
+  getCampaignManualSendPlan,
+  hasCompleteCampaignMessage,
+  hasValidCampaignEmail,
+  isCampaignProspectAlreadyProcessed,
+  isCampaignProspectSendEligible,
+  normalizeCampaignMessage,
+} from '@/lib/campaignWorkflow'
+import { shouldDisableGmailDrafts } from '@/lib/gmailStatus'
 
 type CampaignSummaryProspect = {
   channelId: string
@@ -60,8 +75,13 @@ type CampaignDetails = Omit<CampaignSummary, 'prospects'> & {
 
 type GmailStatus = {
   connected: boolean
+  status?: 'connected' | 'expired' | 'disconnected' | 'unavailable'
+  state?: 'connected' | 'expired' | 'disconnected' | 'unavailable'
+  canUseGmail?: boolean
   email: string | null
   sendMode?: 'draft' | 'send'
+  message?: string
+  reconnectRequired?: boolean
 }
 
 type DraftMessage = {
@@ -73,11 +93,17 @@ type SendSummary = {
   successCount: number
   failureCount: number
   skippedNoEmailCount: number
+  skippedNoSubjectCount?: number
+  skippedNoBodyCount?: number
   skippedIncompleteCount: number
   skippedAlreadyProcessedCount: number
   skippedNotFoundCount: number
   mode?: 'draft' | 'send'
-  results?: Array<{ prospectId: string; success: boolean; status: string; error?: string }>
+  results?: Array<{ prospectId: string; success: boolean; status: string; error?: string; code?: string; gmailMessageId?: string }>
+  created?: Array<{ prospectId: string; status: string; gmailMessageId?: string }>
+  alreadyCreated?: Array<{ prospectId: string; status: string; gmailMessageId?: string }>
+  statusSaveFailed?: Array<{ prospectId: string; status: string; error?: string; gmailMessageId?: string }>
+  message?: string
 }
 
 const ONBOARDING_KEY = 'prospecttube-campaign-onboarding-v1'
@@ -92,16 +118,6 @@ function formatDate(date: string): string {
   }).format(new Date(date))
 }
 
-function getInitials(name: string) {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(part => part[0])
-    .join('')
-    .toUpperCase() || 'YT'
-}
-
 function isValidUrl(value: string | null) {
   if (!value) return false
   try {
@@ -113,19 +129,33 @@ function isValidUrl(value: string | null) {
 }
 
 function hasValidEmail(email: string | null) {
-  return Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+  return hasValidCampaignEmail(email)
 }
 
 function hasCompleteMessage(prospect: CampaignProspect) {
-  return Boolean(prospect.generatedSubject?.trim() && prospect.generatedBody?.trim())
+  return hasCompleteCampaignMessage(prospect)
 }
 
 function isAlreadyProcessed(prospect: CampaignProspect) {
-  return prospect.sendStatus === 'Envoyé' || prospect.sendStatus === 'Brouillon créé'
+  return isCampaignProspectAlreadyProcessed(prospect)
 }
 
 function isSendEligible(prospect: CampaignProspect) {
-  return hasValidEmail(prospect.email) && hasCompleteMessage(prospect) && !isAlreadyProcessed(prospect)
+  return isCampaignProspectSendEligible(prospect)
+}
+
+function getSendBlockedMessage(prospect?: CampaignProspect) {
+  if (!prospect) return 'Aucun prospect eligible.'
+  const reason = getCampaignProspectSkipReason(prospect)
+  if (reason === 'no_email') return "Ce prospect n'a pas d'adresse email."
+  if (reason === 'no_subject') return 'Ajoutez un sujet avant l’envoi.'
+  if (reason === 'no_body') return 'Ajoutez un message avant l’envoi.'
+  if (reason === 'already_processed') return 'Ce prospect a deja ete traite.'
+  return 'Aucun prospect eligible.'
+}
+
+function isGmailConnectionError(code?: string) {
+  return code === 'GMAIL_CONNECTION_EXPIRED' || code === 'GMAIL_NOT_CONNECTED'
 }
 
 function getScoreBucket(prospect: Pick<CampaignProspect, 'score' | 'scoreLabel'>) {
@@ -150,7 +180,7 @@ function getCampaignRollup(prospects: CampaignSummaryProspect[] | CampaignProspe
   else if (sent === total) status = 'Envoyée'
   else if (sent > 0 && (errors > 0 || sent < total)) status = 'Partiellement envoyée'
   else if (errors > 0) status = 'Erreur'
-  else if (messagesReady > 0 && messagesReady === withEmail && withEmail > 0) status = 'Prête à envoyer'
+  else if (messagesReady > 0 && messagesReady === withEmail && withEmail > 0) status = 'Prête'
   else if (messagesReady > 0) status = 'À préparer'
   else status = 'À préparer'
 
@@ -189,7 +219,6 @@ export default function CampaignsPage() {
   const [creating, setCreating] = useState(false)
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [generatingIds, setGeneratingIds] = useState<string[]>([])
   const [savingIds, setSavingIds] = useState<string[]>([])
   const [sendingProspectIds, setSendingProspectIds] = useState<string[]>([])
   const [newCampaignName, setNewCampaignName] = useState('')
@@ -203,11 +232,13 @@ export default function CampaignsPage() {
   const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
   const canUseCampaigns = isPro(plan)
+  const gmailDraftsDisabled = shouldDisableGmailDrafts(gmail)
+  const gmailNeedsReconnect = gmail?.state === 'expired' || Boolean(gmail?.reconnectRequired)
 
   const overview = useMemo(() => {
     const campaignCount = campaigns.length
     const prospectCount = campaigns.reduce((sum, campaign) => sum + (campaign._count?.prospects || campaign.prospects?.length || 0), 0)
-    const readyCount = campaigns.filter(campaign => getCampaignRollup(campaign.prospects || []).status === 'Prête à envoyer').length
+    const readyCount = campaigns.filter(campaign => getCampaignRollup(campaign.prospects || []).status === 'Prête').length
     const sentCount = campaigns.filter(campaign => ['Envoyée', 'Partiellement envoyée'].includes(getCampaignRollup(campaign.prospects || []).status)).length
 
     return { campaignCount, prospectCount, readyCount, sentCount }
@@ -224,7 +255,27 @@ export default function CampaignsPage() {
     return matchesSearch && matchesFilter
   })
   const campaignStats = selectedCampaign ? getDetailedStats(selectedCampaign.prospects) : null
-  const manualProspects = (selectedCampaign?.prospects || []).filter(prospect => !hasValidEmail(prospect.email))
+  const emailProspects = filteredProspects.filter(prospect => hasValidEmail(prospect.email))
+  const noEmailProspects = filteredProspects.filter(prospect => !hasValidEmail(prospect.email))
+  const draftCreationPlan = selectedCampaign
+    ? getCampaignDraftCreationPlan(selectedCampaign.prospects, draftMessages, selectedProspectIds)
+    : null
+  const readyDraftCount = draftCreationPlan?.readyCount || 0
+  const draftCtaDisabled = sendingProspectIds.length > 0 || readyDraftCount === 0 || gmailDraftsDisabled
+  const draftCtaHelp = gmailNeedsReconnect
+    ? 'Reconnectez Gmail pour créer les brouillons.'
+    : gmailDraftsDisabled
+      ? 'Connectez Gmail pour créer les brouillons.'
+      : selectedProspectIds.length === 0
+        ? 'Sélectionnez au moins un prospect.'
+        : readyDraftCount === 0
+          ? 'Complétez au moins un message avec une adresse email valide.'
+          : 'Les brouillons seront ajoutés à votre compte Gmail sans être envoyés.'
+
+  const connectGmail = () => {
+    const returnTo = typeof window === 'undefined' ? '/campaigns' : `${window.location.pathname}${window.location.search}`
+    window.location.assign(`/api/gmail/connect?returnTo=${encodeURIComponent(returnTo)}`)
+  }
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -234,11 +285,14 @@ export default function CampaignsPage() {
     const result = new URLSearchParams(window.location.search).get('gmail')
     if (!result) return
 
-    if (result === 'connected') showToast('Gmail connecté avec succès.')
+    if (result === 'connected') showToast('Gmail reconnecté avec succès.')
     else if (result === 'cancelled') showToast('Autorisation Gmail annulée.', 'info')
+    else if (result === 'refresh_token_error') showToast('Google n’a pas renvoyé de refresh token. Réessayez avec Reconnecter Gmail.', 'error')
     else showToast('La connexion Gmail a échoué. Réessayez.', 'error')
 
-    window.history.replaceState({}, '', '/campaigns')
+    const url = new URL(window.location.href)
+    url.searchParams.delete('gmail')
+    window.history.replaceState({}, '', `${url.pathname}${url.search}`)
   }, [showToast])
 
   useEffect(() => {
@@ -265,7 +319,7 @@ export default function CampaignsPage() {
   }
 
   const loadGmailStatus = async () => {
-    const res = await fetch('/api/gmail')
+    const res = await fetch('/api/gmail', { cache: 'no-store' })
     const data = await res.json().catch(() => ({}))
     if (res.ok) setGmail(data)
   }
@@ -366,12 +420,16 @@ export default function CampaignsPage() {
     showToast('Campagne supprimée')
   }
 
-  const saveProspectMessage = async (prospectId: string) => {
-    if (!selectedCampaign) return
+  const saveProspectMessage = async (prospectId: string, options: { silent?: boolean } = {}): Promise<boolean> => {
+    if (!selectedCampaign) return false
     const draft = draftMessages[prospectId]
-    if (!draft?.subject.trim() || !draft?.body.trim()) {
-      showToast('Sujet et message sont requis.', 'info')
-      return
+    const normalized = normalizeCampaignMessage({
+      subject: draft?.subject,
+      body: draft?.body,
+    })
+    if (!normalized.subject || !normalized.body) {
+      if (!options.silent) showToast('Sujet et message sont requis.', 'info')
+      return false
     }
 
     setSavingIds(current => [...current, prospectId])
@@ -379,44 +437,44 @@ export default function CampaignsPage() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        generatedSubject: draft.subject,
-        generatedBody: draft.body,
+        subject: normalized.subject,
+        body: normalized.body,
       }),
     })
     const data = await res.json().catch(() => ({}))
     setSavingIds(current => current.filter(id => id !== prospectId))
 
     if (!res.ok) {
-      showToast(data.error || 'Impossible de sauvegarder le message.', 'error')
-      return
+      if (!options.silent) showToast(data.error || 'Impossible de sauvegarder le message.', 'error')
+      return false
     }
 
-    await refreshSelectedCampaign(true)
-    showToast('Message sauvegardé')
-  }
-
-  const generateCampaignEmails = async (ids = selectedProspectIds) => {
-    if (!selectedCampaign) return
-    if (!canUseCampaigns) return showToast('Le plan Pro est requis pour générer des messages IA en campagne.', 'info')
-    if (ids.length === 0) return showToast('Sélectionnez au moins un prospect à générer.', 'info')
-
-    setGeneratingIds(ids)
-    const res = await fetch(`/api/campaigns/${selectedCampaign.id}/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prospectIds: ids, overwrite: true }),
-    })
-    const data = await res.json().catch(() => ({}))
-    setGeneratingIds([])
-
-    if (!res.ok) {
-      if (data.upgrade) return showToast('Plan Pro requis pour les campagnes IA.', 'info')
-      return showToast(data.error || 'Impossible de générer les messages.', 'error')
+    const updatedProspect = data.prospect as CampaignProspect | undefined
+    if (updatedProspect) {
+      setSelectedCampaign(current => current
+        ? {
+            ...current,
+            prospects: current.prospects.map(prospect =>
+              prospect.id === prospectId ? { ...prospect, ...updatedProspect } : prospect
+            ),
+          }
+        : current
+      )
     }
 
-    await refreshSelectedCampaign(true)
-    showToast(data.generatedCount > 0 ? `${data.generatedCount} message${data.generatedCount > 1 ? 's' : ''} généré${data.generatedCount > 1 ? 's' : ''}` : data.message || 'Aucun message généré.', data.generatedCount > 0 ? 'success' : 'info')
+    setDraftMessages(current => ({
+      ...current,
+      [prospectId]: {
+        subject: updatedProspect?.generatedSubject || normalized.subject,
+        body: updatedProspect?.generatedBody || normalized.body,
+      },
+    }))
+
+    if (!options.silent) showToast('Message sauvegarde')
+    return true
   }
+
+
 
   const copyMessage = async (prospect: CampaignProspect) => {
     const draft = draftMessages[prospect.id]
@@ -430,56 +488,106 @@ export default function CampaignsPage() {
   }
 
   const sendCampaignMessages = async (prospectIds: string[]) => {
+    if (sendingProspectIds.length > 0) return
+
     if (!selectedCampaign || prospectIds.length === 0) {
       showToast('Sélectionnez au moins un prospect.', 'info')
       return
     }
 
-    const selectedProspects = selectedCampaign.prospects.filter(prospect => prospectIds.includes(prospect.id))
-    const eligibleCount = selectedProspects.filter(isSendEligible).length
-    if (eligibleCount === 0) {
-      showToast('Aucun prospect éligible : vérifiez email, sujet et message.', 'info')
-      return
-    }
-
-    if (!gmail?.connected) {
-      showToast('Connectez Gmail pour envoyer cette campagne.', 'info')
-      return
-    }
-
-    const modeText = gmail.sendMode === 'send' ? 'envoyer' : 'créer des brouillons pour'
-    if (!window.confirm(`Confirmer et ${modeText} ${eligibleCount} prospect${eligibleCount > 1 ? 's' : ''} ?`)) return
-
     const ids = prospectIds.slice(0, 20)
+    const { prospectsWithDrafts, eligibleProspects, prospectsToSave } = getCampaignManualSendPlan(
+      selectedCampaign.prospects,
+      draftMessages,
+      ids
+    )
+    const eligibleCount = eligibleProspects.length
+    if (eligibleCount === 0) {
+      showToast(getSendBlockedMessage(prospectsWithDrafts[0]), 'info')
+      return
+    }
+
+    if (gmailNeedsReconnect) {
+      showToast(gmail?.message || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.', 'error')
+      return
+    }
+
+    if (gmailDraftsDisabled) {
+      showToast('Connectez Gmail avant de créer les brouillons.', 'info')
+      return
+    }
+
+    if (!window.confirm(`Confirmer et créer les brouillons Gmail pour ${eligibleCount} prospect${eligibleCount > 1 ? 's' : ''} ?`)) return
+
     setSendingProspectIds(ids)
+    const saveResults = await Promise.all(prospectsToSave.map(prospect => saveProspectMessage(prospect.id, { silent: true })))
+    if (saveResults.some(result => !result)) {
+      setSendingProspectIds([])
+      showToast("Le message de certains prospects n'a pas pu etre enregistre. Aucun envoi n'a ete lance.", 'error')
+      return
+    }
+
     const response = await fetch(`/api/campaigns/${selectedCampaign.id}/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prospectIds: ids }),
+      body: JSON.stringify({ prospectIds: eligibleProspects.map(prospect => prospect.id) }),
     })
     const data = await response.json().catch(() => ({}))
     setSendingProspectIds([])
 
     if (!response.ok) {
+      if (data.reconnectRequired || data.gmailExpired) {
+        setGmail(current => ({
+          connected: false,
+          status: 'expired',
+          state: 'expired',
+          canUseGmail: false,
+          email: current?.email || null,
+          sendMode: current?.sendMode || 'draft',
+          message: data.error || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.',
+          reconnectRequired: true,
+        }))
+        showToast(data.error || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.', 'error')
+        return
+      }
       if (data.gmailNotConnected) {
         showToast('Connectez Gmail depuis les Paramètres avant l’envoi.', 'info')
         return
       }
-      showToast(data.error || 'Erreur Gmail.', 'error')
+      showToast(data.error || 'Google Gmail a refusé la requête.', 'error')
       return
     }
 
     setSendSummary(data)
+    applyDraftResults(data.results)
     await refreshSelectedCampaign(true)
+    applyDraftResults(data.results)
 
-    if (data.successCount === 0) {
-      showToast('Aucun email envoyé.', 'info')
+    const gmailFailure = (data.results || []).find((result: { code?: string; error?: string }) => isGmailConnectionError(result.code))
+    if (gmailFailure) {
+      setGmail(current => ({
+        connected: false,
+        status: 'expired',
+        state: 'expired',
+        canUseGmail: false,
+        email: current?.email || null,
+        sendMode: current?.sendMode || 'draft',
+        message: gmailFailure.error || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.',
+        reconnectRequired: true,
+      }))
+      showToast(gmailFailure.error || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.', 'error')
       return
     }
 
-    const action = data.mode === 'send' ? 'envoyé' : 'créé en brouillon'
-    const skipped = (data.skippedNoEmailCount || 0) + (data.skippedIncompleteCount || 0) + (data.failureCount || 0)
-    showToast(`${data.successCount} message${data.successCount > 1 ? 's' : ''} ${action}${data.successCount > 1 ? 's' : ''}${skipped ? ` · ${skipped} à vérifier` : ''}`)
+    if (data.successCount === 0) {
+      const firstError = (data.results || []).find((result: { error?: string }) => Boolean(result.error))?.error
+      showToast(firstError || data.message || 'Aucun brouillon Gmail créé.', firstError ? 'error' : 'info')
+      return
+    }
+
+    const statusSaveFailed = data.statusSaveFailed?.length || 0
+    const skipped = (data.skippedNoEmailCount || 0) + (data.skippedNoSubjectCount || 0) + (data.skippedNoBodyCount || 0) + (data.skippedIncompleteCount || 0) + (data.failureCount || 0)
+    showToast(`${data.successCount} brouillon${data.successCount > 1 ? 's' : ''} Gmail créé${data.successCount > 1 ? 's' : ''}${statusSaveFailed ? ` · ${statusSaveFailed} statut${statusSaveFailed > 1 ? 's' : ''} à vérifier` : skipped ? ` · ${skipped} à compléter` : ''}`)
   }
 
   const toggleSelectedProspect = (prospectId: string) => {
@@ -490,8 +598,34 @@ export default function CampaignsPage() {
     )
   }
 
+  const applyDraftResults = (results: NonNullable<SendSummary['results']> = []) => {
+    const draftResults = results.filter(result =>
+      ['DRAFT_CREATED', 'DRAFT_CREATED_STATUS_NOT_SAVED', 'DRAFT_ALREADY_CREATED'].includes(result.code || '')
+    )
+    if (draftResults.length === 0) return
+
+    setSelectedCampaign(current => current
+      ? {
+          ...current,
+          prospects: current.prospects.map(prospect => {
+            const result = draftResults.find(item => item.prospectId === prospect.id)
+            if (!result) return prospect
+            return {
+              ...prospect,
+              sendStatus: result.status || 'Brouillon créé',
+              gmailMessageId: result.gmailMessageId || prospect.gmailMessageId,
+              sendError: result.code === 'DRAFT_CREATED_STATUS_NOT_SAVED'
+                ? result.error || "Erreur d'enregistrement"
+                : null,
+            }
+          }),
+        }
+      : current
+    )
+  }
+
   const selectAllVisible = () => {
-    setSelectedProspectIds(current => Array.from(new Set([...current, ...filteredProspects.map(prospect => prospect.id)])))
+    setSelectedProspectIds(current => Array.from(new Set([...current, ...emailProspects.map(prospect => prospect.id)])))
   }
 
   const deselectAll = () => setSelectedProspectIds([])
@@ -528,7 +662,7 @@ export default function CampaignsPage() {
             <div>
               <h1 className="font-display" style={{ fontWeight: 800, fontSize: '1.65rem', color: '#F0EDF8', marginBottom: '0.35rem' }}>Campagnes</h1>
               <p style={{ color: '#A89FCC', maxWidth: '680px', lineHeight: 1.65, margin: 0 }}>
-                Regroupez vos créateurs, préparez un message manuel ou IA, puis créez les brouillons Gmail uniquement pour les prospects éligibles.
+                Regroupez vos créateurs, préparez un message manuel, puis créez les brouillons Gmail uniquement pour les prospects prêts.
               </p>
             </div>
             <button onClick={() => setShowGuide(true)} className="btn btn-secondary">Voir le guide</button>
@@ -544,7 +678,7 @@ export default function CampaignsPage() {
                 <button onClick={dismissGuide} aria-label="Fermer le guide campagnes" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#A89FCC', borderRadius: '8px', padding: '0.35rem 0.55rem', cursor: 'pointer' }}>Fermer</button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: '0.65rem' }}>
-                {['Rechercher des créateurs', 'Ajouter à une campagne', 'Rédiger ou générer', 'Connecter Gmail', 'Vérifier la sélection', 'Lancer la campagne', 'Suivre les résultats'].map((step, index) => (
+                {['Rechercher des créateurs', 'Ajouter à une campagne', 'Rédiger le message', 'Connecter Gmail', 'Vérifier la sélection', 'Lancer la campagne', 'Suivre les résultats'].map((step, index) => (
                   <div key={step} style={{ background: 'rgba(10,8,18,0.42)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem' }}>
                     <div style={{ color: '#a78bfa', fontWeight: 900, fontSize: '0.75rem', marginBottom: '0.35rem' }}>0{index + 1}</div>
                     <div style={{ color: '#F0EDF8', fontSize: '0.84rem', fontWeight: 700 }}>{step}</div>
@@ -558,7 +692,7 @@ export default function CampaignsPage() {
             {[
               ['Campagnes', overview.campaignCount],
               ['Prospects', overview.prospectCount],
-              ['Prêtes à envoyer', overview.readyCount],
+              ['Prêtes', overview.readyCount],
               ['Déjà lancées', overview.sentCount],
             ].map(([label, value]) => (
               <div key={label} className="card" style={{ padding: '1rem' }}>
@@ -633,7 +767,7 @@ export default function CampaignsPage() {
             <div>
               {!selectedCampaign ? (
                 <div className="card" style={{ padding: '2rem', color: '#A89FCC', textAlign: 'center', lineHeight: 1.6 }}>
-                  Ouvrez une campagne pour préparer les messages, sélectionner les prospects éligibles et lancer les brouillons Gmail.
+                  Ouvrez une campagne pour préparer les messages, sélectionner les prospects prêts et lancer les brouillons Gmail.
                 </div>
               ) : (
                 <div className="card" style={{ padding: '1rem' }}>
@@ -645,26 +779,34 @@ export default function CampaignsPage() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
-                      <button onClick={selectAllVisible} disabled={filteredProspects.length === 0} className="btn btn-secondary">Tout sélectionner</button>
+                      <button onClick={selectAllVisible} disabled={emailProspects.length === 0} className="btn btn-secondary">Tout sélectionner</button>
                       <button onClick={deselectAll} disabled={selectedProspectIds.length === 0} className="btn btn-secondary">Tout désélectionner</button>
                     </div>
                   </div>
 
                   <div style={{ marginBottom: '1rem', border: '1px solid rgba(56,189,248,0.22)', borderRadius: '12px', background: 'rgba(56,189,248,0.07)', padding: '0.85rem 1rem', color: '#9CB8C8', fontSize: '0.82rem', lineHeight: 1.6 }}>
-                    Les emails seront envoyés uniquement aux prospects avec email valide, sujet et message prêts. Pour les autres créateurs, utilisez les réseaux sociaux ou le site renseignés dans leur fiche.
+                    Les brouillons Gmail seront créés uniquement pour les prospects avec email valide, sujet et message prêts. Pour les autres créateurs, utilisez les réseaux sociaux ou le site renseignés dans leur fiche.
                   </div>
 
-                  {!gmail?.connected ? (
-                    <div style={{ marginBottom: '1rem', border: '1px solid rgba(234,179,8,0.22)', borderRadius: '12px', background: 'rgba(234,179,8,0.07)', padding: '1rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <div>
-                        <div style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.92rem', marginBottom: '0.25rem' }}>Gmail n'est pas connecté</div>
-                        <div style={{ color: '#D8C896', fontSize: '0.8rem', lineHeight: 1.55 }}>Connectez Gmail pour créer les brouillons ou envoyer les messages de cette campagne.</div>
+                  {gmailNeedsReconnect ? (
+                    <div style={{ marginBottom: '1rem', border: '1px solid rgba(245,158,11,0.26)', borderRadius: '12px', background: 'rgba(245,158,11,0.08)', padding: '1rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.92rem', marginBottom: '0.25rem' }}>Connexion Gmail expirée</div>
+                        <div style={{ color: '#FBBF24', fontSize: '0.8rem', lineHeight: 1.55 }}>{gmail?.message || 'Reconnectez Gmail pour créer les brouillons de cette campagne.'}</div>
                       </div>
-                      <button onClick={() => window.location.assign('/api/gmail/connect')} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem' }}>Connecter Gmail</button>
+                      <button onClick={connectGmail} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem' }}>Reconnecter Gmail</button>
+                    </div>
+                  ) : gmailDraftsDisabled ? (
+                    <div style={{ marginBottom: '1rem', border: '1px solid rgba(234,179,8,0.22)', borderRadius: '12px', background: 'rgba(234,179,8,0.07)', padding: '1rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.92rem', marginBottom: '0.25rem' }}>Gmail n'est pas connecté</div>
+                        <div style={{ color: '#D8C896', fontSize: '0.8rem', lineHeight: 1.55 }}>Connectez Gmail pour créer les brouillons de cette campagne.</div>
+                      </div>
+                      <button onClick={connectGmail} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem' }}>Connecter Gmail</button>
                     </div>
                   ) : (
                     <div style={{ marginBottom: '1rem', border: '1px solid rgba(34,197,94,0.22)', borderRadius: '12px', background: 'rgba(34,197,94,0.07)', padding: '0.75rem 1rem', color: '#86efac', fontSize: '0.8rem', fontWeight: 800 }}>
-                      Gmail connecté{gmail.email ? ` : ${gmail.email}` : ''} · Mode {gmail.sendMode === 'send' ? 'envoi réel' : 'brouillon'}
+                      Gmail connecté{gmail?.email ? ` : ${gmail.email}` : ''} · Mode brouillon
                     </div>
                   )}
 
@@ -695,25 +837,45 @@ export default function CampaignsPage() {
                     </select>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                    <button onClick={() => generateCampaignEmails()} disabled={generatingIds.length > 0 || selectedProspectIds.length === 0 || sendingProspectIds.length > 0} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.85rem' }}>
-                      {generatingIds.length > 0 ? <span className="button-loader"><span className="app-spinner" /> Génération...</span> : `Générer avec l'IA (${selectedProspectIds.length})`}
+                  <div style={{ marginBottom: '1rem', border: '1px solid rgba(167,139,250,0.24)', borderRadius: '14px', background: 'linear-gradient(135deg, rgba(83,58,183,0.22), rgba(255,255,255,0.045))', padding: '1rem' }}>
+                    <button
+                      onClick={() => sendCampaignMessages(selectedProspectIds)}
+                      disabled={draftCtaDisabled}
+                      className="btn-primary"
+                      style={{
+                        width: '100%',
+                        minHeight: '58px',
+                        justifyContent: 'center',
+                        fontSize: '0.98rem',
+                        fontWeight: 900,
+                        opacity: draftCtaDisabled ? 0.55 : 1,
+                        cursor: draftCtaDisabled ? 'not-allowed' : 'pointer',
+                        boxShadow: draftCtaDisabled ? 'none' : '0 18px 42px rgba(83,58,183,0.32)',
+                      }}
+                    >
+                      {sendingProspectIds.length > 0 ? (
+                        <span className="button-loader"><span className="app-spinner" /> {getCampaignGmailProgressLabel(gmail?.sendMode)}</span>
+                      ) : (
+                        `✉️ Créer les brouillons Gmail (${readyDraftCount})`
+                      )}
                     </button>
-                    <button onClick={() => sendCampaignMessages(selectedProspectIds)} disabled={sendingProspectIds.length > 0 || selectedProspectIds.length === 0 || !gmail?.connected} className="btn btn-secondary">
-                      {sendingProspectIds.length > 0 ? <span className="button-loader"><span className="app-spinner" /> Envoi...</span> : `Envoyer la sélection (${Math.min(selectedProspectIds.length, 20)})`}
-                    </button>
+                    <div style={{ marginTop: '0.65rem', color: draftCtaDisabled ? '#D8C896' : '#C4BCDF', fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center' }}>
+                      {draftCtaHelp}
+                    </div>
                   </div>
 
                   {sendSummary && (
                     <div style={{ marginBottom: '1rem', border: '1px solid rgba(167,139,250,0.22)', borderRadius: '12px', background: 'rgba(167,139,250,0.07)', padding: '1rem' }}>
                       <div style={{ color: '#F0EDF8', fontWeight: 900, marginBottom: '0.45rem' }}>
-                        {sendSummary.successCount > 0 && sendSummary.failureCount === 0 && sendSummary.skippedNoEmailCount === 0 && sendSummary.skippedIncompleteCount === 0 ? 'Envoyée' : sendSummary.successCount > 0 ? 'Partiellement envoyée' : 'Aucun email envoyé'}
+                        {sendSummary.successCount > 0 && sendSummary.failureCount === 0 && sendSummary.skippedNoEmailCount === 0 && (sendSummary.skippedNoSubjectCount || 0) === 0 && (sendSummary.skippedNoBodyCount || 0) === 0 && sendSummary.skippedIncompleteCount === 0 ? 'Brouillons créés' : sendSummary.successCount > 0 ? 'Brouillons partiellement créés' : 'Aucun brouillon créé'}
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', color: '#C4BCDF', fontSize: '0.82rem' }}>
-                        <span>{sendSummary.successCount} envoyé{sendSummary.successCount > 1 ? 's' : ''}</span>
+                        <span>{sendSummary.successCount} brouillon{sendSummary.successCount > 1 ? 's' : ''}</span>
                         <span>{sendSummary.failureCount} échec{sendSummary.failureCount > 1 ? 's' : ''}</span>
                         <span>{sendSummary.skippedNoEmailCount} sans email</span>
-                        <span>{sendSummary.skippedIncompleteCount} message incomplet</span>
+                        <span>{sendSummary.skippedNoSubjectCount || 0} sans sujet</span>
+                        <span>{sendSummary.skippedNoBodyCount || 0} sans message</span>
+                        <span>{sendSummary.skippedIncompleteCount} à compléter</span>
                       </div>
                       {(sendSummary.results || []).filter(result => result.error).length > 0 && (
                         <div style={{ marginTop: '0.7rem', display: 'grid', gap: '0.25rem' }}>
@@ -736,54 +898,52 @@ export default function CampaignsPage() {
                           Aucun prospect ne correspond aux filtres.
                         </div>
                       )}
-                      {filteredProspects.map(prospect => {
+                      {emailProspects.map(prospect => {
                         const draft = draftMessages[prospect.id] || { subject: '', body: '' }
-                        const links = externalLinks(prospect)
                         const selected = selectedProspectIds.includes(prospect.id)
-                        const eligible = isSendEligible(prospect)
+                        const prospectWithDraft = getCampaignProspectWithDraft(prospect, draft)
+                        const eligible = isSendEligible(prospectWithDraft)
+                        const incompleteMessage = !hasCompleteMessage(prospectWithDraft)
+                        const processed = isAlreadyProcessed(prospect)
+                        const statusLabel = processed
+                          ? prospect.sendStatus
+                          : incompleteMessage
+                            ? 'À compléter'
+                            : selected
+                              ? 'Prêt'
+                              : ''
+                        const statusColor = processed ? '#a78bfa' : incompleteMessage ? '#eab308' : '#22c55e'
+                        const statusBg = processed ? 'rgba(167,139,250,0.12)' : incompleteMessage ? 'rgba(234,179,8,0.10)' : 'rgba(34,197,94,0.12)'
                         return (
-                          <div key={prospect.id} style={{ border: selected ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.22)', borderRadius: '12px', padding: '0.95rem', background: 'rgba(255,255,255,0.025)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'start', marginBottom: '0.75rem' }}>
-                              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'start', minWidth: 0 }}>
-                                <input type="checkbox" checked={selected} onChange={() => toggleSelectedProspect(prospect.id)} aria-label={`Sélectionner ${prospect.name}`} style={{ marginTop: '0.35rem', accentColor: '#7B63D3', cursor: 'pointer' }} />
-                                {prospect.thumbnail ? (
-                                  <img src={prospect.thumbnail} alt={`Photo de ${prospect.name}`} style={{ width: '46px', height: '46px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(83,58,183,0.35)', flexShrink: 0 }} />
-                                ) : (
-                                  <div aria-hidden="true" style={{ width: '46px', height: '46px', borderRadius: '50%', background: 'rgba(83,58,183,0.2)', border: '2px solid rgba(83,58,183,0.35)', color: '#a78bfa', display: 'grid', placeItems: 'center', fontWeight: 900, flexShrink: 0 }}>{prospect.avatar || getInitials(prospect.name)}</div>
-                                )}
-                                <div style={{ minWidth: 0 }}>
-                                  <div style={{ color: '#F0EDF8', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>{prospect.name}</div>
-                                  <div style={{ color: '#A89FCC', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-                                    {prospect.scoreLabel || 'Score inconnu'} · {prospect.score || 0}/100
-                                  </div>
-                                  <div style={{ color: '#C4BCDF', fontSize: '0.78rem', marginTop: '0.35rem', lineHeight: 1.5 }}>{prospect.scoreReason || 'Aucune analyse disponible.'}</div>
-                                </div>
-                              </div>
-                              <span style={{ color: eligible ? '#22c55e' : isAlreadyProcessed(prospect) ? '#a78bfa' : '#eab308', background: eligible ? 'rgba(34,197,94,0.12)' : isAlreadyProcessed(prospect) ? 'rgba(167,139,250,0.12)' : 'rgba(234,179,8,0.12)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '0.22rem 0.6rem', fontSize: '0.75rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
-                                {eligible ? 'Éligible' : isAlreadyProcessed(prospect) ? prospect.sendStatus : !hasValidEmail(prospect.email) ? 'Contact manuel' : !hasCompleteMessage(prospect) ? 'Message incomplet' : prospect.status}
-                              </span>
+                          <div key={prospect.id} className="prospect-card campaign-prospect-card" style={{ border: selected ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.24)', borderRadius: '12px', padding: '1rem', background: selected ? 'linear-gradient(135deg, rgba(83,58,183,0.18), rgba(255,255,255,0.035))' : 'rgba(255,255,255,0.03)', boxShadow: '0 16px 40px rgba(0,0,0,0.16)', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+                            <div className="campaign-prospect-header">
+                              <input type="checkbox" checked={selected} onChange={() => toggleSelectedProspect(prospect.id)} aria-label={`Sélectionner ${prospect.name}`} style={{ marginTop: '0.35rem', accentColor: '#7B63D3', cursor: 'pointer', flexShrink: 0 }} />
+                              <ProspectPresentation
+                                channel={prospect}
+                                compact
+                                selected={selected}
+                                rightSlot={statusLabel ? (
+                                  <span style={{ color: statusColor, background: statusBg, border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '0.22rem 0.6rem', fontSize: '0.75rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                                    {statusLabel}
+                                  </span>
+                                ) : null}
+                              />
                             </div>
+                            <div className="campaign-score-reason">{prospect.scoreReason || 'Aucune analyse disponible.'}</div>
 
-                            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                              {prospect.email && <a href={`mailto:${prospect.email}`} style={{ color: '#22c55e', textDecoration: 'none', fontSize: '0.8rem' }}>Email</a>}
-                              {links.map(link => (
-                                <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', textDecoration: 'none', fontSize: '0.8rem' }}>{link.label.replace('Ouvrir ', '').replace('Voir la chaîne YouTube', 'YouTube')}</a>
-                              ))}
-                            </div>
-
-                            <div style={{ display: 'grid', gap: '0.6rem' }}>
+                            <div className="campaign-message-editor">
                               <label style={{ color: '#F0EDF8', fontSize: '0.78rem', fontWeight: 800 }}>
                                 Sujet
-                                <input value={draft.subject} onChange={event => updateDraft(prospect.id, 'subject', event.target.value)} placeholder="Sujet de l'email" style={{ marginTop: '0.35rem', width: '100%' }} />
+                                <input value={draft.subject} onChange={event => updateDraft(prospect.id, 'subject', event.target.value)} placeholder="Sujet de l'email" style={{ marginTop: '0.35rem', width: '100%', minWidth: 0, background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.1)' }} />
                               </label>
                               <label style={{ color: '#F0EDF8', fontSize: '0.78rem', fontWeight: 800 }}>
                                 Message
-                                <textarea value={draft.body} onChange={event => updateDraft(prospect.id, 'body', event.target.value)} placeholder="Rédigez le message ou générez-le avec l'IA." rows={5} style={{ marginTop: '0.35rem', width: '100%', resize: 'vertical' }} />
+                                <textarea value={draft.body} onChange={event => updateDraft(prospect.id, 'body', event.target.value)} placeholder="Rédigez le message du brouillon." rows={5} style={{ marginTop: '0.35rem', width: '100%', minWidth: 0, resize: 'vertical' }} />
                               </label>
                             </div>
 
-                            <div style={{ marginTop: '0.7rem', paddingTop: '0.65rem', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
-                              <div>
+                            <div className="campaign-prospect-footer">
+                              <div style={{ minWidth: 0 }}>
                                 <span style={{ color: prospect.sendStatus === 'Envoyé' || prospect.sendStatus === 'Brouillon créé' ? '#22c55e' : prospect.sendStatus === 'Erreur' ? '#ef4444' : '#A89FCC', fontSize: '0.76rem', fontWeight: 800 }}>
                                   {prospect.sendStatus || 'Non envoyé'}
                                 </span>
@@ -794,16 +954,13 @@ export default function CampaignsPage() {
                                   <span style={{ display: 'block', color: '#ef4444', fontSize: '0.7rem', marginTop: '0.2rem' }}>{prospect.sendError}</span>
                                 )}
                               </div>
-                              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                                <button onClick={() => generateCampaignEmails([prospect.id])} disabled={generatingIds.includes(prospect.id) || sendingProspectIds.length > 0} className="btn btn-secondary">
-                                  {generatingIds.includes(prospect.id) ? 'Génération...' : 'Générer avec l’IA'}
-                                </button>
+                              <div className="campaign-prospect-actions">
                                 <button onClick={() => saveProspectMessage(prospect.id)} disabled={savingIds.includes(prospect.id)} className="btn btn-secondary">
                                   {savingIds.includes(prospect.id) ? 'Sauvegarde...' : 'Enregistrer'}
                                 </button>
                                 <button onClick={() => copyMessage(prospect)} disabled={!draft.body.trim()} className="btn btn-secondary">Copier</button>
-                                <button onClick={() => sendCampaignMessages([prospect.id])} disabled={sendingProspectIds.includes(prospect.id) || !eligible || !gmail?.connected} className="btn btn-secondary">
-                                  {sendingProspectIds.includes(prospect.id) ? 'Envoi...' : isAlreadyProcessed(prospect) ? 'Déjà traité' : 'Envoyer'}
+                                <button onClick={() => sendCampaignMessages([prospect.id])} disabled={sendingProspectIds.includes(prospect.id) || !eligible || gmailDraftsDisabled} className="btn btn-secondary">
+                                  {sendingProspectIds.includes(prospect.id) ? getCampaignGmailProgressLabel(gmail?.sendMode) : isAlreadyProcessed(prospect) ? 'Déjà traité' : getCampaignGmailSingleActionLabel(gmail?.sendMode)}
                                 </button>
                               </div>
                             </div>
@@ -813,28 +970,27 @@ export default function CampaignsPage() {
                     </div>
                   )}
 
-                  <div style={{ marginTop: '1rem', border: '1px solid rgba(234,179,8,0.22)', borderRadius: '12px', background: 'rgba(234,179,8,0.06)', padding: '1rem' }}>
-                    <div style={{ color: '#F0EDF8', fontWeight: 900, marginBottom: '0.35rem' }}>Prospects à contacter manuellement</div>
-                    <p style={{ color: '#D8C896', fontSize: '0.82rem', lineHeight: 1.55, marginTop: 0 }}>
-                      Ces créateurs n'ont pas d'email valide dans la campagne. Contactez-les manuellement via les liens disponibles.
-                    </p>
-                    {manualProspects.length === 0 ? (
-                      <div style={{ color: '#A89FCC', fontSize: '0.82rem' }}>Aucun prospect sans email dans cette campagne.</div>
-                    ) : (
+                  {noEmailProspects.length > 0 && (
+                    <div style={{ marginTop: '1rem', border: '1px solid rgba(234,179,8,0.22)', borderRadius: '12px', background: 'rgba(234,179,8,0.06)', padding: '1rem' }}>
+                      <div style={{ color: '#F0EDF8', fontWeight: 900, marginBottom: '0.35rem' }}>Prospects sans adresse email</div>
+                      <p style={{ color: '#D8C896', fontSize: '0.82rem', lineHeight: 1.55, marginTop: 0 }}>
+                        Ces créateurs restent disponibles dans la campagne, sans éditeur Gmail ni action de brouillon.
+                      </p>
                       <div style={{ display: 'grid', gap: '0.55rem' }}>
-                        {manualProspects.map(prospect => {
+                        {noEmailProspects.map(prospect => {
                           const links = externalLinks(prospect)
                           return (
-                            <div key={prospect.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', background: 'rgba(10,8,18,0.42)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.7rem' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
-                                {prospect.thumbnail ? (
-                                  <img src={prospect.thumbnail} alt={`Photo de ${prospect.name}`} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
-                                ) : (
-                                  <div aria-hidden="true" style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(83,58,183,0.2)', color: '#a78bfa', display: 'grid', placeItems: 'center', fontSize: '0.75rem', fontWeight: 900 }}>{prospect.avatar || getInitials(prospect.name)}</div>
+                            <div key={prospect.id} style={{ display: 'grid', gap: '0.7rem', background: 'rgba(10,8,18,0.42)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.8rem', overflow: 'hidden' }}>
+                              <ProspectPresentation
+                                channel={prospect}
+                                compact
+                                rightSlot={(
+                                  <span style={{ color: '#eab308', background: 'rgba(234,179,8,0.10)', border: '1px solid rgba(234,179,8,0.22)', borderRadius: '999px', padding: '0.22rem 0.6rem', fontSize: '0.75rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                                    Aucune adresse email disponible
+                                  </span>
                                 )}
-                                <div style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.86rem' }}>{prospect.name}</div>
-                              </div>
-                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              />
+                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', minWidth: 0 }}>
                                 {links.length === 0 ? (
                                   <span style={{ color: '#A89FCC', fontSize: '0.78rem' }}>Aucun lien public.</span>
                                 ) : links.map(link => (
@@ -845,8 +1001,8 @@ export default function CampaignsPage() {
                           )
                         })}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

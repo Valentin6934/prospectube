@@ -141,6 +141,78 @@ select:focus-visible {
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28) !important;
 }
 
+.campaign-prospect-card {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.campaign-prospect-header {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.campaign-score-reason {
+  min-width: 0;
+  margin-bottom: 0.85rem;
+  color: #c4bcdf;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.campaign-message-editor {
+  min-width: 0;
+  display: grid;
+  gap: 0.65rem;
+  background: rgba(10, 8, 18, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 0.85rem;
+}
+
+.campaign-message-editor label {
+  min-width: 0;
+}
+
+.campaign-message-editor textarea {
+  background-color: #15101f;
+  border: 1px solid rgba(83, 58, 183, 0.32);
+  border-radius: 10px;
+  color: #f0edf8;
+  font-family: var(--font-dm-sans), sans-serif;
+  padding: 0.7rem 0.9rem;
+}
+
+.campaign-prospect-footer {
+  min-width: 0;
+  margin-top: 0.7rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.campaign-prospect-actions {
+  min-width: 0;
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.campaign-prospect-actions .btn {
+  min-width: 112px;
+}
+
 .app-loader-screen,
 .app-loader-inline {
   display: flex;
@@ -392,6 +464,23 @@ select option {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
+  .campaign-prospect-footer,
+  .campaign-prospect-actions {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .campaign-prospect-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .campaign-prospect-actions .btn {
+    min-width: 0;
+    width: 100%;
+  }
+
   .search-spotlight {
     padding: 1.15rem !important;
     border-radius: 14px !important;
@@ -405,6 +494,16 @@ select option {
 
   .app-toast-raised {
     bottom: 7rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .campaign-prospect-header {
+    gap: 0.55rem;
+  }
+
+  .campaign-prospect-actions {
+    grid-template-columns: 1fr;
   }
 }
 

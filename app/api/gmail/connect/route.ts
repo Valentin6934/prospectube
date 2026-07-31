@@ -3,12 +3,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { REQUIRED_GMAIL_DRAFT_SCOPE } from '@/lib/gmailStatus'
 import { isPro, requireProResponse } from '@/lib/plan'
 
 export const dynamic = 'force-dynamic'
 
 const OAUTH_STATE_COOKIE = 'gmail_oauth_state'
 const OAUTH_VERIFIER_COOKIE = 'gmail_oauth_verifier'
+const OAUTH_RETURN_COOKIE = 'gmail_oauth_return'
+const OAUTH_ORIGIN_COOKIE = 'gmail_oauth_origin'
 const OAUTH_COOKIE_MAX_AGE = 10 * 60
 
 function base64Url(buffer: Buffer) {
@@ -19,11 +22,22 @@ function base64Url(buffer: Buffer) {
     .replace(/=+$/g, '')
 }
 
-function callbackUrl(req: NextRequest) {
-  const configuredUrl = process.env.NEXTAUTH_URL?.trim()
-  const origin = configuredUrl || req.nextUrl.origin
+function getRequestOrigin(req: NextRequest) {
+  const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
+  const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
+  const host = forwardedHost || req.headers.get('host')
+  const protocol = forwardedProto || req.nextUrl.protocol.replace(':', '')
 
-  return `${origin.replace(/\/$/, '')}/api/gmail/callback`
+  return (host ? `${protocol}://${host}` : req.nextUrl.origin).replace(/\/$/, '')
+}
+
+function callbackUrl(req: NextRequest) {
+  return `${getRequestOrigin(req)}/api/gmail/callback`
+}
+
+function getReturnPath(req: NextRequest) {
+  const value = req.nextUrl.searchParams.get('returnTo') || '/settings'
+  return value.startsWith('/') && !value.startsWith('//') ? value : '/settings'
 }
 
 export async function GET(req: NextRequest) {
@@ -73,8 +87,7 @@ export async function GET(req: NextRequest) {
         'openid',
         'email',
         'profile',
-        'https://www.googleapis.com/auth/gmail.send',
-        'https://www.googleapis.com/auth/gmail.compose',
+        REQUIRED_GMAIL_DRAFT_SCOPE,
       ].join(' '),
       state,
       code_challenge: challenge,
@@ -93,6 +106,8 @@ export async function GET(req: NextRequest) {
     }
     response.cookies.set(OAUTH_STATE_COOKIE, state, cookieOptions)
     response.cookies.set(OAUTH_VERIFIER_COOKIE, verifier, cookieOptions)
+    response.cookies.set(OAUTH_RETURN_COOKIE, getReturnPath(req), cookieOptions)
+    response.cookies.set(OAUTH_ORIGIN_COOKIE, getRequestOrigin(req), cookieOptions)
 
     console.log('GET /api/gmail/connect: redirecting to Google with status 302')
     return response

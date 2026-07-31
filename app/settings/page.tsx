@@ -1,20 +1,27 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { signOut, useSession } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import AppLoader from '@/components/AppLoader'
+import MainAppNav from '@/components/MainAppNav'
 import SubscriptionButton from '@/components/SubscriptionButton'
 import Toast, { useToast } from '@/components/Toast'
 import { isPro } from '@/lib/plan'
+import { shouldDisableGmailDrafts } from '@/lib/gmailStatus'
 
 type GmailStatus = {
   connected: boolean
+  status: 'connected' | 'expired' | 'disconnected' | 'unavailable'
+  state: 'connected' | 'expired' | 'disconnected' | 'unavailable'
+  canUseGmail: boolean
   email: string | null
   hasRefreshToken: boolean
   expiryDate: string | null
+  updatedAt: string | null
   sendMode: 'draft' | 'send'
+  message?: string
+  reconnectRequired?: boolean
   unavailable?: boolean
   setupRequired?: boolean
 }
@@ -24,11 +31,16 @@ export default function SettingsPage() {
   const router = useRouter()
   const [gmail, setGmail] = useState<GmailStatus | null>(null)
   const [loading, setLoading] = useState(true)
+  const [disconnecting, setDisconnecting] = useState(false)
   const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
   const proUser = isPro(plan)
   const userEmail = session?.user?.email || ''
   const userName = session?.user?.name || userEmail.split('@')[0] || 'Utilisateur'
+  const gmailNeedsReconnect = shouldDisableGmailDrafts(gmail) && gmail?.state === 'expired'
+  const gmailStatusLabel = !proUser ? 'Disponible en Pro' : gmailNeedsReconnect ? 'Connexion expirée' : gmail?.connected ? 'Connecté' : 'Non connecté'
+  const gmailStatusColor = gmailNeedsReconnect ? '#f59e0b' : gmail?.connected ? '#22c55e' : '#A89FCC'
+  const gmailStatusBg = gmailNeedsReconnect ? 'rgba(245,158,11,0.12)' : gmail?.connected ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.04)'
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/login')
@@ -38,8 +50,9 @@ export default function SettingsPage() {
     const result = new URLSearchParams(window.location.search).get('gmail')
     if (!result) return
 
-    if (result === 'connected') showToast('Gmail connecté avec succès.')
+    if (result === 'connected') showToast('Gmail reconnecté avec succès.')
     else if (result === 'cancelled') showToast('Autorisation Gmail annulée.', 'info')
+    else if (result === 'refresh_token_error') showToast('Google n’a pas renvoyé de refresh token. Réessayez avec Reconnecter Gmail.', 'error')
     else showToast('La connexion Gmail a échoué. Réessayez.', 'error')
 
     window.history.replaceState({}, '', '/settings')
@@ -52,37 +65,53 @@ export default function SettingsPage() {
       return
     }
 
-    fetch('/api/gmail')
-      .then(async response => {
-        const data = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(data.error || 'Impossible de vérifier Gmail.')
-        setGmail(data)
+    loadGmailStatus()
+  }, [status, proUser])
+
+  const loadGmailStatus = async () => {
+    try {
+      const response = await fetch('/api/gmail', { cache: 'no-store' })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Impossible de vérifier Gmail.')
+      setGmail(data)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Impossible de vérifier Gmail.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const disconnectGmail = async () => {
+    if (!window.confirm('Déconnecter Gmail de ProspectTube ?')) return
+    setDisconnecting(true)
+    try {
+      const response = await fetch('/api/gmail', { method: 'DELETE', cache: 'no-store' })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || 'Impossible de déconnecter Gmail.')
+      setGmail(data.gmail || {
+        connected: false,
+        status: 'disconnected',
+        state: 'disconnected',
+        canUseGmail: false,
+        email: null,
+        hasRefreshToken: false,
+        expiryDate: null,
+        updatedAt: null,
+        sendMode: 'draft',
       })
-      .catch(error => showToast(error.message, 'error'))
-      .finally(() => setLoading(false))
-  }, [status, proUser, showToast])
+      showToast('Gmail déconnecté.')
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Impossible de déconnecter Gmail.', 'error')
+    } finally {
+      setDisconnecting(false)
+    }
+  }
 
   if (status === 'loading' || loading) return <AppLoader text="Chargement des paramètres..." />
 
   return (
     <main style={{ minHeight: '100vh', background: '#0A0812' }}>
-      <nav className="app-nav" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
-        <Link href="/dashboard/home" style={{ textDecoration: 'none' }}>
-          <div className="font-display" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#F0EDF8' }}>
-            Prospect<span className="grad-text">Tube</span>
-          </div>
-        </Link>
-        <div className="app-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Link href="/dashboard/home" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>Accueil</Link>
-          <Link href="/dashboard" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>Nouvelle recherche</Link>
-          <Link href="/favorites" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>Favoris</Link>
-          <Link href="/history" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>Historique</Link>
-          <Link href="/campaigns" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>Campagnes</Link>
-          <Link href="/settings" style={{ color: '#a78bfa', textDecoration: 'none', fontSize: '0.85rem' }}>Paramètres</Link>
-          <div style={{ background: 'rgba(83,58,183,0.2)', border: '1px solid rgba(83,58,183,0.4)', color: '#a78bfa', padding: '0.2rem 0.75rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 500 }}>Plan {plan}</div>
-          <button onClick={() => signOut({ callbackUrl: '/' })} className="btn btn-secondary">Déconnexion</button>
-        </div>
-      </nav>
+      <MainAppNav plan={plan} active="settings" />
 
       <div style={{ width: 'min(860px, calc(100% - 2rem))', margin: '0 auto', padding: '2.5rem 0 4rem' }}>
         <div style={{ marginBottom: '1.5rem' }}>
@@ -123,22 +152,47 @@ export default function SettingsPage() {
 
           <section className="card" style={{ padding: '1.25rem', borderRadius: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '1rem', flexWrap: 'wrap' }}>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <h2 style={{ margin: '0 0 0.35rem', fontSize: '1rem' }}>Intégration Gmail</h2>
                 <p style={{ margin: 0, color: '#A89FCC', fontSize: '0.84rem', lineHeight: 1.55 }}>
-                  La connexion Gmail se fait maintenant depuis le parcours Campagnes, au moment où elle devient nécessaire.
+                  Gmail est nécessaire pour créer les brouillons depuis vos campagnes.
                 </p>
               </div>
-              <span style={{ color: gmail?.connected ? '#22c55e' : '#A89FCC', background: gmail?.connected ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '0.32rem 0.7rem', fontSize: '0.78rem', fontWeight: 800 }}>
-                {proUser ? (gmail?.connected ? 'Connecté' : 'Non connecté') : 'Disponible en Pro'}
+              <span style={{ color: gmailStatusColor, background: gmailStatusBg, border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '0.32rem 0.7rem', fontSize: '0.78rem', fontWeight: 800 }}>
+                {gmailStatusLabel}
               </span>
             </div>
-            {gmail?.connected && gmail.email && (
+
+            {proUser && gmail?.email && (
               <div style={{ color: '#80769f', fontSize: '0.78rem', marginTop: '0.75rem' }}>
-                Compte connecté : {gmail.email}
+                Compte Gmail : {gmail.email}
               </div>
             )}
-            {!proUser && (
+
+            {proUser && gmailNeedsReconnect && (
+              <div style={{ marginTop: '1rem', border: '1px solid rgba(245,158,11,0.24)', background: 'rgba(245,158,11,0.08)', borderRadius: '10px', padding: '0.85rem', color: '#fbbf24', fontSize: '0.84rem', lineHeight: 1.55 }}>
+                {gmail?.message || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.'}
+              </div>
+            )}
+
+            {proUser && !gmail?.connected && !gmailNeedsReconnect && (
+              <p style={{ margin: '1rem 0 0', color: '#A89FCC', fontSize: '0.84rem', lineHeight: 1.55 }}>
+                Connectez Gmail pour créer des brouillons depuis vos campagnes, sans quitter ProspectTube.
+              </p>
+            )}
+
+            {proUser ? (
+              <div style={{ marginTop: '1rem', display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
+                <button onClick={() => window.location.assign('/api/gmail/connect?returnTo=/settings')} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem' }}>
+                  {gmail?.connected ? 'Reconnecter Gmail' : gmailNeedsReconnect ? 'Reconnecter Gmail' : 'Connecter Gmail'}
+                </button>
+                {(gmail?.connected || gmailNeedsReconnect || gmail?.email) && (
+                  <button onClick={disconnectGmail} disabled={disconnecting} className="btn btn-secondary">
+                    {disconnecting ? 'Déconnexion...' : 'Déconnecter Gmail'}
+                  </button>
+                )}
+              </div>
+            ) : (
               <div style={{ marginTop: '1rem' }}>
                 <SubscriptionButton plan="Gratuit" />
               </div>

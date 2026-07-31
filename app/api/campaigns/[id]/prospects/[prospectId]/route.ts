@@ -1,10 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
+import { Prisma } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isPro, requireProResponse } from '@/lib/plan'
+import { normalizeCampaignMessage } from '@/lib/campaignWorkflow'
 
 export const dynamic = 'force-dynamic'
+
+const prospectSelect = {
+  id: true,
+  campaignId: true,
+  channelId: true,
+  name: true,
+  email: true,
+  instagram: true,
+  tiktok: true,
+  twitch: true,
+  website: true,
+  channelUrl: true,
+  score: true,
+  scoreLabel: true,
+  scoreReason: true,
+  generatedSubject: true,
+  generatedBody: true,
+  status: true,
+  sendStatus: true,
+  sentAt: true,
+  sendError: true,
+  gmailMessageId: true,
+  createdAt: true,
+}
+
+const prospectSelectWithMedia = {
+  ...prospectSelect,
+  avatar: true,
+  thumbnail: true,
+}
+
+function isMissingColumnError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2022'
+}
 
 async function getCurrentUser() {
   const session = await getServerSession(authOptions)
@@ -29,8 +65,12 @@ export async function PATCH(
   if (!isPro(user.plan)) return requireProResponse()
 
   const body = await req.json().catch(() => ({}))
-  const subject = cleanText(body.generatedSubject)
-  const message = cleanText(body.generatedBody)
+  const normalized = normalizeCampaignMessage({
+    subject: body.subject ?? body.generatedSubject,
+    body: body.body ?? body.generatedBody,
+  })
+  const subject = cleanText(normalized.subject)
+  const message = cleanText(normalized.body)
 
   if (!subject) {
     return NextResponse.json({ error: 'Sujet requis.' }, { status: 400 })
@@ -53,15 +93,32 @@ export async function PATCH(
     return NextResponse.json({ error: 'Prospect introuvable' }, { status: 404 })
   }
 
-  const updated = await prisma.campaignProspect.update({
-    where: { id: prospect.id },
-    data: {
-      generatedSubject: subject,
-      generatedBody: message,
-      status: 'Message pret',
-      sendError: null,
-    },
-  })
+  const updateData = {
+    generatedSubject: subject,
+    generatedBody: message,
+    status: 'Message pret',
+    sendError: null,
+  }
 
-  return NextResponse.json({ prospect: updated })
+  try {
+    const updated = await prisma.campaignProspect.update({
+      where: { id: prospect.id },
+      data: updateData,
+      select: prospectSelectWithMedia,
+    })
+    return NextResponse.json({ prospect: updated })
+  } catch (error) {
+    if (!isMissingColumnError(error)) throw error
+    console.error('PATCH /api/campaigns/[id]/prospects/[prospectId] missing media columns:', {
+      campaignId: params.id,
+      prospectId: params.prospectId,
+      userId: user.id,
+    })
+    const updated = await prisma.campaignProspect.update({
+      where: { id: prospect.id },
+      data: updateData,
+      select: prospectSelect,
+    })
+    return NextResponse.json({ prospect: { ...updated, avatar: null, thumbnail: null } })
+  }
 }

@@ -8,39 +8,76 @@ export const dynamic = 'force-dynamic'
 
 const OAUTH_STATE_COOKIE = 'gmail_oauth_state'
 const OAUTH_VERIFIER_COOKIE = 'gmail_oauth_verifier'
+const OAUTH_RETURN_COOKIE = 'gmail_oauth_return'
+const OAUTH_ORIGIN_COOKIE = 'gmail_oauth_origin'
 
-function callbackUrl(req: NextRequest) {
+function getRequestOrigin(req: NextRequest) {
   const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
   const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
   const host = forwardedHost || req.headers.get('host')
   const protocol = forwardedProto || req.nextUrl.protocol.replace(':', '')
-  const origin = host ? `${protocol}://${host}` : req.nextUrl.origin
 
-  return `${origin.replace(/\/$/, '')}/api/gmail/callback`
+  return (host ? `${protocol}://${host}` : req.nextUrl.origin).replace(/\/$/, '')
 }
 
-function campaignRedirect(req: NextRequest, status: string) {
-  return NextResponse.redirect(new URL(`/campaigns?gmail=${status}`, req.url))
+function callbackUrl(req: NextRequest) {
+  return `${getRequestOrigin(req)}/api/gmail/callback`
+}
+
+function safeReturnPath(req: NextRequest) {
+  const value = req.cookies.get(OAUTH_RETURN_COOKIE)?.value || '/settings'
+  return value.startsWith('/') && !value.startsWith('//') ? value : '/settings'
+}
+
+function oauthRedirect(req: NextRequest, status: string) {
+  const returnPath = safeReturnPath(req)
+  const separator = returnPath.includes('?') ? '&' : '?'
+  return NextResponse.redirect(new URL(`${returnPath}${separator}gmail=${status}`, getSafeReturnOrigin(req)))
 }
 
 function clearOAuthCookies(response: NextResponse) {
   response.cookies.set(OAUTH_STATE_COOKIE, '', { path: '/', maxAge: 0 })
   response.cookies.set(OAUTH_VERIFIER_COOKIE, '', { path: '/', maxAge: 0 })
+  response.cookies.set(OAUTH_RETURN_COOKIE, '', { path: '/', maxAge: 0 })
+  response.cookies.set(OAUTH_ORIGIN_COOKIE, '', { path: '/', maxAge: 0 })
   return response
+}
+
+function getSafeReturnOrigin(req: NextRequest) {
+  const currentOrigin = getRequestOrigin(req)
+  const storedOrigin = req.cookies.get(OAUTH_ORIGIN_COOKIE)?.value
+  if (!storedOrigin) return currentOrigin
+
+  try {
+    const url = new URL(storedOrigin)
+    const current = new URL(currentOrigin)
+    const isHttp = url.protocol === 'https:' || url.protocol === 'http:'
+    const isSameHost = url.host === current.host
+    const isVercelPreview = url.hostname.endsWith('.vercel.app')
+    const isLocalDev = process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1'].includes(url.hostname)
+
+    if (isHttp && (isSameHost || isVercelPreview || isLocalDev)) {
+      return url.origin
+    }
+  } catch {
+    return currentOrigin
+  }
+
+  return currentOrigin
 }
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
-    return clearOAuthCookies(campaignRedirect(req, 'unauthorized'))
+    return clearOAuthCookies(oauthRedirect(req, 'unauthorized'))
   }
 
   const currentUser = await prisma.user.findUnique({
     where: { email: session.user.email },
     select: { id: true, plan: true },
   })
-  if (!currentUser) return clearOAuthCookies(campaignRedirect(req, 'user_error'))
-  if (!isPro(currentUser.plan)) return clearOAuthCookies(campaignRedirect(req, 'pro_required'))
+  if (!currentUser) return clearOAuthCookies(oauthRedirect(req, 'user_error'))
+  if (!isPro(currentUser.plan)) return clearOAuthCookies(oauthRedirect(req, 'pro_required'))
 
   const error = req.nextUrl.searchParams.get('error')
   const code = req.nextUrl.searchParams.get('code')
@@ -48,15 +85,15 @@ export async function GET(req: NextRequest) {
   const expectedState = req.cookies.get(OAUTH_STATE_COOKIE)?.value
   const verifier = req.cookies.get(OAUTH_VERIFIER_COOKIE)?.value
 
-  if (error) return clearOAuthCookies(campaignRedirect(req, 'cancelled'))
+  if (error) return clearOAuthCookies(oauthRedirect(req, 'cancelled'))
   if (!code || !state || !expectedState || state !== expectedState || !verifier) {
-    return clearOAuthCookies(campaignRedirect(req, 'invalid_state'))
+    return clearOAuthCookies(oauthRedirect(req, 'invalid_state'))
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
   if (!clientId || !clientSecret) {
-    return clearOAuthCookies(campaignRedirect(req, 'config_error'))
+    return clearOAuthCookies(oauthRedirect(req, 'config_error'))
   }
 
   try {
@@ -76,7 +113,7 @@ export async function GET(req: NextRequest) {
     const tokens = await tokenResponse.json().catch(() => ({}))
 
     if (!tokenResponse.ok || typeof tokens.access_token !== 'string') {
-      return clearOAuthCookies(campaignRedirect(req, 'token_error'))
+      return clearOAuthCookies(oauthRedirect(req, 'token_error'))
     }
 
     const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
@@ -85,7 +122,7 @@ export async function GET(req: NextRequest) {
     })
     const profile = await profileResponse.json().catch(() => ({}))
     if (!profileResponse.ok || typeof profile.sub !== 'string') {
-      return clearOAuthCookies(campaignRedirect(req, 'profile_error'))
+      return clearOAuthCookies(oauthRedirect(req, 'profile_error'))
     }
 
     const existingAccount = await prisma.googleAccount.findUnique({
@@ -97,7 +134,7 @@ export async function GET(req: NextRequest) {
       : existingAccount?.refreshToken || null
 
     if (!refreshToken) {
-      return clearOAuthCookies(campaignRedirect(req, 'refresh_token_error'))
+      return clearOAuthCookies(oauthRedirect(req, 'refresh_token_error'))
     }
 
     await prisma.googleAccount.upsert({
@@ -121,9 +158,9 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    return clearOAuthCookies(campaignRedirect(req, 'connected'))
+    return clearOAuthCookies(oauthRedirect(req, 'connected'))
   } catch (error) {
     console.error('Gmail OAuth callback failed:', error)
-    return clearOAuthCookies(campaignRedirect(req, 'oauth_error'))
+    return clearOAuthCookies(oauthRedirect(req, 'oauth_error'))
   }
 }
