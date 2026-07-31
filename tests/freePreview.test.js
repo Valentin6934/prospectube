@@ -61,13 +61,6 @@ const {
   isAllowedProspectTubeReturnOrigin,
   verifyGmailOAuthState,
 } = require('../lib/gmailOAuthUrl.ts')
-const {
-  buildLaunchOfferStatusFromPromotion,
-  getDefaultLaunchOfferStatus,
-  getLaunchOfferButtonLabel,
-  getLaunchOfferPricing,
-  isLaunchPromotionId,
-} = require('../lib/launchOffer.ts')
 
 test('selects high, median and low scored prospects deterministically', () => {
   const prospects = [
@@ -880,136 +873,24 @@ test('campaign send route logs Prisma persistence failures and retries a minimal
   assert.doesNotMatch(sendRoute, /where:\s*\{\s*id:\s*prospect\.id\s*\},\s*data:\s*\{\s*sendStatus,\s*sentAt/s)
 })
 
-test('launch offer status computes remaining places from Stripe promotion redemptions', () => {
-  const basePromotion = {
-    active: true,
-    livemode: false,
-    max_redemptions: 5,
-    times_redeemed: 0,
-    coupon: { valid: true, percent_off: 50, duration: 'forever' },
-  }
-
-  assert.deepEqual(buildLaunchOfferStatusFromPromotion(basePromotion, { expectedLivemode: false }), {
-    active: true,
-    launchPrice: 4.95,
-    regularPrice: 9.9,
-    discountedPrice: 4.95,
-    originalPrice: 9.9,
-    maxPlaces: 5,
-    usedPlaces: 0,
-    remainingPlaces: 5,
-    remaining: 5,
-    checkoutConfigured: true,
-  })
-
-  assert.equal(buildLaunchOfferStatusFromPromotion({ ...basePromotion, times_redeemed: 4 }, { expectedLivemode: false }).remainingPlaces, 1)
-  assert.equal(buildLaunchOfferStatusFromPromotion({ ...basePromotion, times_redeemed: 5 }, { expectedLivemode: false }).active, false)
-  assert.equal(buildLaunchOfferStatusFromPromotion({ ...basePromotion, active: false }, { expectedLivemode: false }).active, false)
-  assert.equal(buildLaunchOfferStatusFromPromotion({ ...basePromotion, livemode: true }, { expectedLivemode: false }).active, false)
-  assert.equal(buildLaunchOfferStatusFromPromotion({ ...basePromotion, coupon: { valid: true, percent_off: 40, duration: 'forever' } }, { expectedLivemode: false }).active, false)
-  assert.equal(buildLaunchOfferStatusFromPromotion({ ...basePromotion, coupon: { valid: true, percent_off: 50, duration: 'once' } }, { expectedLivemode: false }).active, false)
-  assert.equal(buildLaunchOfferStatusFromPromotion({
-    valid: true,
-    livemode: false,
-    percent_off: 50,
-    duration: 'forever',
-    max_redemptions: 5,
-    times_redeemed: 1,
-  }, { expectedLivemode: false }).active, true)
-})
-
-test('launch offer helpers fall back to normal Pro pricing when invalid or unavailable', () => {
-  const fallback = getDefaultLaunchOfferStatus()
-
-  assert.equal(fallback.active, false)
-  assert.equal(fallback.remainingPlaces, 0)
-  assert.equal(fallback.remaining, 0)
-  assert.equal(fallback.originalPrice, 9.9)
-  assert.equal(fallback.discountedPrice, 4.95)
-  assert.equal(fallback.checkoutConfigured, false)
-  assert.equal(getLaunchOfferButtonLabel(fallback), 'Configuration Stripe incomplète')
-  assert.deepEqual(getLaunchOfferPricing(fallback), {
-    active: false,
-    mainPrice: '9,90 €',
-    regularPrice: '9,90 €',
-    period: '/mois',
-    remainingPlaces: 0,
-  })
-  assert.equal(isLaunchPromotionId('promo_123'), true)
-  assert.equal(isLaunchPromotionId('coupon_123'), true)
-  assert.equal(isLaunchPromotionId('B4w4Esiv'), true)
-  assert.equal(isLaunchPromotionId('price_123'), false)
-  assert.equal(isLaunchPromotionId(''), false)
-})
-
-test('launch offer active pricing is reflected in shared labels and UI files', () => {
-  const activeOffer = buildLaunchOfferStatusFromPromotion({
-    active: true,
-    livemode: false,
-    max_redemptions: 5,
-    times_redeemed: 2,
-    coupon: { valid: true, percent_off: 50, duration: 'forever' },
-  }, { expectedLivemode: false })
-  const landing = fs.readFileSync('app/LandingPage.tsx', 'utf8')
-  const proGate = fs.readFileSync('components/ProGate.tsx', 'utf8')
-  const subscriptionButton = fs.readFileSync('components/SubscriptionButton.tsx', 'utf8')
-  const launchOfferComponent = fs.readFileSync('components/LaunchOffer.tsx', 'utf8')
-
-  assert.equal(getLaunchOfferButtonLabel(activeOffer), 'Passer à Pro — 4,95 €/mois')
-  assert.equal(getLaunchOfferPricing(activeOffer).mainPrice, '4,95 €')
-  assert.match(landing, /LaunchOfferBadge/)
-  assert.match(landing, /LaunchPrice/)
-  assert.match(landing, /Réservé aux 5 premiers abonnés Pro/)
-  assert.match(proGate, /LaunchPrice/)
-  assert.match(subscriptionButton, /getLaunchCheckoutLabel/)
-  assert.match(subscriptionButton, /checkoutDisabled/)
-  assert.match(launchOfferComponent, /4,95 €\/mois/)
-})
-
-test('launch offer checkout applies automatic discount only when Stripe still has places', () => {
+test('standard Pro pricing has no launch offer route, coupon or discount wiring', () => {
   const checkoutRoute = fs.readFileSync('app/api/stripe/checkout/route.ts', 'utf8')
-  const launchServer = fs.readFileSync('lib/launchOfferServer.ts', 'utf8')
-
-  assert.match(checkoutRoute, /getAutomaticLaunchDiscount/)
-  assert.match(checkoutRoute, /discounts:\s*\[launchDiscount\]/)
-  assert.match(checkoutRoute, /allow_promotion_codes:\s*false/)
-  assert.match(checkoutRoute, /STRIPE_PRICE_PRO_MISSING/)
-  assert.match(checkoutRoute, /retrying regular price/)
-  assert.match(checkoutRoute, /regularCheckoutPayload/)
-  assert.match(checkoutRoute, /launchOfferApplied/)
-  assert.match(launchServer, /STRIPE_PRICE_PRO/)
-  assert.match(launchServer, /bypassCache:\s*true/)
-  assert.match(launchServer, /promotion_code:\s*promotionId/)
-  assert.match(launchServer, /coupon:\s*promotionId/)
-  assert.match(launchServer, /remainingPlaces <= 0/)
-})
-
-test('launch offer endpoint and webhook keep Stripe as the source of truth', () => {
-  const route = fs.readFileSync('app/api/launch-offer/route.ts', 'utf8')
-  const webhook = fs.readFileSync('app/api/stripe/webhook/route.ts', 'utf8')
-
-  assert.match(route, /getLaunchOfferStatusFromStripe/)
-  assert.match(route, /Cache-Control/)
-  assert.match(fs.readFileSync('lib/launchOffer.ts', 'utf8'), /originalPrice/)
-  assert.match(fs.readFileSync('lib/launchOffer.ts', 'utf8'), /discountedPrice/)
-  assert.match(fs.readFileSync('lib/launchOffer.ts', 'utf8'), /remaining:/)
-  assert.doesNotMatch(webhook, /9,90|990|amount_total|unit_amount/)
-  assert.match(webhook, /checkout\.mode === 'subscription'/)
-  assert.match(webhook, /activatePro\(userId, customerId, subscriptionId\)/)
-})
-
-test('launch offer copy does not contain stale launch prices', () => {
-  const files = [
+  const sources = [
     'app/LandingPage.tsx',
-    'components/LaunchOffer.tsx',
+    'app/dashboard/page.tsx',
     'components/ProGate.tsx',
     'components/SubscriptionButton.tsx',
-    'lib/launchOffer.ts',
-  ]
-  const source = files.map(file => fs.readFileSync(file, 'utf8')).join('\n')
+    'app/api/stripe/checkout/route.ts',
+    '.env.example',
+  ].map(file => fs.readFileSync(file, 'utf8')).join('\n')
 
-  assert.doesNotMatch(source, /4,90|4\.90/)
-  assert.doesNotMatch(source, /9,99|9\.99/)
-  assert.match(source, /4,95/)
-  assert.match(source, /9,90/)
+  assert.equal(fs.existsSync('app/api/launch-offer/route.ts'), false)
+  assert.match(checkoutRoute, /STRIPE_PRICE_PRO/)
+  assert.match(sources, /9,90/)
+  assert.doesNotMatch(checkoutRoute, /discounts/)
+  assert.doesNotMatch(checkoutRoute, /allow_promotion_codes/)
+  assert.doesNotMatch(checkoutRoute, /promotion_code|coupon/)
+  assert.doesNotMatch(sources, /STRIPE_LAUNCH_PROMOTION_ID/)
+  assert.doesNotMatch(sources, /4,95|4\.95|4,90|4\.90/)
+  assert.doesNotMatch(sources, /offre de lancement|Offre de lancement|5 places/)
 })

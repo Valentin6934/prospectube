@@ -2,8 +2,6 @@
 
 import { useState, type CSSProperties } from 'react'
 import { isPro as isProPlan } from '@/lib/plan'
-import { getLaunchCheckoutLabel } from '@/components/LaunchOffer'
-import { useLaunchOffer } from '@/components/useLaunchOffer'
 
 type SubscriptionButtonProps = {
   plan: string
@@ -20,16 +18,9 @@ export default function SubscriptionButton({
 }: SubscriptionButtonProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const { offer, loading: offerLoading } = useLaunchOffer()
   const isPro = isProPlan(plan)
-  const checkoutDisabled = !isPro && !offerLoading && !offer.checkoutConfigured
 
   const openStripe = async () => {
-    if (checkoutDisabled) {
-      setError(offer.adminMessage || 'Configuration Stripe incomplète.')
-      return
-    }
-
     setLoading(true)
     setError('')
 
@@ -51,7 +42,7 @@ export default function SubscriptionButton({
     <div style={{ width: fullWidth ? '100%' : undefined }}>
       <button
         onClick={openStripe}
-        disabled={loading || checkoutDisabled}
+        disabled={loading}
         className={isPro ? 'btn btn-secondary' : 'btn-primary'}
         style={{
           marginTop: '0.65rem',
@@ -64,12 +55,11 @@ export default function SubscriptionButton({
       >
         {loading
           ? <span className="button-loader"><span className="app-spinner" /> Ouverture...</span>
-          : offerLoading && !isPro ? <span className="button-loader"><span className="app-spinner" /> Chargement...</span>
-            : isPro ? 'Gérer mon abonnement' : label || getLaunchCheckoutLabel(offer)}
+          : isPro ? 'Gérer mon abonnement' : label || 'Passer Pro — 9,90 €/mois'}
       </button>
-      {(error || checkoutDisabled) && (
+      {error && (
         <div role="alert" style={{ maxWidth: fullWidth ? '100%' : '250px', marginTop: '0.45rem', color: '#f87171', fontSize: '0.7rem' }}>
-          {error || offer.adminMessage || 'Configuration Stripe incomplète.'}
+          {error}
         </div>
       )}
     </div>

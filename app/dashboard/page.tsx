@@ -8,7 +8,6 @@ import EmptyState from '@/components/EmptyState'
 import ProspectSkeleton from '@/components/ProspectSkeleton'
 import Toast, { useToast } from '@/components/Toast'
 import ProGate from '@/components/ProGate'
-import SubscriptionButton from '@/components/SubscriptionButton'
 import { YOUTUBE_NICHES } from '@/lib/niches'
 import { getPlanName, isFree, isPro as isProPlan } from '@/lib/plan'
 import { buildCampaignProspectPayload, getCampaignIdFromCreateResponse } from '@/lib/campaignClient'
@@ -468,7 +467,7 @@ export default function Dashboard() {
           <div style={{ background: 'rgba(83,58,183,0.15)', border: '1px solid rgba(83,58,183,0.4)', borderRadius: '12px', padding: '1rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
             <p style={{ color: '#a78bfa', fontSize: '0.9rem' }}>🔒 Passe au plan Pro pour débloquer Instagram, TikTok, Twitch, site web, messages IA, export CSV et plus de résultats</p>
             <Link href="/#pricing">
-              <SubscriptionButton plan={plan} style={{ marginTop: 0, padding: '0.5rem 1.25rem', fontSize: '0.85rem' }} />
+              <Link href="/dashboard/home" className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem', textDecoration: 'none' }}>Passer Pro — 9,90 €/mois</Link>
             </Link>
           </div>
         )}
