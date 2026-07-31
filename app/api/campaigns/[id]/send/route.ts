@@ -44,6 +44,8 @@ function getFunctionalGmailCode(error: GmailError) {
   if (error.code === 'google_temporary') return 'GMAIL_TEMPORARY_ERROR'
   if (error.code === 'oauth_config') return 'GMAIL_OAUTH_CONFIG'
   if (error.code === 'scope_missing') return 'GMAIL_SCOPE_MISSING'
+  if (error.code === 'api_not_enabled') return 'GMAIL_API_NOT_ENABLED'
+  if (error.code === 'rate_limited') return 'GMAIL_RATE_LIMITED'
   if (error.code === 'draft_invalid') return 'GMAIL_DRAFT_INVALID'
   if (error.code === 'status_persist_failed') return 'GMAIL_STATUS_PERSIST_FAILED'
   return 'GMAIL_API_REJECTED'

@@ -32,6 +32,7 @@ export async function GET() {
         email: true,
         expiryDate: true,
         refreshToken: true,
+        scope: true,
         updatedAt: true,
       },
     })

@@ -21,7 +21,10 @@ type AccountStatusInput = {
   expiryDate?: Date | string | null
   refreshToken?: string | null
   updatedAt?: Date | string | null
+  scope?: string | null
 }
+
+export const REQUIRED_GMAIL_DRAFT_SCOPE = 'https://www.googleapis.com/auth/gmail.compose'
 
 export function getSafeGmailErrorMessage(reason?: string | null): string {
   if (reason === 'missing_account') return 'Gmail n’est pas connecté.'
@@ -30,6 +33,7 @@ export function getSafeGmailErrorMessage(reason?: string | null): string {
   if (reason === 'revoked_access') return 'L’accès Gmail a été révoqué. Reconnectez votre compte pour continuer.'
   if (reason === 'oauth_config') return 'Configuration OAuth Gmail incomplète.'
   if (reason === 'google_temporary') return 'Google est temporairement indisponible. Réessayez dans quelques instants.'
+  if (reason === 'scope_missing') return 'L’autorisation Gmail actuelle ne permet pas de créer des brouillons. Reconnectez Gmail.'
   return 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.'
 }
 
@@ -70,7 +74,9 @@ export function buildGmailStatus(
   }
 
   const hasRefreshToken = Boolean(account.refreshToken)
-  const state: GmailConnectionState = hasRefreshToken ? 'connected' : 'expired'
+  const scopes = typeof account.scope === 'string' ? account.scope.split(/\s+/).filter(Boolean) : []
+  const hasDraftScope = scopes.includes(REQUIRED_GMAIL_DRAFT_SCOPE)
+  const state: GmailConnectionState = hasRefreshToken && hasDraftScope ? 'connected' : 'expired'
 
   return {
     connected: state === 'connected',
@@ -83,7 +89,9 @@ export function buildGmailStatus(
     updatedAt: toIso(account.updatedAt),
     sendMode,
     reconnectRequired: state === 'expired',
-    message: state === 'expired' ? getSafeGmailErrorMessage('missing_refresh_token') : undefined,
+    message: state === 'expired'
+      ? getSafeGmailErrorMessage(hasRefreshToken ? 'scope_missing' : 'missing_refresh_token')
+      : undefined,
   }
 }
 

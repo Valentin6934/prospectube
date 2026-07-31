@@ -13,8 +13,8 @@ import { isPro } from '@/lib/plan'
 import { buildCampaignDetailUrl, getCampaignFromApiResponse } from '@/lib/campaignClient'
 import {
   getCampaignProspectSkipReason,
+  getCampaignDraftCreationPlan,
   getCampaignProspectWithDraft,
-  getCampaignGmailActionLabel,
   getCampaignGmailProgressLabel,
   getCampaignGmailSingleActionLabel,
   getCampaignManualSendPlan,
@@ -262,6 +262,20 @@ export default function CampaignsPage() {
   })
   const campaignStats = selectedCampaign ? getDetailedStats(selectedCampaign.prospects) : null
   const manualProspects = (selectedCampaign?.prospects || []).filter(prospect => !hasValidEmail(prospect.email))
+  const draftCreationPlan = selectedCampaign
+    ? getCampaignDraftCreationPlan(selectedCampaign.prospects, draftMessages, selectedProspectIds)
+    : null
+  const readyDraftCount = draftCreationPlan?.readyCount || 0
+  const draftCtaDisabled = sendingProspectIds.length > 0 || readyDraftCount === 0 || gmailDraftsDisabled
+  const draftCtaHelp = gmailNeedsReconnect
+    ? 'Reconnectez Gmail pour créer les brouillons.'
+    : gmailDraftsDisabled
+      ? 'Connectez Gmail pour créer les brouillons.'
+      : selectedProspectIds.length === 0
+        ? 'Sélectionnez au moins un prospect.'
+        : readyDraftCount === 0
+          ? 'Complétez au moins un message avec une adresse email valide.'
+          : 'Les brouillons seront ajoutés à votre compte Gmail sans être envoyés.'
 
   const connectGmail = () => {
     const returnTo = typeof window === 'undefined' ? '/campaigns' : `${window.location.pathname}${window.location.search}`
@@ -801,10 +815,31 @@ export default function CampaignsPage() {
                     </select>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                    <button onClick={() => sendCampaignMessages(selectedProspectIds)} disabled={sendingProspectIds.length > 0 || selectedProspectIds.length === 0 || gmailDraftsDisabled} className="btn btn-secondary">
-                      {sendingProspectIds.length > 0 ? <span className="button-loader"><span className="app-spinner" /> {getCampaignGmailProgressLabel(gmail?.sendMode)}</span> : getCampaignGmailActionLabel(gmail?.sendMode, selectedProspectIds.length)}
+                  <div style={{ marginBottom: '1rem', border: '1px solid rgba(167,139,250,0.24)', borderRadius: '14px', background: 'linear-gradient(135deg, rgba(83,58,183,0.22), rgba(255,255,255,0.045))', padding: '1rem' }}>
+                    <button
+                      onClick={() => sendCampaignMessages(selectedProspectIds)}
+                      disabled={draftCtaDisabled}
+                      className="btn-primary"
+                      style={{
+                        width: '100%',
+                        minHeight: '58px',
+                        justifyContent: 'center',
+                        fontSize: '0.98rem',
+                        fontWeight: 900,
+                        opacity: draftCtaDisabled ? 0.55 : 1,
+                        cursor: draftCtaDisabled ? 'not-allowed' : 'pointer',
+                        boxShadow: draftCtaDisabled ? 'none' : '0 18px 42px rgba(83,58,183,0.32)',
+                      }}
+                    >
+                      {sendingProspectIds.length > 0 ? (
+                        <span className="button-loader"><span className="app-spinner" /> {getCampaignGmailProgressLabel(gmail?.sendMode)}</span>
+                      ) : (
+                        `✉️ Créer les brouillons Gmail (${readyDraftCount})`
+                      )}
                     </button>
+                    <div style={{ marginTop: '0.65rem', color: draftCtaDisabled ? '#D8C896' : '#C4BCDF', fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center' }}>
+                      {draftCtaHelp}
+                    </div>
                   </div>
 
                   {sendSummary && (
@@ -846,6 +881,20 @@ export default function CampaignsPage() {
                         const selected = selectedProspectIds.includes(prospect.id)
                         const prospectWithDraft = getCampaignProspectWithDraft(prospect, draft)
                         const eligible = isSendEligible(prospectWithDraft)
+                        const noEmail = !hasValidEmail(prospect.email)
+                        const incompleteMessage = !hasCompleteMessage(prospectWithDraft)
+                        const processed = isAlreadyProcessed(prospect)
+                        const statusLabel = processed
+                          ? prospect.sendStatus
+                          : noEmail
+                            ? 'Aucun email disponible'
+                            : incompleteMessage
+                              ? 'Message incomplet'
+                              : selected
+                                ? 'Prêt'
+                                : ''
+                        const statusColor = processed ? '#a78bfa' : noEmail || incompleteMessage ? '#eab308' : '#22c55e'
+                        const statusBg = processed ? 'rgba(167,139,250,0.12)' : noEmail || incompleteMessage ? 'rgba(234,179,8,0.10)' : 'rgba(34,197,94,0.12)'
                         return (
                           <div key={prospect.id} className="prospect-card campaign-prospect-card" style={{ border: selected ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.24)', borderRadius: '12px', padding: '1rem', background: selected ? 'linear-gradient(135deg, rgba(83,58,183,0.18), rgba(255,255,255,0.035))' : 'rgba(255,255,255,0.03)', boxShadow: '0 16px 40px rgba(0,0,0,0.16)', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
                             <div className="campaign-prospect-header">
@@ -854,11 +903,11 @@ export default function CampaignsPage() {
                                 channel={prospect}
                                 compact
                                 selected={selected}
-                                rightSlot={(
-                                  <span style={{ color: eligible ? '#22c55e' : isAlreadyProcessed(prospect) ? '#a78bfa' : '#eab308', background: eligible ? 'rgba(34,197,94,0.12)' : isAlreadyProcessed(prospect) ? 'rgba(167,139,250,0.12)' : 'rgba(234,179,8,0.12)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '0.22rem 0.6rem', fontSize: '0.75rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
-                                    {eligible ? 'Éligible' : isAlreadyProcessed(prospect) ? prospect.sendStatus : !hasValidEmail(prospect.email) ? 'Contact manuel' : !hasCompleteMessage(prospectWithDraft) ? 'Message incomplet' : prospect.status}
+                                rightSlot={statusLabel ? (
+                                  <span style={{ color: statusColor, background: statusBg, border: '1px solid rgba(255,255,255,0.08)', borderRadius: '999px', padding: '0.22rem 0.6rem', fontSize: '0.75rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                                    {statusLabel}
                                   </span>
-                                )}
+                                ) : null}
                               />
                             </div>
                             <div className="campaign-score-reason">{prospect.scoreReason || 'Aucune analyse disponible.'}</div>

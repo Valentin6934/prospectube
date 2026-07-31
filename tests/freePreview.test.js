@@ -15,6 +15,7 @@ const { selectDiverseProspectPreview } = require('../lib/freePreview.ts')
 const { getPlanName, isFree, isPro, requireProResponse } = require('../lib/plan.ts')
 const {
   getCampaignProspectSkipReason,
+  getCampaignDraftCreationPlan,
   getCampaignProspectWithDraft,
   getCampaignGmailActionLabel,
   getCampaignGmailProgressLabel,
@@ -48,6 +49,7 @@ const {
   buildDisconnectedGmailStatus,
   buildGmailStatus,
   getSafeGmailErrorMessage,
+  REQUIRED_GMAIL_DRAFT_SCOPE,
   shouldDisableGmailDrafts,
 } = require('../lib/gmailStatus.ts')
 
@@ -298,6 +300,30 @@ test('campaign manual send plan waits for changed selected drafts before Gmail a
   assert.deepEqual(plan.prospectsToSave.map(prospect => prospect.id), ['p1'])
 })
 
+test('campaign draft CTA counts only selected prospects that are ready for Gmail drafts', () => {
+  const prospects = [
+    { id: 'ready', email: 'ready@example.com', generatedSubject: 'Sujet', generatedBody: 'Message', sendStatus: 'Non envoye' },
+    { id: 'no_email', email: null, generatedSubject: 'Sujet', generatedBody: 'Message', sendStatus: 'Non envoye' },
+    { id: 'no_subject', email: 'subject@example.com', generatedSubject: '', generatedBody: 'Message', sendStatus: 'Non envoye' },
+    { id: 'no_body', email: 'body@example.com', generatedSubject: 'Sujet', generatedBody: '   ', sendStatus: 'Non envoye' },
+    { id: 'processed', email: 'done@example.com', generatedSubject: 'Sujet', generatedBody: 'Message', sendStatus: 'Brouillon cree' },
+    { id: 'unselected_ready', email: 'other@example.com', generatedSubject: 'Sujet', generatedBody: 'Message', sendStatus: 'Non envoye' },
+  ]
+
+  const plan = getCampaignDraftCreationPlan(prospects, {}, [
+    'ready',
+    'no_email',
+    'no_subject',
+    'no_body',
+    'processed',
+    'missing',
+  ])
+
+  assert.equal(plan.selectedProspects.length, 5)
+  assert.equal(plan.readyCount, 1)
+  assert.deepEqual(plan.readyIds, ['ready'])
+})
+
 test('campaign manual message eligibility reports the exact missing field', () => {
   assert.equal(getCampaignProspectSkipReason({
     email: 'creator@example.com',
@@ -438,6 +464,7 @@ test('gmail status exposes connected accounts without leaking tokens', () => {
     email: 'creator@gmail.com',
     accessToken: 'access-token-should-not-leak',
     refreshToken: 'refresh-token-should-not-leak',
+    scope: REQUIRED_GMAIL_DRAFT_SCOPE,
     expiryDate: new Date('2030-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   }, 'draft')
@@ -491,6 +518,8 @@ test('gmail OAuth reconnect and disconnect routes preserve ownership and replace
 
   assert.match(connectRoute, /access_type:\s*'offline'/)
   assert.match(connectRoute, /prompt:\s*'consent'/)
+  assert.match(connectRoute, /REQUIRED_GMAIL_DRAFT_SCOPE/)
+  assert.doesNotMatch(connectRoute, /gmail\.send/)
   assert.match(connectRoute, /getServerSession\(authOptions\)/)
   assert.match(callbackRoute, /getServerSession\(authOptions\)/)
   assert.match(callbackRoute, /prisma\.googleAccount\.upsert/)
@@ -498,7 +527,24 @@ test('gmail OAuth reconnect and disconnect routes preserve ownership and replace
   assert.match(callbackRoute, /refreshToken,/)
   assert.match(gmailRoute, /export async function DELETE/)
   assert.match(gmailRoute, /where:\s*\{\s*userId:\s*user\.id\s*\}/)
+  assert.match(gmailRoute, /scope:\s*true/)
   assert.match(gmailRoute, /buildDisconnectedGmailStatus/)
+})
+
+test('gmail status requires the draft compose scope before enabling Gmail drafts', () => {
+  const missingScope = buildGmailStatus({
+    email: 'creator@gmail.com',
+    refreshToken: 'refresh-token',
+    scope: 'openid email profile',
+    expiryDate: new Date('2030-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  }, 'draft')
+
+  assert.equal(missingScope.connected, false)
+  assert.equal(missingScope.status, 'expired')
+  assert.equal(missingScope.canUseGmail, false)
+  assert.match(missingScope.message, /autorisation Gmail actuelle/)
+  assert.equal(shouldDisableGmailDrafts(missingScope), true)
 })
 
 test('settings and campaigns read the same uncached Gmail status endpoint', () => {
@@ -520,6 +566,10 @@ test('campaign V1 interface does not expose AI generation controls', () => {
   assert.doesNotMatch(campaignsPage, /generatingIds/)
   assert.doesNotMatch(campaignsPage, /\/generate/)
   assert.doesNotMatch(campaignsPage, /Générer avec/)
+  assert.doesNotMatch(campaignsPage, /Contact manuel/)
+  assert.match(campaignsPage, /Aucun email disponible/)
+  assert.match(campaignsPage, /Message incomplet/)
+  assert.match(campaignsPage, /Créer les brouillons Gmail/)
 })
 
 test('gmail MIME uses required headers and base64url encoding', () => {
@@ -551,6 +601,8 @@ test('campaign send route returns functional Gmail error codes', () => {
     'GMAIL_NOT_CONNECTED',
     'GMAIL_CONNECTION_EXPIRED',
     'GMAIL_SCOPE_MISSING',
+    'GMAIL_API_NOT_ENABLED',
+    'GMAIL_RATE_LIMITED',
     'GMAIL_DRAFT_INVALID',
     'GMAIL_API_REJECTED',
     'GMAIL_TEMPORARY_ERROR',

@@ -118,6 +118,22 @@ export function getCampaignManualSendPlan<T extends CampaignSendProspect & { id:
   }
 }
 
+export function getCampaignDraftCreationPlan<T extends CampaignSendProspect & { id: string }>(
+  prospects: T[],
+  drafts: Record<string, CampaignMessageDraft>,
+  selectedIds: string[]
+) {
+  const plan = getCampaignManualSendPlan(prospects, drafts, selectedIds)
+  const readyProspects = plan.eligibleProspects.slice(0, CAMPAIGN_SEND_LIMIT)
+
+  return {
+    ...plan,
+    readyProspects,
+    readyIds: readyProspects.map(prospect => prospect.id),
+    readyCount: readyProspects.length,
+  }
+}
+
 export function isCampaignProspectAlreadyProcessed(prospect: CampaignSendProspect): boolean {
   const status = (prospect.sendStatus || '').toLowerCase().replace(/\s+/g, ' ')
   if (status.includes('non envoy')) return false
