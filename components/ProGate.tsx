@@ -1,6 +1,8 @@
 'use client'
 
 import SubscriptionButton from '@/components/SubscriptionButton'
+import { LaunchOfferBadge, LaunchPrice } from '@/components/LaunchOffer'
+import { useLaunchOffer } from '@/components/useLaunchOffer'
 
 type ProGateContext = 'default' | 'campaigns' | 'ai' | 'export' | 'search'
 
@@ -77,6 +79,7 @@ export default function ProGate({
   secondaryLabel = 'Continuer avec le plan Gratuit',
 }: ProGateProps) {
   const copy = contextCopy[context]
+  const { offer } = useLaunchOffer()
 
   return (
     <section
@@ -118,16 +121,17 @@ export default function ProGate({
 
         <aside style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: '16px', background: 'rgba(255,255,255,0.04)', padding: '1rem' }}>
           <div style={{ color: '#8F86AA', fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '0.35rem' }}>Plan Pro</div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.45rem' }}>
-            <strong style={{ color: '#F0EDF8', fontSize: compact ? '1.65rem' : '2rem', lineHeight: 1 }}>9,90 €</strong>
-            <span style={{ color: '#A89FCC', fontSize: '0.86rem' }}>/ mois</span>
+          <div style={{ marginBottom: offer.active ? '0.75rem' : 0 }}>
+            <LaunchOfferBadge offer={offer} compact />
           </div>
+          <LaunchPrice offer={offer} size={compact ? 'sm' : 'md'} />
           <p style={{ color: '#8F86AA', fontSize: '0.78rem', lineHeight: 1.55, margin: '0.65rem 0 0.9rem' }}>
-            Facturation mensuelle. Abonnement gérable depuis le portail client Stripe.
+            {offer.active
+              ? 'Offre limitée aux cinq premières souscriptions Pro, appliquée automatiquement par Stripe.'
+              : 'Facturation mensuelle. Abonnement gérable depuis le portail client Stripe.'}
           </p>
           <SubscriptionButton
             plan="Gratuit"
-            label="Passer à Pro pour 9,90 €/mois"
             fullWidth
             style={{ minHeight: '46px', marginTop: 0, fontSize: '0.86rem', fontWeight: 850 }}
           />

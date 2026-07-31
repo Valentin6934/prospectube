@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { useState } from 'react'
 import LegalFooter from '@/components/LegalFooter'
+import { LaunchOfferBadge, LaunchPrice, getLaunchCheckoutLabel } from '@/components/LaunchOffer'
+import { useLaunchOffer } from '@/components/useLaunchOffer'
 import { isPro } from '@/lib/plan'
 import styles from './landing.module.css'
 
@@ -66,7 +68,7 @@ const steps = [
 const faqs = [
   ['Puis-je annuler ?', 'Oui. L’abonnement Pro est sans engagement et peut être annulé à tout moment depuis le portail Stripe.'],
   ['Comment fonctionne Gmail ?', 'Vous autorisez ProspectTube via Google OAuth. L’intégration sert uniquement à créer des brouillons ou envoyer les messages que vous validez.'],
-  ['Pourquoi seulement 9,90 € ?', 'Nous avons conçu une offre simple et accessible, centrée sur les fonctions réellement utiles à la prospection YouTube.'],
+  ['Pourquoi ce tarif ?', 'Nous avons conçu une offre simple et accessible. Le tarif normal Pro est de 9,90 €/mois, avec une offre de lancement automatique lorsqu’elle est disponible.'],
   ['Les recherches sont-elles limitées ?', 'Le plan Gratuit comprend 5 recherches. Les recherches sont illimitées avec le plan Pro.'],
 ]
 
@@ -75,6 +77,7 @@ export default function LandingPage() {
   const { data: session } = useSession()
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [checkoutError, setCheckoutError] = useState('')
+  const { offer } = useLaunchOffer()
   const plan = (session?.user as any)?.plan || 'Gratuit'
 
   const startFree = () => router.push(session ? '/dashboard/home' : '/register')
@@ -131,6 +134,9 @@ export default function LandingPage() {
         <div className={styles.heroInner}>
           <div className={styles.heroCopy}>
             <div className={styles.eyebrow}><span /> La prospection YouTube, enfin structurée</div>
+            <div className={styles.heroOffer}>
+              <LaunchOfferBadge offer={offer} />
+            </div>
             <h1>Trouvez les meilleurs créateurs YouTube à contacter en quelques secondes.</h1>
             <p>
               ProspectTube analyse YouTube, détecte les emails, réseaux sociaux et score automatiquement
@@ -241,8 +247,14 @@ export default function LandingPage() {
             <article className={`${styles.priceCard} ${styles.priceFeatured}`}>
               <div className={styles.popularBadge}>⭐ Le plus populaire</div>
               <div className={styles.priceName}>Pro</div>
-              <div className={styles.price}><strong>9,90 €</strong><span>/mois</span></div>
-              <p>Pour transformer vos recherches en opportunités.</p>
+              <div className={styles.priceDynamic}>
+                <LaunchPrice offer={offer} size="lg" />
+              </div>
+              <p>
+                {offer.active
+                  ? 'Réservé aux 5 premiers abonnés Pro. Vous conservez ce tarif tant que votre abonnement reste actif.'
+                  : 'Pour transformer vos recherches en opportunités.'}
+              </p>
               <ul>
                 <li>✓ Recherches illimitées</li>
                 <li>✓ Messages IA personnalisés</li>
@@ -251,7 +263,7 @@ export default function LandingPage() {
                 <li>✓ Export CSV</li>
               </ul>
               <button onClick={openPro} disabled={checkoutLoading} className={styles.pricePrimary}>
-                {checkoutLoading ? 'Ouverture de Stripe...' : isPro(plan) ? 'Accéder au dashboard' : 'Passer Pro'}
+                {checkoutLoading ? 'Ouverture de Stripe...' : isPro(plan) ? 'Accéder au dashboard' : getLaunchCheckoutLabel(offer)}
               </button>
               {checkoutError && <div className={styles.checkoutError} role="alert">{checkoutError}</div>}
             </article>

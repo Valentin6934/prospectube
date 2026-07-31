@@ -2,6 +2,8 @@
 
 import { useState, type CSSProperties } from 'react'
 import { isPro as isProPlan } from '@/lib/plan'
+import { getLaunchCheckoutLabel } from '@/components/LaunchOffer'
+import { useLaunchOffer } from '@/components/useLaunchOffer'
 
 type SubscriptionButtonProps = {
   plan: string
@@ -18,6 +20,7 @@ export default function SubscriptionButton({
 }: SubscriptionButtonProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const { offer } = useLaunchOffer()
   const isPro = isProPlan(plan)
 
   const openStripe = async () => {
@@ -55,7 +58,7 @@ export default function SubscriptionButton({
       >
         {loading
           ? <span className="button-loader"><span className="app-spinner" /> Ouverture...</span>
-          : isPro ? 'Gérer mon abonnement' : label || 'Passer Pro — 9,90 €/mois'}
+          : isPro ? 'Gérer mon abonnement' : label || getLaunchCheckoutLabel(offer)}
       </button>
       {error && (
         <div role="alert" style={{ maxWidth: fullWidth ? '100%' : '250px', marginTop: '0.45rem', color: '#f87171', fontSize: '0.7rem' }}>
