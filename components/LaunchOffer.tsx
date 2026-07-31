@@ -57,7 +57,7 @@ export function LaunchPrice({ offer, size = 'md' }: LaunchPriceProps) {
       </div>
       {pricing.active && (
         <p style={{ margin: '0.55rem 0 0', color: '#8fe8ba', fontSize: '0.76rem', lineHeight: 1.55 }}>
-          Puis toujours 4,90 €/mois tant que l’abonnement reste actif. Tarif normal : 9,90 €/mois.
+          Puis toujours 4,95 €/mois tant que l’abonnement reste actif. Tarif normal : 9,90 €/mois.
         </p>
       )}
     </div>

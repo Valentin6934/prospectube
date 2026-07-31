@@ -26,9 +26,9 @@ export function useLaunchOffer(): LaunchOfferState {
         setState({
           offer: {
             active: Boolean(data.active),
-            launchPrice: Number(data.launchPrice) || 4.9,
+            launchPrice: Number(data.launchPrice) || 4.95,
             regularPrice: Number(data.regularPrice) || 9.9,
-            discountedPrice: Number(data.discountedPrice ?? data.launchPrice) || 4.9,
+            discountedPrice: Number(data.discountedPrice ?? data.launchPrice) || 4.95,
             originalPrice: Number(data.originalPrice ?? data.regularPrice) || 9.9,
             maxPlaces: Number(data.maxPlaces) || 5,
             usedPlaces: Number(data.usedPlaces) || 5,

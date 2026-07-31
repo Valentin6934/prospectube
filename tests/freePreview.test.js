@@ -886,14 +886,14 @@ test('launch offer status computes remaining places from Stripe promotion redemp
     livemode: false,
     max_redemptions: 5,
     times_redeemed: 0,
-    coupon: { valid: true },
+    coupon: { valid: true, percent_off: 50, duration: 'forever' },
   }
 
   assert.deepEqual(buildLaunchOfferStatusFromPromotion(basePromotion, { expectedLivemode: false }), {
     active: true,
-    launchPrice: 4.9,
+    launchPrice: 4.95,
     regularPrice: 9.9,
-    discountedPrice: 4.9,
+    discountedPrice: 4.95,
     originalPrice: 9.9,
     maxPlaces: 5,
     usedPlaces: 0,
@@ -905,9 +905,13 @@ test('launch offer status computes remaining places from Stripe promotion redemp
   assert.equal(buildLaunchOfferStatusFromPromotion({ ...basePromotion, times_redeemed: 5 }, { expectedLivemode: false }).active, false)
   assert.equal(buildLaunchOfferStatusFromPromotion({ ...basePromotion, active: false }, { expectedLivemode: false }).active, false)
   assert.equal(buildLaunchOfferStatusFromPromotion({ ...basePromotion, livemode: true }, { expectedLivemode: false }).active, false)
+  assert.equal(buildLaunchOfferStatusFromPromotion({ ...basePromotion, coupon: { valid: true, percent_off: 40, duration: 'forever' } }, { expectedLivemode: false }).active, false)
+  assert.equal(buildLaunchOfferStatusFromPromotion({ ...basePromotion, coupon: { valid: true, percent_off: 50, duration: 'once' } }, { expectedLivemode: false }).active, false)
   assert.equal(buildLaunchOfferStatusFromPromotion({
     valid: true,
     livemode: false,
+    percent_off: 50,
+    duration: 'forever',
     max_redemptions: 5,
     times_redeemed: 1,
   }, { expectedLivemode: false }).active, true)
@@ -920,7 +924,7 @@ test('launch offer helpers fall back to normal Pro pricing when invalid or unava
   assert.equal(fallback.remainingPlaces, 0)
   assert.equal(fallback.remaining, 0)
   assert.equal(fallback.originalPrice, 9.9)
-  assert.equal(fallback.discountedPrice, 4.9)
+  assert.equal(fallback.discountedPrice, 4.95)
   assert.equal(getLaunchOfferButtonLabel(fallback), 'Passer à Pro — 9,90 €/mois')
   assert.deepEqual(getLaunchOfferPricing(fallback), {
     active: false,
@@ -931,6 +935,7 @@ test('launch offer helpers fall back to normal Pro pricing when invalid or unava
   })
   assert.equal(isLaunchPromotionId('promo_123'), true)
   assert.equal(isLaunchPromotionId('coupon_123'), true)
+  assert.equal(isLaunchPromotionId('B4w4Esiv'), true)
   assert.equal(isLaunchPromotionId('price_123'), false)
   assert.equal(isLaunchPromotionId(''), false)
 })
@@ -941,14 +946,14 @@ test('launch offer active pricing is reflected in shared labels and UI files', (
     livemode: false,
     max_redemptions: 5,
     times_redeemed: 2,
-    coupon: { valid: true },
+    coupon: { valid: true, percent_off: 50, duration: 'forever' },
   }, { expectedLivemode: false })
   const landing = fs.readFileSync('app/LandingPage.tsx', 'utf8')
   const proGate = fs.readFileSync('components/ProGate.tsx', 'utf8')
   const subscriptionButton = fs.readFileSync('components/SubscriptionButton.tsx', 'utf8')
 
-  assert.equal(getLaunchOfferButtonLabel(activeOffer), 'Passer à Pro — 4,90 €/mois')
-  assert.equal(getLaunchOfferPricing(activeOffer).mainPrice, '4,90 €')
+  assert.equal(getLaunchOfferButtonLabel(activeOffer), 'Passer à Pro — 4,95 €/mois')
+  assert.equal(getLaunchOfferPricing(activeOffer).mainPrice, '4,95 €')
   assert.match(landing, /LaunchOfferBadge/)
   assert.match(landing, /LaunchPrice/)
   assert.match(landing, /Réservé aux 5 premiers abonnés Pro/)
