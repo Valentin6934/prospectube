@@ -35,6 +35,7 @@ type SendResult = {
   status: string
   error?: string
   code?: string
+  gmailMessageId?: string
   skippedReason?: CampaignSkipReason
 }
 
@@ -57,7 +58,16 @@ function getSkipMessage(reason: CampaignSkipReason): string {
   if (reason === 'no_body') return 'Message manquant.'
   if (reason === 'already_processed') return 'Message deja traite.'
   if (reason === 'not_found') return 'Prospect introuvable dans cette campagne.'
-  return 'Sujet ou message incomplet.'
+  return 'Sujet ou message a completer.'
+}
+
+function getStructuredDraftState(results: SendResult[]) {
+  return {
+    created: results.filter(result => result.code === 'DRAFT_CREATED'),
+    alreadyCreated: results.filter(result => result.code === 'DRAFT_ALREADY_CREATED'),
+    statusSaveFailed: results.filter(result => result.code === 'DRAFT_CREATED_STATUS_NOT_SAVED'),
+    failed: results.filter(result => !result.success && !result.skippedReason),
+  }
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -88,6 +98,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           generatedSubject: true,
           generatedBody: true,
           sendStatus: true,
+          gmailMessageId: true,
         },
       },
     },
@@ -111,11 +122,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   for (const prospect of campaign.prospects) {
     const skippedReason = getCampaignProspectSkipReason(prospect)
     if (skippedReason) {
+      const alreadyProcessed = skippedReason === 'already_processed'
       results.push({
         prospectId: prospect.id,
         success: false,
-        status: skippedReason === 'already_processed' ? prospect.sendStatus : 'Non envoye',
-        error: getSkipMessage(skippedReason),
+        status: alreadyProcessed ? prospect.sendStatus || 'Brouillon cree' : 'Non envoye',
+        error: alreadyProcessed ? undefined : getSkipMessage(skippedReason),
+        code: alreadyProcessed ? 'DRAFT_ALREADY_CREATED' : undefined,
+        gmailMessageId: alreadyProcessed ? prospect.gmailMessageId || undefined : undefined,
         skippedReason,
       })
     }
@@ -129,10 +143,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const summary = getCampaignSendSummary(results)
     return NextResponse.json({
       results,
+      ...getStructuredDraftState(results),
       ...summary,
       mode: SEND_MODE,
       limited: requestedIds.length > CAMPAIGN_SEND_LIMIT,
-      message: 'Aucun prospect eligible. Verifiez email, sujet et message.',
+      message: results.some(result => result.code === 'DRAFT_ALREADY_CREATED')
+        ? 'Tous les brouillons eligibles existent deja.'
+        : 'Aucun prospect eligible. Verifiez email, sujet et message.',
     })
   }
 
@@ -209,11 +226,32 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             },
           })
         }
-      } catch {
-        throw new GmailError('Le brouillon a été créé dans Gmail, mais le statut n’a pas pu être enregistré.', 500, 'status_persist_failed')
+      } catch (error) {
+        console.error('POST /api/campaigns/[id]/send status persist failed:', {
+          campaignId: params.id,
+          prospectId: prospect.id,
+          userId: user.id,
+          mode: delivery.mode,
+          error,
+        })
+        results.push({
+          prospectId: prospect.id,
+          success: true,
+          status: sendStatus,
+          error: 'Le brouillon a ete cree dans Gmail, mais le statut n’a pas pu etre enregistre dans ProspectTube.',
+          code: 'DRAFT_CREATED_STATUS_NOT_SAVED',
+          gmailMessageId: delivery.id,
+        })
+        continue
       }
 
-      results.push({ prospectId: prospect.id, success: true, status: sendStatus })
+      results.push({
+        prospectId: prospect.id,
+        success: true,
+        status: sendStatus,
+        code: 'DRAFT_CREATED',
+        gmailMessageId: delivery.id,
+      })
     } catch (error) {
       const message = error instanceof GmailError ? error.message : 'Google Gmail a refusé la requête.'
       await prisma.campaignProspect.update({
@@ -222,6 +260,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           sendStatus: 'Erreur',
           sendError: message,
         },
+      }).catch(updateError => {
+        console.error('POST /api/campaigns/[id]/send error status persist failed:', {
+          campaignId: params.id,
+          prospectId: prospect.id,
+          userId: user.id,
+          updateError,
+        })
       })
       results.push({
         prospectId: prospect.id,
@@ -237,6 +282,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   return NextResponse.json({
     results,
+    ...getStructuredDraftState(results),
     ...summary,
     mode: SEND_MODE,
     limited: requestedIds.length > CAMPAIGN_SEND_LIMIT,

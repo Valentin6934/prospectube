@@ -6,6 +6,7 @@ export type CampaignSendProspect = {
   generatedSubject?: string | null
   generatedBody?: string | null
   sendStatus?: string | null
+  gmailMessageId?: string | null
 }
 
 export type CampaignMessageDraft = {
@@ -16,6 +17,7 @@ export type CampaignMessageDraft = {
 export type CampaignSendResult = {
   success: boolean
   skippedReason?: CampaignSkipReason
+  code?: string
 }
 
 export type CampaignSkipReason = 'not_found' | 'no_email' | 'no_subject' | 'no_body' | 'incomplete_message' | 'already_processed'
@@ -88,7 +90,7 @@ export function getCampaignGmailActionLabel(sendMode?: 'draft' | 'send', count?:
 }
 
 export function getCampaignGmailSingleActionLabel(sendMode?: 'draft' | 'send'): string {
-  return sendMode === 'send' ? 'Envoyer' : 'Créer brouillon'
+  return sendMode === 'send' ? 'Envoyer' : 'Créer le brouillon'
 }
 
 export function getCampaignGmailProgressLabel(sendMode?: 'draft' | 'send'): string {
@@ -135,6 +137,7 @@ export function getCampaignDraftCreationPlan<T extends CampaignSendProspect & { 
 }
 
 export function isCampaignProspectAlreadyProcessed(prospect: CampaignSendProspect): boolean {
+  if (prospect.gmailMessageId) return true
   const status = (prospect.sendStatus || '').toLowerCase().replace(/\s+/g, ' ')
   if (status.includes('non envoy')) return false
   return status.includes('envoy') || status.includes('brouillon')
@@ -168,7 +171,7 @@ export function getCampaignSendSummary(results: CampaignSendResult[]): CampaignS
   const skippedNoSubjectCount = results.filter(result => result.skippedReason === 'no_subject').length
   const skippedNoBodyCount = results.filter(result => result.skippedReason === 'no_body').length
   const skippedIncompleteCount = results.filter(result => result.skippedReason === 'incomplete_message').length
-  const skippedAlreadyProcessedCount = results.filter(result => result.skippedReason === 'already_processed').length
+  const skippedAlreadyProcessedCount = results.filter(result => result.skippedReason === 'already_processed' || result.code === 'DRAFT_ALREADY_CREATED').length
   const skippedNotFoundCount = results.filter(result => result.skippedReason === 'not_found').length
   const failureCount = results.filter(result => !result.success && !result.skippedReason).length
   const errorCount =

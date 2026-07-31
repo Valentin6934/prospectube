@@ -9,18 +9,19 @@ export const dynamic = 'force-dynamic'
 const OAUTH_STATE_COOKIE = 'gmail_oauth_state'
 const OAUTH_VERIFIER_COOKIE = 'gmail_oauth_verifier'
 const OAUTH_RETURN_COOKIE = 'gmail_oauth_return'
+const OAUTH_ORIGIN_COOKIE = 'gmail_oauth_origin'
 
-function callbackUrl(req: NextRequest) {
-  const configuredUrl = process.env.NEXTAUTH_URL?.trim()
-  if (configuredUrl) return `${configuredUrl.replace(/\/$/, '')}/api/gmail/callback`
-
+function getRequestOrigin(req: NextRequest) {
   const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
   const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
   const host = forwardedHost || req.headers.get('host')
   const protocol = forwardedProto || req.nextUrl.protocol.replace(':', '')
-  const origin = host ? `${protocol}://${host}` : req.nextUrl.origin
 
-  return `${origin.replace(/\/$/, '')}/api/gmail/callback`
+  return (host ? `${protocol}://${host}` : req.nextUrl.origin).replace(/\/$/, '')
+}
+
+function callbackUrl(req: NextRequest) {
+  return `${getRequestOrigin(req)}/api/gmail/callback`
 }
 
 function safeReturnPath(req: NextRequest) {
@@ -31,14 +32,38 @@ function safeReturnPath(req: NextRequest) {
 function oauthRedirect(req: NextRequest, status: string) {
   const returnPath = safeReturnPath(req)
   const separator = returnPath.includes('?') ? '&' : '?'
-  return NextResponse.redirect(new URL(`${returnPath}${separator}gmail=${status}`, req.url))
+  return NextResponse.redirect(new URL(`${returnPath}${separator}gmail=${status}`, getSafeReturnOrigin(req)))
 }
 
 function clearOAuthCookies(response: NextResponse) {
   response.cookies.set(OAUTH_STATE_COOKIE, '', { path: '/', maxAge: 0 })
   response.cookies.set(OAUTH_VERIFIER_COOKIE, '', { path: '/', maxAge: 0 })
   response.cookies.set(OAUTH_RETURN_COOKIE, '', { path: '/', maxAge: 0 })
+  response.cookies.set(OAUTH_ORIGIN_COOKIE, '', { path: '/', maxAge: 0 })
   return response
+}
+
+function getSafeReturnOrigin(req: NextRequest) {
+  const currentOrigin = getRequestOrigin(req)
+  const storedOrigin = req.cookies.get(OAUTH_ORIGIN_COOKIE)?.value
+  if (!storedOrigin) return currentOrigin
+
+  try {
+    const url = new URL(storedOrigin)
+    const current = new URL(currentOrigin)
+    const isHttp = url.protocol === 'https:' || url.protocol === 'http:'
+    const isSameHost = url.host === current.host
+    const isVercelPreview = url.hostname.endsWith('.vercel.app')
+    const isLocalDev = process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1'].includes(url.hostname)
+
+    if (isHttp && (isSameHost || isVercelPreview || isLocalDev)) {
+      return url.origin
+    }
+  } catch {
+    return currentOrigin
+  }
+
+  return currentOrigin
 }
 
 export async function GET(req: NextRequest) {

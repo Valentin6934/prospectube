@@ -201,6 +201,14 @@ test('campaign send eligibility requires email, subject, body and unsent status'
     generatedBody: 'Bonjour',
     sendStatus: 'Envoyé',
   }), false)
+
+  assert.equal(isCampaignProspectSendEligible({
+    email: 'creator@example.com',
+    generatedSubject: 'Collaboration',
+    generatedBody: 'Bonjour',
+    sendStatus: 'Non envoye',
+    gmailMessageId: 'gmail_draft_123',
+  }), false)
 })
 
 test('campaign manual message drafts are trimmed before persistence and send eligibility', () => {
@@ -306,7 +314,7 @@ test('campaign draft CTA counts only selected prospects that are ready for Gmail
     { id: 'no_email', email: null, generatedSubject: 'Sujet', generatedBody: 'Message', sendStatus: 'Non envoye' },
     { id: 'no_subject', email: 'subject@example.com', generatedSubject: '', generatedBody: 'Message', sendStatus: 'Non envoye' },
     { id: 'no_body', email: 'body@example.com', generatedSubject: 'Sujet', generatedBody: '   ', sendStatus: 'Non envoye' },
-    { id: 'processed', email: 'done@example.com', generatedSubject: 'Sujet', generatedBody: 'Message', sendStatus: 'Brouillon cree' },
+    { id: 'processed', email: 'done@example.com', generatedSubject: 'Sujet', generatedBody: 'Message', sendStatus: 'Non envoye', gmailMessageId: 'gmail_draft_123' },
     { id: 'unselected_ready', email: 'other@example.com', generatedSubject: 'Sujet', generatedBody: 'Message', sendStatus: 'Non envoye' },
   ]
 
@@ -343,7 +351,8 @@ test('campaign manual message eligibility reports the exact missing field', () =
     email: 'creator@example.com',
     generatedSubject: 'Collaboration',
     generatedBody: 'Bonjour',
-    sendStatus: 'Brouillon cree',
+    sendStatus: 'Non envoye',
+    gmailMessageId: 'gmail_draft_123',
   }), 'already_processed')
 })
 
@@ -451,7 +460,7 @@ test('campaign AI is hidden in the V1 campaign interface without deleting server
 
 test('campaign Gmail labels reflect draft mode instead of implying a real send', () => {
   assert.equal(getCampaignGmailActionLabel('draft', 12), 'Créer les brouillons (12)')
-  assert.equal(getCampaignGmailSingleActionLabel('draft'), 'Créer brouillon')
+  assert.equal(getCampaignGmailSingleActionLabel('draft'), 'Créer le brouillon')
   assert.equal(getCampaignGmailProgressLabel('draft'), 'Création...')
   assert.equal(getCampaignGmailActionLabel('send', 21), 'Envoyer (20)')
   assert.equal(getCampaignGmailSingleActionLabel('send'), 'Envoyer')
@@ -521,7 +530,13 @@ test('gmail OAuth reconnect and disconnect routes preserve ownership and replace
   assert.match(connectRoute, /REQUIRED_GMAIL_DRAFT_SCOPE/)
   assert.doesNotMatch(connectRoute, /gmail\.send/)
   assert.match(connectRoute, /getServerSession\(authOptions\)/)
+  assert.match(connectRoute, /OAUTH_ORIGIN_COOKIE/)
+  assert.match(connectRoute, /`\$\{getRequestOrigin\(req\)\}\/api\/gmail\/callback`/)
+  assert.doesNotMatch(connectRoute, /const configuredUrl = process\.env\.NEXTAUTH_URL/)
   assert.match(callbackRoute, /getServerSession\(authOptions\)/)
+  assert.match(callbackRoute, /OAUTH_ORIGIN_COOKIE/)
+  assert.match(callbackRoute, /getSafeReturnOrigin\(req\)/)
+  assert.doesNotMatch(callbackRoute, /if \(configuredUrl\)/)
   assert.match(callbackRoute, /prisma\.googleAccount\.upsert/)
   assert.match(callbackRoute, /accessToken:\s*tokens\.access_token/)
   assert.match(callbackRoute, /refreshToken,/)
@@ -567,9 +582,14 @@ test('campaign V1 interface does not expose AI generation controls', () => {
   assert.doesNotMatch(campaignsPage, /\/generate/)
   assert.doesNotMatch(campaignsPage, /Générer avec/)
   assert.doesNotMatch(campaignsPage, /Contact manuel/)
-  assert.match(campaignsPage, /Aucun email disponible/)
-  assert.match(campaignsPage, /Message incomplet/)
+  assert.doesNotMatch(campaignsPage, /Message incomplet/)
+  assert.doesNotMatch(campaignsPage, /Envoyer la sélection/)
+  assert.match(campaignsPage, /Aucune adresse email disponible/)
+  assert.match(campaignsPage, /À compléter/)
+  assert.match(campaignsPage, /Prospects sans adresse email/)
   assert.match(campaignsPage, /Créer les brouillons Gmail/)
+  assert.match(campaignsPage, /noEmailProspects\.map/)
+  assert.match(campaignsPage, /<ProspectPresentation/)
 })
 
 test('gmail MIME uses required headers and base64url encoding', () => {
@@ -697,4 +717,16 @@ test('gmail send summary stays clear when Gmail is not needed for ineligible pro
   assert.equal(summary.skippedIncompleteCount, 1)
   assert.equal(summary.skippedAlreadyProcessedCount, 1)
   assert.equal(summary.campaignResultStatus, 'Aucun email envoye')
+})
+
+test('campaign send route returns structured draft states and avoids duplicate Gmail drafts', () => {
+  const sendRoute = fs.readFileSync('app/api/campaigns/[id]/send/route.ts', 'utf8')
+
+  assert.match(sendRoute, /gmailMessageId:\s*true/)
+  assert.match(sendRoute, /DRAFT_CREATED/)
+  assert.match(sendRoute, /DRAFT_ALREADY_CREATED/)
+  assert.match(sendRoute, /DRAFT_CREATED_STATUS_NOT_SAVED/)
+  assert.match(sendRoute, /getStructuredDraftState\(results\)/)
+  assert.match(sendRoute, /alreadyProcessed \? undefined : getSkipMessage/)
+  assert.match(sendRoute, /Tous les brouillons eligibles existent deja/)
 })
