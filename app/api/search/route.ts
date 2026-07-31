@@ -6,11 +6,15 @@ import { PLAN_LIMITS, filterChannels } from '@/lib/data'
 import { searchYouTubeChannels } from '@/lib/youtube'
 import { getPlanName, isPro } from '@/lib/plan'
 import { selectDiverseProspectPreview } from '@/lib/freePreview'
+import { buildYouTubeErrorResponse, getSafeYouTubeLog } from '@/lib/youtubeQuota'
 
 export const dynamic = 'force-dynamic'
 
 const SUBS_VALUES = [1000, 10000, 50000, 100000, 500000, 1000000, 5000000]
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000
+const SEARCH_COOLDOWN_MS = 2500
+const activeYouTubeSearches = new Map<string, number>()
+const lastYouTubeSearchStartedAt = new Map<string, number>()
 
 function normalizeCachePart(value: string): string {
   return String(value || 'all')
@@ -88,6 +92,7 @@ export async function POST(req: NextRequest) {
   const minVal = SUBS_VALUES[parseInt(subsMin)] || 0
   const maxVal = SUBS_VALUES[parseInt(subsMax)] || 5000000
   const cacheKey = buildCacheKey(niche, lang, minVal, maxVal)
+  const userSearchKey = `${user.id}:${cacheKey}`
 
   let results: any[] = []
   let source = 'youtube'
@@ -103,6 +108,11 @@ export async function POST(req: NextRequest) {
     const cachedResults = cachedSearch ? parseCachedResults(cachedSearch.results) : []
 
     if (cachedSearch && cachedResults.length > 0 && cachedResults.length >= limits.results) {
+      console.info('Search cache hit:', {
+        cacheKey,
+        userId: user.id,
+        results: cachedResults.length,
+      })
       const visibleResults = proUser
         ? cachedResults.slice(0, limits.results)
         : selectDiverseProspectPreview(cachedResults, limits.results)
@@ -127,19 +137,51 @@ export async function POST(req: NextRequest) {
         canGenerateEmail: limits.emailAI,
       })
     }
+
+    console.info('Search cache miss:', {
+      cacheKey,
+      userId: user.id,
+      cached: Boolean(cachedSearch),
+      cachedResults: cachedResults.length,
+    })
   } catch (err) {
     console.error('Erreur lecture cache recherche:', err)
   }
 
-try {
-  results = await searchYouTubeChannels(niche, lang, minVal, maxVal, limits.results)
-} catch (err: any) {
-  console.error('Erreur YouTube:', err)
-  return NextResponse.json(
-    { error: err?.message || 'Erreur inconnue YouTube', source: 'youtube_error' },
-    { status: 500 }
-  )
-}
+  if (activeYouTubeSearches.has(userSearchKey)) {
+    return NextResponse.json(
+      {
+        error: 'SEARCH_ALREADY_RUNNING',
+        message: 'Une recherche identique est deja en cours. Patientez quelques secondes.',
+        retryable: true,
+      },
+      { status: 429 }
+    )
+  }
+
+  const lastStartedAt = lastYouTubeSearchStartedAt.get(user.id) || 0
+  if (Date.now() - lastStartedAt < SEARCH_COOLDOWN_MS) {
+    return NextResponse.json(
+      {
+        error: 'SEARCH_RATE_LIMITED',
+        message: 'Patientez quelques secondes avant de relancer une recherche.',
+        retryable: true,
+      },
+      { status: 429 }
+    )
+  }
+
+  activeYouTubeSearches.set(userSearchKey, Date.now())
+  lastYouTubeSearchStartedAt.set(user.id, Date.now())
+
+  try {
+    try {
+      results = await searchYouTubeChannels(niche, lang, minVal, maxVal, limits.results)
+    } catch (err: any) {
+      console.warn('Erreur YouTube normalisee:', getSafeYouTubeLog(err))
+      const response = buildYouTubeErrorResponse(err)
+      return NextResponse.json(response.body, { status: response.status })
+    }
 
   await saveSearchHistory(user.id, niche, lang, minVal, maxVal, results)
 
@@ -185,4 +227,7 @@ try {
     plan,
     canGenerateEmail: limits.emailAI,
   })
+  } finally {
+    activeYouTubeSearches.delete(userSearchKey)
+  }
 }

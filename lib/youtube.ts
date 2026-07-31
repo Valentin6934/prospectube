@@ -1,5 +1,11 @@
 import { selectDiverseProspectPreview } from '@/lib/freePreview'
 import { SMALL_CREATOR_NICHE_QUERIES, YOUTUBE_NICHE_QUERIES } from '@/lib/niches'
+import { YouTubeApiError, classifyYouTubeError } from '@/lib/youtubeQuota'
+
+const MAX_SEARCH_QUERIES = 2
+const MAX_SEARCH_PAGES_PER_QUERY = 1
+const YOUTUBE_SEARCH_FIELDS = 'items(snippet(channelId,title,description,thumbnails/default/url)),nextPageToken,error'
+const YOUTUBE_CHANNEL_FIELDS = 'items(id,snippet(title,description,publishedAt,thumbnails/default/url),statistics(subscriberCount,viewCount,videoCount),brandingSettings/channel/description),error'
 
 const BASE_NICHE_QUERIES: Record<string, string> = {
   'Gaming': 'gaming gameplay streamer',
@@ -46,7 +52,62 @@ function buildQueries(niche: string, lang: string): string[] {
     smallTerms[0] || `${base} ${langTerms[2] || ''}`,
   ]
 
-  return Array.from(new Set(queries.map(q => q.trim()).filter(Boolean))).slice(0, 3)
+  return Array.from(new Set(queries.map(q => q.trim()).filter(Boolean))).slice(0, MAX_SEARCH_QUERIES)
+}
+
+async function fetchYouTubeJson(url: URL, endpoint: 'search.list' | 'channels.list', idCount = 0) {
+  const startedAt = Date.now()
+  let status = 0
+
+  try {
+    const res = await fetch(url.toString())
+    status = res.status
+    const data = await res.json().catch(() => ({}))
+    const durationMs = Date.now() - startedAt
+
+    if (!res.ok || data.error) {
+      const error = classifyYouTubeError({
+        payload: data,
+        status: res.status,
+        endpoint,
+        fallbackMessage: `${endpoint} a echoue.`,
+      })
+      console.warn('YouTube API call failed:', {
+        endpoint,
+        idCount,
+        status,
+        reason: error.reason,
+        code: error.code,
+        durationMs,
+      })
+      throw error
+    }
+
+    console.info('YouTube API call completed:', {
+      endpoint,
+      idCount,
+      status,
+      durationMs,
+    })
+
+    return data
+  } catch (error) {
+    if (error instanceof YouTubeApiError) throw error
+    const classified = classifyYouTubeError({
+      status: status || 500,
+      endpoint,
+      fallbackMessage: error instanceof Error ? error.message : `${endpoint} a echoue.`,
+    })
+    console.warn('YouTube API call failed:', {
+      endpoint,
+      idCount,
+      status,
+      reason: classified.reason,
+      code: classified.code,
+      durationMs: Date.now() - startedAt,
+    })
+    throw classified
+  }
 }
 
 function formatSubs(n: number): string {
@@ -310,18 +371,17 @@ export async function searchYouTubeChannels(
   for (const query of queries) {
     let nextPageToken = ''
 
-    for (let i = 0; i < 2; i++) {
-      const searchUrl =
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}` +
-        `&maxResults=50&key=${apiKey}` +
-        `${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`
+    for (let i = 0; i < MAX_SEARCH_PAGES_PER_QUERY; i++) {
+      const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search')
+      searchUrl.searchParams.set('part', 'snippet')
+      searchUrl.searchParams.set('type', 'channel')
+      searchUrl.searchParams.set('q', query)
+      searchUrl.searchParams.set('maxResults', '50')
+      searchUrl.searchParams.set('fields', YOUTUBE_SEARCH_FIELDS)
+      searchUrl.searchParams.set('key', apiKey)
+      if (nextPageToken) searchUrl.searchParams.set('pageToken', nextPageToken)
 
-      const searchRes = await fetch(searchUrl)
-      const searchData = await searchRes.json()
-
-      if (searchData.error) {
-        throw new Error(searchData.error.message || 'Erreur YouTube Search API')
-      }
+      const searchData = await fetchYouTubeJson(searchUrl, 'search.list')
 
       allItems.push(...(searchData.items || []))
 
@@ -341,16 +401,13 @@ export async function searchYouTubeChannels(
   for (let i = 0; i < channelIds.length; i += 50) {
     const batchIds = channelIds.slice(i, i + 50)
 
-    const channelsUrl =
-      `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails,brandingSettings` +
-      `&id=${batchIds.join(',')}&key=${apiKey}`
+    const channelsUrl = new URL('https://www.googleapis.com/youtube/v3/channels')
+    channelsUrl.searchParams.set('part', 'snippet,statistics,brandingSettings')
+    channelsUrl.searchParams.set('id', batchIds.join(','))
+    channelsUrl.searchParams.set('fields', YOUTUBE_CHANNEL_FIELDS)
+    channelsUrl.searchParams.set('key', apiKey)
 
-    const channelsRes = await fetch(channelsUrl)
-    const channelsData = await channelsRes.json()
-
-    if (channelsData.error) {
-      throw new Error(channelsData.error.message || 'Erreur YouTube Channels API')
-    }
+    const channelsData = await fetchYouTubeJson(channelsUrl, 'channels.list', batchIds.length)
 
     allChannels.push(...(channelsData.items || []))
   }

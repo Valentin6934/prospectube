@@ -70,6 +70,13 @@ const {
   validateStripePriceForPro,
   validateStripePriceId,
 } = require('../lib/stripeConfig.ts')
+const {
+  YOUTUBE_DAILY_QUOTA_MESSAGE,
+  buildYouTubeErrorResponse,
+  classifyYouTubeError,
+  getSafeYouTubeLog,
+  sanitizeGoogleMessage,
+} = require('../lib/youtubeQuota.ts')
 
 test('selects high, median and low scored prospects deterministically', () => {
   const prospects = [
@@ -989,6 +996,99 @@ test('stripe checkout route verifies price before session and hides raw Stripe e
   assert.doesNotMatch(checkoutRoute, /No such price/)
   assert.match(stripeHelper, /STRIPE_PRICE_NOT_FOUND/)
   assert.match(packageJson, /"stripe:check": "node scripts\/check-stripe-config\.mjs"/)
+})
+
+test('youtube quota errors are converted to safe 429 responses', () => {
+  for (const reason of ['quotaExceeded', 'dailyLimitExceeded']) {
+    const error = classifyYouTubeError({
+      endpoint: 'search.list',
+      status: 403,
+      payload: {
+        error: {
+          message: "Quota exceeded for quota metric 'Search Queries' and project/secret.",
+          errors: [{ reason }],
+        },
+      },
+    })
+    const response = buildYouTubeErrorResponse(error)
+    const serialized = JSON.stringify(response)
+
+    assert.equal(response.status, 429)
+    assert.equal(response.body.error, 'YOUTUBE_DAILY_QUOTA_EXCEEDED')
+    assert.equal(response.body.message, YOUTUBE_DAILY_QUOTA_MESSAGE)
+    assert.equal(response.body.retryable, true)
+    assert.doesNotMatch(serialized, /Quota exceeded for quota metric/)
+    assert.doesNotMatch(serialized, /project\/secret/)
+  }
+})
+
+test('youtube rate limit and backend errors are classified without exposing Google details', () => {
+  const rateLimited = classifyYouTubeError({
+    endpoint: 'channels.list',
+    status: 403,
+    payload: { error: { message: 'User rate limited', errors: [{ reason: 'userRateLimitExceeded' }] } },
+  })
+  const backend = classifyYouTubeError({
+    endpoint: 'search.list',
+    status: 503,
+    payload: { error: { message: 'Backend error', errors: [{ reason: 'backendError' }] } },
+  })
+
+  assert.equal(buildYouTubeErrorResponse(rateLimited).status, 429)
+  assert.equal(buildYouTubeErrorResponse(rateLimited).body.error, 'YOUTUBE_RATE_LIMITED')
+  assert.equal(buildYouTubeErrorResponse(backend).status, 503)
+  assert.equal(buildYouTubeErrorResponse(backend).body.error, 'YOUTUBE_BACKEND_ERROR')
+  assert.deepEqual(getSafeYouTubeLog(rateLimited), {
+    code: 'YOUTUBE_RATE_LIMITED',
+    reason: 'userRateLimitExceeded',
+    endpoint: 'channels.list',
+    httpStatus: 403,
+    retryable: true,
+  })
+})
+
+test('youtube error sanitation removes api keys and project identifiers', () => {
+  const sanitized = sanitizeGoogleMessage(
+    'Request failed for projects/123456?key=AIzaSecretKey and key=AIzaAnotherSecret'
+  )
+
+  assert.doesNotMatch(sanitized, /AIzaSecretKey|AIzaAnotherSecret|projects\/123456/)
+})
+
+test('youtube search reduces quota-heavy calls and batches channel ids', () => {
+  const youtubeLib = fs.readFileSync('lib/youtube.ts', 'utf8')
+
+  assert.match(youtubeLib, /MAX_SEARCH_QUERIES\s*=\s*2/)
+  assert.match(youtubeLib, /MAX_SEARCH_PAGES_PER_QUERY\s*=\s*1/)
+  assert.match(youtubeLib, /for \(let i = 0; i < channelIds\.length; i \+= 50\)/)
+  assert.match(youtubeLib, /channelsUrl\.searchParams\.set\('id', batchIds\.join\(','\)\)/)
+  assert.match(youtubeLib, /fields/)
+  assert.doesNotMatch(youtubeLib, /youtube\/v3\/videos/)
+})
+
+test('search route keeps free quota, serves identical cache and blocks concurrent youtube calls', () => {
+  const searchRoute = fs.readFileSync('app/api/search/route.ts', 'utf8')
+
+  assert.match(searchRoute, /prisma\.searchCache\.findFirst/)
+  assert.match(searchRoute, /cachedResults\.length >= limits\.results/)
+  assert.match(searchRoute, /selectDiverseProspectPreview\(cachedResults, limits\.results\)/)
+  assert.match(searchRoute, /activeYouTubeSearches/)
+  assert.match(searchRoute, /SEARCH_ALREADY_RUNNING/)
+  assert.match(searchRoute, /SEARCH_RATE_LIMITED/)
+  assert.match(searchRoute, /SEARCH_COOLDOWN_MS/)
+  assert.match(searchRoute, /user\.searchesRemaining <= 0/)
+  assert.match(searchRoute, /buildYouTubeErrorResponse/)
+})
+
+test('dashboard handles youtube 429 without double submission or raw Google errors', () => {
+  const dashboard = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
+
+  assert.match(dashboard, /if \(loading\) return/)
+  assert.match(dashboard, /searchPausedUntil/)
+  assert.match(dashboard, /res\.status === 429/)
+  assert.match(dashboard, /disabled=\{loading \|\| Date\.now\(\) < searchPausedUntil\}/)
+  assert.match(dashboard, /data\.message \|\| data\.error/)
+  assert.doesNotMatch(dashboard, /Quota exceeded for quota metric/)
 })
 
 test('standard Pro pricing has no launch offer route, coupon or discount wiring', () => {
