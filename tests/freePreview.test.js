@@ -61,6 +61,15 @@ const {
   isAllowedProspectTubeReturnOrigin,
   verifyGmailOAuthState,
 } = require('../lib/gmailOAuthUrl.ts')
+const {
+  STRIPE_CLIENT_ERROR_MESSAGE,
+  StripeConfigError,
+  getSafeStripeConfigLog,
+  getValidatedStripeConfig,
+  toStripeConfigError,
+  validateStripePriceForPro,
+  validateStripePriceId,
+} = require('../lib/stripeConfig.ts')
 
 test('selects high, median and low scored prospects deterministically', () => {
   const prospects = [
@@ -873,19 +882,131 @@ test('campaign send route logs Prisma persistence failures and retries a minimal
   assert.doesNotMatch(sendRoute, /where:\s*\{\s*id:\s*prospect\.id\s*\},\s*data:\s*\{\s*sendStatus,\s*sentAt/s)
 })
 
+test('stripe config accepts price ids and trims spaces', () => {
+  assert.equal(validateStripePriceId('price_123'), 'price_123')
+  assert.equal(validateStripePriceId('  price_123  '), 'price_123')
+
+  const config = getValidatedStripeConfig({
+    STRIPE_SECRET_KEY: 'sk_live_secret',
+    STRIPE_PRICE_PRO: '  price_live_pro  ',
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'pk_live_public',
+  })
+
+  assert.equal(config.mode, 'live')
+  assert.equal(config.priceId, 'price_live_pro')
+})
+
+test('stripe config rejects secret keys or promotions in STRIPE_PRICE_PRO', () => {
+  for (const invalidPrice of ['sk_live_secret', 'sk_test_secret', 'prod_123', 'coupon_123', 'promo_123', 'abc_123']) {
+    assert.throws(
+      () => validateStripePriceId(invalidPrice),
+      error => error instanceof StripeConfigError && error.code === 'STRIPE_PRICE_PRO_INVALID'
+    )
+  }
+})
+
+test('stripe config detects secret and publishable mode mismatch', () => {
+  assert.throws(
+    () => getValidatedStripeConfig({
+      STRIPE_SECRET_KEY: 'sk_live_secret',
+      STRIPE_PRICE_PRO: 'price_123',
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'pk_test_public',
+    }),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_MODE_MISMATCH'
+  )
+})
+
+function mockStripePrice(overrides = {}) {
+  return {
+    id: 'price_123',
+    livemode: false,
+    active: true,
+    recurring: { interval: 'month' },
+    currency: 'eur',
+    unit_amount: 990,
+    ...overrides,
+  }
+}
+
+test('stripe price validation detects live and test mode mismatches', () => {
+  assert.throws(
+    () => validateStripePriceForPro(mockStripePrice({ livemode: false }), 'live'),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_MODE_MISMATCH'
+  )
+  assert.throws(
+    () => validateStripePriceForPro(mockStripePrice({ livemode: true }), 'test'),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_MODE_MISMATCH'
+  )
+})
+
+test('stripe price validation rejects inactive, wrong interval, currency and amount', () => {
+  assert.throws(
+    () => validateStripePriceForPro(mockStripePrice({ active: false }), 'test'),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_PRICE_INACTIVE'
+  )
+  assert.throws(
+    () => validateStripePriceForPro(mockStripePrice({ recurring: { interval: 'year' } }), 'test'),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_PRICE_INTERVAL_INVALID'
+  )
+  assert.throws(
+    () => validateStripePriceForPro(mockStripePrice({ currency: 'usd' }), 'test'),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_PRICE_CURRENCY_INVALID'
+  )
+  assert.throws(
+    () => validateStripePriceForPro(mockStripePrice({ unit_amount: 495 }), 'test'),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_PRICE_AMOUNT_INVALID'
+  )
+})
+
+test('stripe missing price maps to a safe client error without secrets', () => {
+  const error = toStripeConfigError({
+    code: 'resource_missing',
+    type: 'StripeInvalidRequestError',
+    requestId: 'req_123',
+    message: "No such price: 'price_missing'",
+  })
+  error.priceId = 'price_missing'
+  error.mode = 'live'
+
+  const log = getSafeStripeConfigLog(error)
+  const serialized = JSON.stringify({ client: STRIPE_CLIENT_ERROR_MESSAGE, log })
+
+  assert.equal(error.code, 'STRIPE_PRICE_NOT_FOUND')
+  assert.equal(log.stripeRequestId, 'req_123')
+  assert.doesNotMatch(serialized, /sk_live_|sk_test_/)
+  assert.doesNotMatch(STRIPE_CLIENT_ERROR_MESSAGE, /No such price/)
+})
+
+test('stripe checkout route verifies price before session and hides raw Stripe errors', () => {
+  const checkoutRoute = fs.readFileSync('app/api/stripe/checkout/route.ts', 'utf8')
+  const stripeHelper = fs.readFileSync('lib/stripeConfig.ts', 'utf8')
+  const packageJson = fs.readFileSync('package.json', 'utf8')
+
+  assert.match(checkoutRoute, /stripe\.accounts\.retrieve\(null\)/)
+  assert.match(checkoutRoute, /stripe\.prices\.retrieve\(priceId\)/)
+  assert.match(checkoutRoute, /validateStripePriceForPro\(price, mode\)/)
+  assert.match(checkoutRoute, /STRIPE_CLIENT_ERROR_MESSAGE/)
+  assert.doesNotMatch(checkoutRoute, /No such price/)
+  assert.match(stripeHelper, /STRIPE_PRICE_NOT_FOUND/)
+  assert.match(packageJson, /"stripe:check": "node scripts\/check-stripe-config\.mjs"/)
+})
+
 test('standard Pro pricing has no launch offer route, coupon or discount wiring', () => {
   const checkoutRoute = fs.readFileSync('app/api/stripe/checkout/route.ts', 'utf8')
+  const stripeHelper = fs.readFileSync('lib/stripeConfig.ts', 'utf8')
   const sources = [
     'app/LandingPage.tsx',
     'app/dashboard/page.tsx',
     'components/ProGate.tsx',
     'components/SubscriptionButton.tsx',
     'app/api/stripe/checkout/route.ts',
+    'lib/stripeConfig.ts',
     '.env.example',
   ].map(file => fs.readFileSync(file, 'utf8')).join('\n')
 
   assert.equal(fs.existsSync('app/api/launch-offer/route.ts'), false)
-  assert.match(checkoutRoute, /STRIPE_PRICE_PRO/)
+  assert.match(checkoutRoute, /getValidatedStripeConfig/)
+  assert.match(stripeHelper, /STRIPE_PRICE_PRO/)
   assert.match(sources, /9,90/)
   assert.doesNotMatch(checkoutRoute, /discounts/)
   assert.doesNotMatch(checkoutRoute, /allow_promotion_codes/)
