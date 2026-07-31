@@ -52,6 +52,15 @@ const {
   REQUIRED_GMAIL_DRAFT_SCOPE,
   shouldDisableGmailDrafts,
 } = require('../lib/gmailStatus.ts')
+const {
+  buildGmailOAuthStatusRedirect,
+  createGmailOAuthState,
+  getRequestOriginFromParts,
+  getSafeGmailOAuthReturnPath,
+  getStableGmailOAuthCallbackUrl,
+  isAllowedProspectTubeReturnOrigin,
+  verifyGmailOAuthState,
+} = require('../lib/gmailOAuthUrl.ts')
 
 test('selects high, median and low scored prospects deterministically', () => {
   const prospects = [
@@ -530,13 +539,14 @@ test('gmail OAuth reconnect and disconnect routes preserve ownership and replace
   assert.match(connectRoute, /REQUIRED_GMAIL_DRAFT_SCOPE/)
   assert.doesNotMatch(connectRoute, /gmail\.send/)
   assert.match(connectRoute, /getServerSession\(authOptions\)/)
-  assert.match(connectRoute, /OAUTH_ORIGIN_COOKIE/)
-  assert.match(connectRoute, /`\$\{getRequestOrigin\(req\)\}\/api\/gmail\/callback`/)
-  assert.doesNotMatch(connectRoute, /const configuredUrl = process\.env\.NEXTAUTH_URL/)
-  assert.match(callbackRoute, /getServerSession\(authOptions\)/)
-  assert.match(callbackRoute, /OAUTH_ORIGIN_COOKIE/)
-  assert.match(callbackRoute, /getSafeReturnOrigin\(req\)/)
-  assert.doesNotMatch(callbackRoute, /if \(configuredUrl\)/)
+  assert.match(connectRoute, /createGmailOAuthState/)
+  assert.match(connectRoute, /getStableGmailOAuthCallbackUrl\(\)/)
+  assert.doesNotMatch(connectRoute, /code_challenge/)
+  assert.doesNotMatch(connectRoute, /authorizationUrl\.toString\(\)/)
+  assert.doesNotMatch(callbackRoute, /getServerSession\(authOptions\)/)
+  assert.match(callbackRoute, /verifyGmailOAuthState\(state\)/)
+  assert.match(callbackRoute, /getStableGmailOAuthCallbackUrl\(\)/)
+  assert.match(callbackRoute, /where:\s*\{\s*id:\s*payload\.userId\s*\}/)
   assert.match(callbackRoute, /prisma\.googleAccount\.upsert/)
   assert.match(callbackRoute, /accessToken:\s*tokens\.access_token/)
   assert.match(callbackRoute, /refreshToken,/)
@@ -544,6 +554,116 @@ test('gmail OAuth reconnect and disconnect routes preserve ownership and replace
   assert.match(gmailRoute, /where:\s*\{\s*userId:\s*user\.id\s*\}/)
   assert.match(gmailRoute, /scope:\s*true/)
   assert.match(gmailRoute, /buildDisconnectedGmailStatus/)
+})
+
+test('gmail OAuth uses a stable Google callback for production and previews', () => {
+  const productionEnv = {
+    NODE_ENV: 'production',
+    NEXTAUTH_URL: 'https://prospectube.vercel.app',
+    NEXTAUTH_SECRET: 'test-secret',
+  }
+  const previewEnv = {
+    NODE_ENV: 'production',
+    NEXTAUTH_URL: 'https://prospectube-37ukqp2rr-llow.vercel.app',
+    NEXTAUTH_SECRET: 'test-secret',
+  }
+
+  assert.equal(
+    getStableGmailOAuthCallbackUrl(productionEnv),
+    'https://prospectube.vercel.app/api/gmail/callback'
+  )
+  assert.equal(
+    getStableGmailOAuthCallbackUrl(previewEnv),
+    'https://prospectube.vercel.app/api/gmail/callback'
+  )
+})
+
+test('gmail OAuth token exchange uses the exact same stable redirect uri', () => {
+  const connectRoute = fs.readFileSync('app/api/gmail/connect/route.ts', 'utf8')
+  const callbackRoute = fs.readFileSync('app/api/gmail/callback/route.ts', 'utf8')
+
+  assert.match(connectRoute, /const redirectUri = getStableGmailOAuthCallbackUrl\(\)/)
+  assert.match(callbackRoute, /const redirectUri = getStableGmailOAuthCallbackUrl\(\)/)
+  assert.match(connectRoute, /redirect_uri:\s*redirectUri/)
+  assert.match(callbackRoute, /redirect_uri:\s*redirectUri/)
+})
+
+test('gmail OAuth signed state preserves preview, production, campaign and localhost returns', () => {
+  const env = { NODE_ENV: 'production', NEXTAUTH_SECRET: 'test-secret' }
+  const previewState = createGmailOAuthState({
+    userId: 'user_preview',
+    origin: 'https://prospectube-37ukqp2rr-llow.vercel.app',
+    returnPath: '/campaigns?campaignId=campaign_123',
+  }, env)
+  const previewPayload = verifyGmailOAuthState(previewState, env)
+  assert.equal(previewPayload.userId, 'user_preview')
+  assert.equal(previewPayload.origin, 'https://prospectube-37ukqp2rr-llow.vercel.app')
+  assert.equal(previewPayload.returnPath, '/campaigns?campaignId=campaign_123')
+  assert.equal(
+    buildGmailOAuthStatusRedirect('connected', previewPayload, env).toString(),
+    'https://prospectube-37ukqp2rr-llow.vercel.app/campaigns?campaignId=campaign_123&gmail=connected'
+  )
+
+  const productionState = createGmailOAuthState({
+    userId: 'user_prod',
+    origin: 'https://prospectube.vercel.app',
+    returnPath: '/settings',
+  }, env)
+  const productionPayload = verifyGmailOAuthState(productionState, env)
+  assert.equal(
+    buildGmailOAuthStatusRedirect('connected', productionPayload, env).toString(),
+    'https://prospectube.vercel.app/settings?gmail=connected'
+  )
+
+  const localEnv = { NODE_ENV: 'development', NEXTAUTH_SECRET: 'test-secret' }
+  const localState = createGmailOAuthState({
+    userId: 'user_local',
+    origin: 'http://localhost:3000',
+    returnPath: '/settings',
+  }, localEnv)
+  const localPayload = verifyGmailOAuthState(localState, localEnv)
+  assert.equal(
+    buildGmailOAuthStatusRedirect('connected', localPayload, localEnv).toString(),
+    'http://localhost:3000/settings?gmail=connected'
+  )
+})
+
+test('gmail OAuth return validation blocks open redirects and fake domains', () => {
+  const productionEnv = { NODE_ENV: 'production', NEXTAUTH_SECRET: 'test-secret' }
+  const devEnv = { NODE_ENV: 'development', NEXTAUTH_SECRET: 'test-secret' }
+
+  assert.equal(isAllowedProspectTubeReturnOrigin('https://prospectube.vercel.app', productionEnv), true)
+  assert.equal(isAllowedProspectTubeReturnOrigin('https://prospectube-37ukqp2rr-llow.vercel.app', productionEnv), true)
+  assert.equal(isAllowedProspectTubeReturnOrigin('http://localhost:3000', devEnv), true)
+  assert.equal(isAllowedProspectTubeReturnOrigin('https://evil.com', productionEnv), false)
+  assert.equal(isAllowedProspectTubeReturnOrigin('javascript:alert(1)', productionEnv), false)
+  assert.equal(isAllowedProspectTubeReturnOrigin('data:text/html,hi', productionEnv), false)
+  assert.equal(isAllowedProspectTubeReturnOrigin('https://prospectube.vercel.app.evil.com', productionEnv), false)
+  assert.equal(isAllowedProspectTubeReturnOrigin('https://evil-prospectube.vercel.app', productionEnv), false)
+  assert.equal(getSafeGmailOAuthReturnPath('https://evil.com/settings'), '/settings')
+  assert.equal(getSafeGmailOAuthReturnPath('//evil.com/settings'), '/settings')
+})
+
+test('gmail OAuth state rejects tampering and stale payloads', () => {
+  const env = { NODE_ENV: 'production', NEXTAUTH_SECRET: 'test-secret' }
+  const state = createGmailOAuthState({
+    userId: 'user_123',
+    origin: 'https://prospectube.vercel.app',
+    returnPath: '/settings',
+  }, env)
+
+  assert.equal(verifyGmailOAuthState(`${state}tampered`, env), null)
+  assert.equal(verifyGmailOAuthState(state, { ...env, NEXTAUTH_SECRET: 'other-secret' }), null)
+  assert.equal(verifyGmailOAuthState(state, env, Date.now() + 11 * 60 * 1000), null)
+})
+
+test('gmail OAuth request origin keeps the initial Vercel preview origin', () => {
+  assert.equal(getRequestOriginFromParts({
+    forwardedHost: 'prospectube-37ukqp2rr-llow.vercel.app',
+    forwardedProto: 'https',
+    host: 'internal.vercel.app',
+    fallbackOrigin: 'https://internal.vercel.app',
+  }), 'https://prospectube-37ukqp2rr-llow.vercel.app')
 })
 
 test('gmail status requires the draft compose scope before enabling Gmail drafts', () => {
@@ -724,9 +844,31 @@ test('campaign send route returns structured draft states and avoids duplicate G
 
   assert.match(sendRoute, /gmailMessageId:\s*true/)
   assert.match(sendRoute, /DRAFT_CREATED/)
+  assert.match(sendRoute, /DRAFT_CREATED_STATUS_RECOVERED/)
   assert.match(sendRoute, /DRAFT_ALREADY_CREATED/)
   assert.match(sendRoute, /DRAFT_CREATED_STATUS_NOT_SAVED/)
   assert.match(sendRoute, /getStructuredDraftState\(results\)/)
   assert.match(sendRoute, /alreadyProcessed \? undefined : getSkipMessage/)
   assert.match(sendRoute, /Tous les brouillons eligibles existent deja/)
+})
+
+test('campaign send route logs Prisma persistence failures and retries a minimal status update', () => {
+  const sendRoute = fs.readFileSync('app/api/campaigns/[id]/send/route.ts', 'utf8')
+
+  assert.match(sendRoute, /Prisma\.PrismaClientKnownRequestError/)
+  assert.match(sendRoute, /prismaCode/)
+  assert.match(sendRoute, /prismaMessage/)
+  assert.match(sendRoute, /failingOperation/)
+  assert.match(sendRoute, /stack/)
+  assert.match(sendRoute, /gmailDraftId/)
+  assert.match(sendRoute, /gmailMessageId/)
+  assert.match(sendRoute, /campaignProspect\.updateMany/)
+  assert.match(sendRoute, /campaignId:\s*input\.campaignId/)
+  assert.match(sendRoute, /campaignProspect\.updateMany\.deliveryStatusFull/)
+  assert.match(sendRoute, /campaignProspect\.updateMany\.deliveryStatusMinimal/)
+  assert.match(sendRoute, /sendError:\s*null/)
+  assert.match(sendRoute, /sentAt:\s*input\.sentAt/)
+  assert.match(sendRoute, /data:\s*\{\s*sendStatus:\s*input\.sendStatus,\s*gmailMessageId/s)
+  assert.match(sendRoute, /DRAFT_CREATED_STATUS_NOT_SAVED/)
+  assert.doesNotMatch(sendRoute, /where:\s*\{\s*id:\s*prospect\.id\s*\},\s*data:\s*\{\s*sendStatus,\s*sentAt/s)
 })

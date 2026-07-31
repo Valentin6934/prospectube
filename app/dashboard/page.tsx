@@ -423,19 +423,19 @@ export default function Dashboard() {
             🏠 Accueil
           </Link>
           <Link href="/favorites" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
-            ⭐ Mes favoris
+            ⭐ Favoris
           </Link>
           <Link href="/history" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
-            📁 Historique
+            🕘 Historique
           </Link>
           <Link href="/campaigns" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
-            📧 Campagnes
+            🎯 Campagnes
           </Link>
           <Link href="/settings" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
-            ⚙ Paramètres
+            ⚙️ Paramètres
           </Link>
           <div style={{ background: 'rgba(83,58,183,0.2)', border: '1px solid rgba(83,58,183,0.4)', color: '#a78bfa', padding: '0.2rem 0.75rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 500 }}>
-            Plan {plan}
+            ⭐ Plan {plan}
           </div>
           {searchesLeft !== null && (
             <div style={{ fontSize: '0.8rem', color: '#A89FCC' }}>
@@ -443,7 +443,7 @@ export default function Dashboard() {
             </div>
           )}
           <button onClick={() => signOut({ callbackUrl: '/' })} style={{ background: 'none', border: '1px solid rgba(83,58,183,0.3)', color: '#A89FCC', padding: '0.4rem 1rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-            Déconnexion
+            🚪 Déconnexion
           </button>
         </div>
       </nav>
