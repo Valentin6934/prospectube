@@ -9,6 +9,7 @@ import Toast, { useToast } from '@/components/Toast'
 import ProGate from '@/components/ProGate'
 import MainAppNav from '@/components/MainAppNav'
 import ProspectPresentation from '@/components/ProspectPresentation'
+import ProspectScoreExplanation from '@/components/ProspectScoreExplanation'
 import { isPro } from '@/lib/plan'
 import { buildCampaignDetailUrl, getCampaignFromApiResponse } from '@/lib/campaignClient'
 import {
@@ -827,6 +828,12 @@ export default function CampaignsPage() {
                           <div style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.95rem' }}>{value}</div>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {selectedCampaign.prospects.length > 0 && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <ProspectScoreExplanation />
                     </div>
                   )}
 

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { normalizeProspectPresentation, type ProspectPresentationInput } from '@/lib/prospectPresentation'
+import ProspectScoreExplanation from './ProspectScoreExplanation'
 
 type ProspectPresentationProps = {
   channel: ProspectPresentationInput
@@ -46,6 +47,7 @@ export default function ProspectPresentation({ channel, compact = false, selecte
               {prospect.scoreLabel}
             </span>
             <span style={{ color: '#F0EDF8', fontWeight: 900, fontSize: compact ? '0.84rem' : '0.9rem' }}>{prospect.score}/100</span>
+            <ProspectScoreExplanation compact />
           </div>
 
           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: prospect.contacts.length > 0 ? '0.55rem' : 0 }}>

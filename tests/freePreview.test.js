@@ -77,6 +77,13 @@ const {
   getSafeYouTubeLog,
   sanitizeGoogleMessage,
 } = require('../lib/youtubeQuota.ts')
+const {
+  PROSPECT_SCORE_EXPLANATION,
+  PROSPECT_SCORE_LEVELS,
+  PROSPECT_SCORE_SIGNALS,
+  PROSPECT_SCORE_THRESHOLDS,
+  PROSPECT_SCORE_TRANSPARENCY_NOTE,
+} = require('../lib/prospectScoreInfo.ts')
 
 test('selects high, median and low scored prospects deterministically', () => {
   const prospects = [
@@ -1089,6 +1096,86 @@ test('dashboard handles youtube 429 without double submission or raw Google erro
   assert.match(dashboard, /disabled=\{loading \|\| Date\.now\(\) < searchPausedUntil\}/)
   assert.match(dashboard, /data\.message \|\| data\.error/)
   assert.doesNotMatch(dashboard, /Quota exceeded for quota metric/)
+})
+
+test('prospect score explanation is transparent and avoids misleading promises', () => {
+  const component = fs.readFileSync('components/ProspectScoreExplanation.tsx', 'utf8')
+  const combinedText = [
+    PROSPECT_SCORE_EXPLANATION,
+    PROSPECT_SCORE_TRANSPARENCY_NOTE,
+    ...PROSPECT_SCORE_SIGNALS,
+    ...PROSPECT_SCORE_LEVELS.map(level => `${level.label} ${level.description}`),
+  ].join(' ')
+
+  assert.match(component, /Comment est calcule le score/)
+  assert.match(combinedText, /potentiel commercial/)
+  assert.match(combinedText, /signaux publics/)
+  assert.match(combinedText, /pas un besoin confirme/)
+  assert.doesNotMatch(combinedText, /cherche activement un monteur/i)
+  assert.doesNotMatch(combinedText, /va repondre|deviendra client|garantit une opportunite/i)
+})
+
+test('prospect score levels match the current advanced score thresholds', () => {
+  const youtubeLib = fs.readFileSync('lib/youtube.ts', 'utf8')
+
+  assert.equal(PROSPECT_SCORE_THRESHOLDS.exceptional, 90)
+  assert.equal(PROSPECT_SCORE_THRESHOLDS.excellent, 80)
+  assert.equal(PROSPECT_SCORE_THRESHOLDS.good, 65)
+  assert.equal(PROSPECT_SCORE_THRESHOLDS.medium, 50)
+  assert.deepEqual(
+    PROSPECT_SCORE_LEVELS.map(level => [level.label, level.min, level.max]),
+    [
+      ['Prospect exceptionnel', 90, 100],
+      ['Excellent', 80, 89],
+      ['Bon', 65, 79],
+      ['Moyen', 50, 64],
+      ['Faible', 0, 49],
+    ]
+  )
+  assert.match(youtubeLib, /PROSPECT_SCORE_THRESHOLDS\.exceptional/)
+  assert.match(youtubeLib, /PROSPECT_SCORE_THRESHOLDS\.excellent/)
+  assert.match(youtubeLib, /PROSPECT_SCORE_THRESHOLDS\.good/)
+  assert.match(youtubeLib, /PROSPECT_SCORE_THRESHOLDS\.medium/)
+})
+
+test('prospect score explanation is accessible and reused across score surfaces', () => {
+  const component = fs.readFileSync('components/ProspectScoreExplanation.tsx', 'utf8')
+  const dashboard = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
+  const favorites = fs.readFileSync('app/favorites/page.tsx', 'utf8')
+  const history = fs.readFileSync('app/history/page.tsx', 'utf8')
+  const campaigns = fs.readFileSync('app/campaigns/page.tsx', 'utf8')
+  const presentation = fs.readFileSync('components/ProspectPresentation.tsx', 'utf8')
+  const creatorDetails = fs.readFileSync('components/CreatorDetails.tsx', 'utf8')
+
+  assert.match(component, /role="dialog"/)
+  assert.match(component, /aria-modal="true"/)
+  assert.match(component, /aria-label="Comprendre le calcul du Prospect Score"/)
+  assert.match(component, /event\.key === 'Escape'/)
+  for (const source of [dashboard, favorites, history, campaigns, presentation, creatorDetails]) {
+    assert.match(source, /ProspectScoreExplanation/)
+  }
+})
+
+test('prospect score algorithm weights stay unchanged', () => {
+  const youtubeLib = fs.readFileSync('lib/youtube.ts', 'utf8')
+
+  for (const pattern of [
+    /channel\.email\)\s*\{\s*score \+= 20/s,
+    /channel\.instagram\)\s*\{\s*score \+= 8/s,
+    /channel\.tiktok\)\s*\{\s*score \+= 8/s,
+    /channel\.twitch\)\s*\{\s*score \+= 5/s,
+    /channel\.website\)\s*\{\s*score \+= 5/s,
+    /subsNum >= 10000 && channel\.subsNum <= 300000\)\s*\{\s*score \+= 20/s,
+    /subsNum > 300000 && channel\.subsNum <= 1000000\)\s*\{\s*score \+= 12/s,
+    /channel\.videoCount > 100\)\s*\{\s*score \+= 10/s,
+    /channel\.viewCount > 1000000\)\s*\{\s*score \+= 10/s,
+    /channel\.viewsPerSubscriber > 20\)\s*\{\s*score \+= 10/s,
+    /channel\.channelAge !== null && channel\.channelAge < 5\)\s*\{\s*score \+= 5/s,
+    /channel\.desc && channel\.desc\.length > 100\)\s*\{\s*score \+= 5/s,
+    /Math\.min\(score, 100\)/,
+  ]) {
+    assert.match(youtubeLib, pattern)
+  }
 })
 
 test('standard Pro pricing has no launch offer route, coupon or discount wiring', () => {

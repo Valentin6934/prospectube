@@ -1,5 +1,6 @@
 import { selectDiverseProspectPreview } from '@/lib/freePreview'
 import { SMALL_CREATOR_NICHE_QUERIES, YOUTUBE_NICHE_QUERIES } from '@/lib/niches'
+import { PROSPECT_SCORE_THRESHOLDS } from '@/lib/prospectScoreInfo'
 import { YouTubeApiError, classifyYouTubeError } from '@/lib/youtubeQuota'
 
 const MAX_SEARCH_QUERIES = 2
@@ -247,7 +248,7 @@ function getScoreLabel(score: number): string {
 }
 
 function getScoreColor(score: number): string {
-  if (score >= 80) return 'green'
+  if (score >= PROSPECT_SCORE_THRESHOLDS.excellent) return 'green'
   if (score >= 60) return 'yellow'
   return 'red'
 }
@@ -273,17 +274,17 @@ function getChannelAge(publishedAt: string | null): number | null {
 }
 
 function getAdvancedScoreLabel(score: number): string {
-  if (score >= 90) return '🔥 Prospect exceptionnel'
-  if (score >= 80) return '🟢 Excellent prospect'
-  if (score >= 65) return '🟡 Bon prospect'
-  if (score >= 50) return '🟠 Prospect moyen'
+  if (score >= PROSPECT_SCORE_THRESHOLDS.exceptional) return '🔥 Prospect exceptionnel'
+  if (score >= PROSPECT_SCORE_THRESHOLDS.excellent) return '🟢 Excellent prospect'
+  if (score >= PROSPECT_SCORE_THRESHOLDS.good) return '🟡 Bon prospect'
+  if (score >= PROSPECT_SCORE_THRESHOLDS.medium) return '🟠 Prospect moyen'
   return '🔴 Faible potentiel'
 }
 
 function getAdvancedScoreColor(score: number): string {
-  if (score >= 80) return 'green'
-  if (score >= 65) return 'yellow'
-  if (score >= 50) return 'orange'
+  if (score >= PROSPECT_SCORE_THRESHOLDS.excellent) return 'green'
+  if (score >= PROSPECT_SCORE_THRESHOLDS.good) return 'yellow'
+  if (score >= PROSPECT_SCORE_THRESHOLDS.medium) return 'orange'
   return 'red'
 }
 

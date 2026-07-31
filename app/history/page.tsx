@@ -8,6 +8,7 @@ import ProspectCard, { ProspectChannel } from '@/components/ProspectCard'
 import AppLoader from '@/components/AppLoader'
 import EmptyState from '@/components/EmptyState'
 import Toast, { useToast } from '@/components/Toast'
+import ProspectScoreExplanation from '@/components/ProspectScoreExplanation'
 import { isPro } from '@/lib/plan'
 
 type HistoryItem = {
@@ -243,6 +244,11 @@ export default function HistoryPage() {
             <h3 className="font-display" style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '1rem' }}>
               Résultats sauvegardés · {selectedSearch.niche} · {selectedSearch.language}
             </h3>
+            {!resultsError && selectedResults.length > 0 && (
+              <div style={{ marginBottom: '1rem' }}>
+                <ProspectScoreExplanation />
+              </div>
+            )}
 
             {resultsError ? (
               <div className="card" style={{ padding: '1.5rem', textAlign: 'center', color: '#A89FCC' }}>

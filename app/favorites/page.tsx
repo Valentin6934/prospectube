@@ -8,6 +8,7 @@ import ProspectCard from '@/components/ProspectCard'
 import AppLoader from '@/components/AppLoader'
 import EmptyState from '@/components/EmptyState'
 import Toast, { useToast } from '@/components/Toast'
+import ProspectScoreExplanation from '@/components/ProspectScoreExplanation'
 import { isPro } from '@/lib/plan'
 
 type Favorite = {
@@ -143,16 +144,21 @@ export default function FavoritesPage() {
             actionHref="/dashboard"
           />
         ) : (
-          favorites.map(favorite => (
-            <ProspectCard
-              key={favorite.id}
-              channel={favorite}
-              showRemoveButton
-              removing={deletingId === favorite.id}
-              canUseCampaigns={isPro(plan)}
-              onRemoveFavorite={() => deleteFavorite(favorite.id)}
-            />
-          ))
+          <>
+            <div style={{ marginBottom: '1rem' }}>
+              <ProspectScoreExplanation />
+            </div>
+            {favorites.map(favorite => (
+              <ProspectCard
+                key={favorite.id}
+                channel={favorite}
+                showRemoveButton
+                removing={deletingId === favorite.id}
+                canUseCampaigns={isPro(plan)}
+                onRemoveFavorite={() => deleteFavorite(favorite.id)}
+              />
+            ))}
+          </>
         )}
       </div>
       <Toast toast={toast} />
