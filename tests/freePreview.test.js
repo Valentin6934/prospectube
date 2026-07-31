@@ -899,6 +899,7 @@ test('launch offer status computes remaining places from Stripe promotion redemp
     usedPlaces: 0,
     remainingPlaces: 5,
     remaining: 5,
+    checkoutConfigured: true,
   })
 
   assert.equal(buildLaunchOfferStatusFromPromotion({ ...basePromotion, times_redeemed: 4 }, { expectedLivemode: false }).remainingPlaces, 1)
@@ -925,7 +926,8 @@ test('launch offer helpers fall back to normal Pro pricing when invalid or unava
   assert.equal(fallback.remaining, 0)
   assert.equal(fallback.originalPrice, 9.9)
   assert.equal(fallback.discountedPrice, 4.95)
-  assert.equal(getLaunchOfferButtonLabel(fallback), 'Passer à Pro — 9,90 €/mois')
+  assert.equal(fallback.checkoutConfigured, false)
+  assert.equal(getLaunchOfferButtonLabel(fallback), 'Configuration Stripe incomplète')
   assert.deepEqual(getLaunchOfferPricing(fallback), {
     active: false,
     mainPrice: '9,90 €',
@@ -951,6 +953,7 @@ test('launch offer active pricing is reflected in shared labels and UI files', (
   const landing = fs.readFileSync('app/LandingPage.tsx', 'utf8')
   const proGate = fs.readFileSync('components/ProGate.tsx', 'utf8')
   const subscriptionButton = fs.readFileSync('components/SubscriptionButton.tsx', 'utf8')
+  const launchOfferComponent = fs.readFileSync('components/LaunchOffer.tsx', 'utf8')
 
   assert.equal(getLaunchOfferButtonLabel(activeOffer), 'Passer à Pro — 4,95 €/mois')
   assert.equal(getLaunchOfferPricing(activeOffer).mainPrice, '4,95 €')
@@ -959,6 +962,8 @@ test('launch offer active pricing is reflected in shared labels and UI files', (
   assert.match(landing, /Réservé aux 5 premiers abonnés Pro/)
   assert.match(proGate, /LaunchPrice/)
   assert.match(subscriptionButton, /getLaunchCheckoutLabel/)
+  assert.match(subscriptionButton, /checkoutDisabled/)
+  assert.match(launchOfferComponent, /4,95 €\/mois/)
 })
 
 test('launch offer checkout applies automatic discount only when Stripe still has places', () => {
@@ -968,8 +973,11 @@ test('launch offer checkout applies automatic discount only when Stripe still ha
   assert.match(checkoutRoute, /getAutomaticLaunchDiscount/)
   assert.match(checkoutRoute, /discounts:\s*\[launchDiscount\]/)
   assert.match(checkoutRoute, /allow_promotion_codes:\s*false/)
+  assert.match(checkoutRoute, /STRIPE_PRICE_PRO_MISSING/)
   assert.match(checkoutRoute, /retrying regular price/)
   assert.match(checkoutRoute, /regularCheckoutPayload/)
+  assert.match(checkoutRoute, /launchOfferApplied/)
+  assert.match(launchServer, /STRIPE_PRICE_PRO/)
   assert.match(launchServer, /bypassCache:\s*true/)
   assert.match(launchServer, /promotion_code:\s*promotionId/)
   assert.match(launchServer, /coupon:\s*promotionId/)
@@ -988,4 +996,20 @@ test('launch offer endpoint and webhook keep Stripe as the source of truth', () 
   assert.doesNotMatch(webhook, /9,90|990|amount_total|unit_amount/)
   assert.match(webhook, /checkout\.mode === 'subscription'/)
   assert.match(webhook, /activatePro\(userId, customerId, subscriptionId\)/)
+})
+
+test('launch offer copy does not contain stale launch prices', () => {
+  const files = [
+    'app/LandingPage.tsx',
+    'components/LaunchOffer.tsx',
+    'components/ProGate.tsx',
+    'components/SubscriptionButton.tsx',
+    'lib/launchOffer.ts',
+  ]
+  const source = files.map(file => fs.readFileSync(file, 'utf8')).join('\n')
+
+  assert.doesNotMatch(source, /4,90|4\.90/)
+  assert.doesNotMatch(source, /9,99|9\.99/)
+  assert.match(source, /4,95/)
+  assert.match(source, /9,90/)
 })

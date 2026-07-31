@@ -34,6 +34,8 @@ export function useLaunchOffer(): LaunchOfferState {
             usedPlaces: Number(data.usedPlaces) || 5,
             remainingPlaces: Number(data.remainingPlaces) || 0,
             remaining: Number(data.remaining ?? data.remainingPlaces) || 0,
+            checkoutConfigured: Boolean(data.checkoutConfigured),
+            adminMessage: typeof data.adminMessage === 'string' ? data.adminMessage : undefined,
           },
           loading: false,
           error: false,

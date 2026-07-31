@@ -77,7 +77,7 @@ export default function LandingPage() {
   const { data: session } = useSession()
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [checkoutError, setCheckoutError] = useState('')
-  const { offer } = useLaunchOffer()
+  const { offer, loading: offerLoading } = useLaunchOffer()
   const plan = (session?.user as any)?.plan || 'Gratuit'
 
   const startFree = () => router.push(session ? '/dashboard/home' : '/register')
@@ -89,6 +89,10 @@ export default function LandingPage() {
     }
     if (isPro(plan)) {
       router.push('/dashboard/home')
+      return
+    }
+    if (!offer.checkoutConfigured) {
+      setCheckoutError(offer.adminMessage || 'Configuration Stripe incomplète.')
       return
     }
 
@@ -262,10 +266,18 @@ export default function LandingPage() {
                 <li>✓ Campagnes</li>
                 <li>✓ Export CSV</li>
               </ul>
-              <button onClick={openPro} disabled={checkoutLoading} className={styles.pricePrimary}>
-                {checkoutLoading ? 'Ouverture de Stripe...' : isPro(plan) ? 'Accéder au dashboard' : getLaunchCheckoutLabel(offer)}
+              <button onClick={openPro} disabled={checkoutLoading || (!isPro(plan) && !offerLoading && !offer.checkoutConfigured)} className={styles.pricePrimary}>
+                {checkoutLoading
+                  ? 'Ouverture de Stripe...'
+                  : offerLoading && !isPro(plan)
+                    ? 'Chargement...'
+                    : isPro(plan) ? 'Accéder au dashboard' : getLaunchCheckoutLabel(offer)}
               </button>
-              {checkoutError && <div className={styles.checkoutError} role="alert">{checkoutError}</div>}
+              {(checkoutError || (!isPro(plan) && !offerLoading && !offer.checkoutConfigured)) && (
+                <div className={styles.checkoutError} role="alert">
+                  {checkoutError || offer.adminMessage || 'Configuration Stripe incomplète.'}
+                </div>
+              )}
             </article>
           </div>
         </div>

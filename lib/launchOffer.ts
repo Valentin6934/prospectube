@@ -14,6 +14,8 @@ export type LaunchOfferStatus = {
   usedPlaces: number
   remainingPlaces: number
   remaining: number
+  checkoutConfigured: boolean
+  adminMessage?: string
 }
 
 type StripePromotionLike = {
@@ -47,6 +49,8 @@ export function getDefaultLaunchOfferStatus(): LaunchOfferStatus {
     usedPlaces: LAUNCH_OFFER_MAX_PLACES,
     remainingPlaces: 0,
     remaining: 0,
+    checkoutConfigured: false,
+    adminMessage: 'Configuration Stripe incomplète.',
   }
 }
 
@@ -59,6 +63,7 @@ export function isLaunchPromotionId(value?: string | null): value is string {
 }
 
 export function getLaunchOfferButtonLabel(status?: LaunchOfferStatus | null): string {
+  if (status && !status.checkoutConfigured) return 'Configuration Stripe incomplète'
   return status?.active
     ? 'Passer à Pro — 4,95 €/mois'
     : 'Passer à Pro — 9,90 €/mois'
@@ -120,5 +125,6 @@ export function buildLaunchOfferStatusFromPromotion(
     usedPlaces,
     remainingPlaces: active ? remainingPlaces : 0,
     remaining: active ? remainingPlaces : 0,
+    checkoutConfigured: true,
   }
 }

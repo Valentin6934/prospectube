@@ -21,6 +21,15 @@ function safeLaunchOfferError(error: unknown) {
   }
 }
 
+function withCheckoutConfiguration(status: LaunchOfferStatus): LaunchOfferStatus {
+  const checkoutConfigured = Boolean(process.env.STRIPE_PRICE_PRO?.trim())
+  return {
+    ...status,
+    checkoutConfigured,
+    adminMessage: checkoutConfigured ? undefined : 'STRIPE_PRICE_PRO est manquant dans cet environnement.',
+  }
+}
+
 export function clearLaunchOfferCacheForTests() {
   cachedOffer = null
 }
@@ -31,7 +40,7 @@ export async function getLaunchOfferStatusFromStripe(options: { bypassCache?: bo
 
   const promotionId = process.env.STRIPE_LAUNCH_PROMOTION_ID?.trim()
   if (!isLaunchPromotionId(promotionId)) {
-    const status = getDefaultLaunchOfferStatus()
+    const status = withCheckoutConfiguration(getDefaultLaunchOfferStatus())
     cachedOffer = { status, expiresAt: now + LAUNCH_OFFER_CACHE_MS }
     return status
   }
@@ -48,14 +57,16 @@ export async function getLaunchOfferStatusFromStripe(options: { bypassCache?: bo
       promotion = await stripe.coupons.retrieve(promotionId)
     }
 
-    const status = buildLaunchOfferStatusFromPromotion(promotion as any, {
-      expectedLivemode: expectedStripeLivemode(),
-    })
+    const status = withCheckoutConfiguration(
+      buildLaunchOfferStatusFromPromotion(promotion as any, {
+        expectedLivemode: expectedStripeLivemode(),
+      })
+    )
     cachedOffer = { status, expiresAt: now + LAUNCH_OFFER_CACHE_MS }
     return status
   } catch (error) {
     console.error('GET /api/launch-offer Stripe error:', safeLaunchOfferError(error))
-    const status = getDefaultLaunchOfferStatus()
+    const status = withCheckoutConfiguration(getDefaultLaunchOfferStatus())
     cachedOffer = { status, expiresAt: now + LAUNCH_OFFER_CACHE_MS }
     return status
   }

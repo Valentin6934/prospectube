@@ -28,7 +28,11 @@ export async function POST(req: NextRequest) {
 
     const priceId = process.env.STRIPE_PRICE_PRO
     if (!priceId) {
-      return NextResponse.json({ error: 'STRIPE_PRICE_PRO est manquant.' }, { status: 500 })
+      return NextResponse.json({
+        error: 'Configuration Stripe incomplète.',
+        code: 'STRIPE_PRICE_PRO_MISSING',
+        adminMessage: 'STRIPE_PRICE_PRO est manquant dans cet environnement.',
+      }, { status: 500 })
     }
 
     const user = await prisma.user.findUnique({
@@ -68,6 +72,7 @@ export async function POST(req: NextRequest) {
     }
 
     let checkout
+    let launchOfferApplied = Boolean(launchDiscount)
     try {
       checkout = await getStripe().checkout.sessions.create(checkoutPayload)
     } catch (error) {
@@ -77,13 +82,18 @@ export async function POST(req: NextRequest) {
       })
       const { discounts: _discounts, ...regularCheckoutPayload } = checkoutPayload
       checkout = await getStripe().checkout.sessions.create(regularCheckoutPayload)
+      launchOfferApplied = false
     }
 
     if (!checkout.url) {
       return NextResponse.json({ error: 'Stripe n’a pas retourné d’URL de paiement.' }, { status: 502 })
     }
 
-    return NextResponse.json({ url: checkout.url })
+    return NextResponse.json({
+      url: checkout.url,
+      launchOfferApplied,
+      priceLabel: launchOfferApplied ? '4,95 €/mois' : '9,90 €/mois',
+    })
   } catch (error) {
     console.error('POST /api/stripe/checkout error:', error)
     const message = error instanceof Error ? error.message : 'Erreur Stripe Checkout.'

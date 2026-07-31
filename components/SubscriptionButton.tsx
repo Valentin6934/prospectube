@@ -20,10 +20,16 @@ export default function SubscriptionButton({
 }: SubscriptionButtonProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const { offer } = useLaunchOffer()
+  const { offer, loading: offerLoading } = useLaunchOffer()
   const isPro = isProPlan(plan)
+  const checkoutDisabled = !isPro && !offerLoading && !offer.checkoutConfigured
 
   const openStripe = async () => {
+    if (checkoutDisabled) {
+      setError(offer.adminMessage || 'Configuration Stripe incomplète.')
+      return
+    }
+
     setLoading(true)
     setError('')
 
@@ -45,7 +51,7 @@ export default function SubscriptionButton({
     <div style={{ width: fullWidth ? '100%' : undefined }}>
       <button
         onClick={openStripe}
-        disabled={loading}
+        disabled={loading || checkoutDisabled}
         className={isPro ? 'btn btn-secondary' : 'btn-primary'}
         style={{
           marginTop: '0.65rem',
@@ -58,11 +64,12 @@ export default function SubscriptionButton({
       >
         {loading
           ? <span className="button-loader"><span className="app-spinner" /> Ouverture...</span>
-          : isPro ? 'Gérer mon abonnement' : label || getLaunchCheckoutLabel(offer)}
+          : offerLoading && !isPro ? <span className="button-loader"><span className="app-spinner" /> Chargement...</span>
+            : isPro ? 'Gérer mon abonnement' : label || getLaunchCheckoutLabel(offer)}
       </button>
-      {error && (
+      {(error || checkoutDisabled) && (
         <div role="alert" style={{ maxWidth: fullWidth ? '100%' : '250px', marginTop: '0.45rem', color: '#f87171', fontSize: '0.7rem' }}>
-          {error}
+          {error || offer.adminMessage || 'Configuration Stripe incomplète.'}
         </div>
       )}
     </div>
