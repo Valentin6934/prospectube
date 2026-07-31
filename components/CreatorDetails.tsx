@@ -1,6 +1,7 @@
 'use client'
 
 import type { ProspectChannel } from './ProspectCard'
+import ProspectScoreExplanation from './ProspectScoreExplanation'
 
 type CreatorDetailsProps = {
   channel: ProspectChannel
@@ -134,6 +135,7 @@ export default function CreatorDetails({
               <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{ padding: '0.18rem 0.55rem', borderRadius: '999px', ...getScoreStyles(score), fontSize: '0.75rem', fontWeight: 700 }}>{channel.scoreLabel || '🔴 Faible potentiel'}</span>
                 <span style={{ color: '#F0EDF8', fontWeight: 800 }}>{score}/100</span>
+                <ProspectScoreExplanation compact />
               </div>
             </div>
           </div>

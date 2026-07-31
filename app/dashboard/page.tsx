@@ -8,6 +8,7 @@ import EmptyState from '@/components/EmptyState'
 import ProspectSkeleton from '@/components/ProspectSkeleton'
 import Toast, { useToast } from '@/components/Toast'
 import ProGate from '@/components/ProGate'
+import ProspectScoreExplanation from '@/components/ProspectScoreExplanation'
 import { YOUTUBE_NICHES } from '@/lib/niches'
 import { getPlanName, isFree, isPro as isProPlan } from '@/lib/plan'
 import { buildCampaignProspectPayload, getCampaignIdFromCreateResponse } from '@/lib/campaignClient'
@@ -549,7 +550,8 @@ export default function Dashboard() {
               <h3 className="font-display" style={{ fontWeight: 600, fontSize: '1rem' }}>
                 {results.length} chaîne{results.length !== 1 ? 's' : ''} trouvée{results.length !== 1 ? 's' : ''}
               </h3>
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <ProspectScoreExplanation />
                 <span style={{ fontSize: '0.8rem', color: '#6B5F96' }}>{niche} · {lang}</span>
                 <button onClick={exportCSV} style={{ background: isPro ? 'rgba(83,58,183,0.25)' : 'rgba(83,58,183,0.10)', border: '1px solid rgba(83,58,183,0.35)', color: isPro ? '#a78bfa' : '#6B5F96', padding: '0.35rem 0.75rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem' }}>
                   {isPro ? '📥 Export CSV' : '🔒 CSV Pro'}
