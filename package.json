@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "test": "node --test tests/freePreview.test.js",
+    "stripe:check": "node scripts/check-stripe-config.mjs",
     "build": "next build",
     "start": "next start",
     "db:push": "prisma db push",

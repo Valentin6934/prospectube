@@ -61,6 +61,22 @@ const {
   isAllowedProspectTubeReturnOrigin,
   verifyGmailOAuthState,
 } = require('../lib/gmailOAuthUrl.ts')
+const {
+  STRIPE_CLIENT_ERROR_MESSAGE,
+  StripeConfigError,
+  getSafeStripeConfigLog,
+  getValidatedStripeConfig,
+  toStripeConfigError,
+  validateStripePriceForPro,
+  validateStripePriceId,
+} = require('../lib/stripeConfig.ts')
+const {
+  YOUTUBE_DAILY_QUOTA_MESSAGE,
+  buildYouTubeErrorResponse,
+  classifyYouTubeError,
+  getSafeYouTubeLog,
+  sanitizeGoogleMessage,
+} = require('../lib/youtubeQuota.ts')
 
 test('selects high, median and low scored prospects deterministically', () => {
   const prospects = [
@@ -871,4 +887,231 @@ test('campaign send route logs Prisma persistence failures and retries a minimal
   assert.match(sendRoute, /data:\s*\{\s*sendStatus:\s*input\.sendStatus,\s*gmailMessageId/s)
   assert.match(sendRoute, /DRAFT_CREATED_STATUS_NOT_SAVED/)
   assert.doesNotMatch(sendRoute, /where:\s*\{\s*id:\s*prospect\.id\s*\},\s*data:\s*\{\s*sendStatus,\s*sentAt/s)
+})
+
+test('stripe config accepts price ids and trims spaces', () => {
+  assert.equal(validateStripePriceId('price_123'), 'price_123')
+  assert.equal(validateStripePriceId('  price_123  '), 'price_123')
+
+  const config = getValidatedStripeConfig({
+    STRIPE_SECRET_KEY: 'sk_live_secret',
+    STRIPE_PRICE_PRO: '  price_live_pro  ',
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'pk_live_public',
+  })
+
+  assert.equal(config.mode, 'live')
+  assert.equal(config.priceId, 'price_live_pro')
+})
+
+test('stripe config rejects secret keys or promotions in STRIPE_PRICE_PRO', () => {
+  for (const invalidPrice of ['sk_live_secret', 'sk_test_secret', 'prod_123', 'coupon_123', 'promo_123', 'abc_123']) {
+    assert.throws(
+      () => validateStripePriceId(invalidPrice),
+      error => error instanceof StripeConfigError && error.code === 'STRIPE_PRICE_PRO_INVALID'
+    )
+  }
+})
+
+test('stripe config detects secret and publishable mode mismatch', () => {
+  assert.throws(
+    () => getValidatedStripeConfig({
+      STRIPE_SECRET_KEY: 'sk_live_secret',
+      STRIPE_PRICE_PRO: 'price_123',
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'pk_test_public',
+    }),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_MODE_MISMATCH'
+  )
+})
+
+function mockStripePrice(overrides = {}) {
+  return {
+    id: 'price_123',
+    livemode: false,
+    active: true,
+    recurring: { interval: 'month' },
+    currency: 'eur',
+    unit_amount: 990,
+    ...overrides,
+  }
+}
+
+test('stripe price validation detects live and test mode mismatches', () => {
+  assert.throws(
+    () => validateStripePriceForPro(mockStripePrice({ livemode: false }), 'live'),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_MODE_MISMATCH'
+  )
+  assert.throws(
+    () => validateStripePriceForPro(mockStripePrice({ livemode: true }), 'test'),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_MODE_MISMATCH'
+  )
+})
+
+test('stripe price validation rejects inactive, wrong interval, currency and amount', () => {
+  assert.throws(
+    () => validateStripePriceForPro(mockStripePrice({ active: false }), 'test'),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_PRICE_INACTIVE'
+  )
+  assert.throws(
+    () => validateStripePriceForPro(mockStripePrice({ recurring: { interval: 'year' } }), 'test'),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_PRICE_INTERVAL_INVALID'
+  )
+  assert.throws(
+    () => validateStripePriceForPro(mockStripePrice({ currency: 'usd' }), 'test'),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_PRICE_CURRENCY_INVALID'
+  )
+  assert.throws(
+    () => validateStripePriceForPro(mockStripePrice({ unit_amount: 495 }), 'test'),
+    error => error instanceof StripeConfigError && error.code === 'STRIPE_PRICE_AMOUNT_INVALID'
+  )
+})
+
+test('stripe missing price maps to a safe client error without secrets', () => {
+  const error = toStripeConfigError({
+    code: 'resource_missing',
+    type: 'StripeInvalidRequestError',
+    requestId: 'req_123',
+    message: "No such price: 'price_missing'",
+  })
+  error.priceId = 'price_missing'
+  error.mode = 'live'
+
+  const log = getSafeStripeConfigLog(error)
+  const serialized = JSON.stringify({ client: STRIPE_CLIENT_ERROR_MESSAGE, log })
+
+  assert.equal(error.code, 'STRIPE_PRICE_NOT_FOUND')
+  assert.equal(log.stripeRequestId, 'req_123')
+  assert.doesNotMatch(serialized, /sk_live_|sk_test_/)
+  assert.doesNotMatch(STRIPE_CLIENT_ERROR_MESSAGE, /No such price/)
+})
+
+test('stripe checkout route verifies price before session and hides raw Stripe errors', () => {
+  const checkoutRoute = fs.readFileSync('app/api/stripe/checkout/route.ts', 'utf8')
+  const stripeHelper = fs.readFileSync('lib/stripeConfig.ts', 'utf8')
+  const packageJson = fs.readFileSync('package.json', 'utf8')
+
+  assert.match(checkoutRoute, /stripe\.accounts\.retrieve\(null\)/)
+  assert.match(checkoutRoute, /stripe\.prices\.retrieve\(priceId\)/)
+  assert.match(checkoutRoute, /validateStripePriceForPro\(price, mode\)/)
+  assert.match(checkoutRoute, /STRIPE_CLIENT_ERROR_MESSAGE/)
+  assert.doesNotMatch(checkoutRoute, /No such price/)
+  assert.match(stripeHelper, /STRIPE_PRICE_NOT_FOUND/)
+  assert.match(packageJson, /"stripe:check": "node scripts\/check-stripe-config\.mjs"/)
+})
+
+test('youtube quota errors are converted to safe 429 responses', () => {
+  for (const reason of ['quotaExceeded', 'dailyLimitExceeded']) {
+    const error = classifyYouTubeError({
+      endpoint: 'search.list',
+      status: 403,
+      payload: {
+        error: {
+          message: "Quota exceeded for quota metric 'Search Queries' and project/secret.",
+          errors: [{ reason }],
+        },
+      },
+    })
+    const response = buildYouTubeErrorResponse(error)
+    const serialized = JSON.stringify(response)
+
+    assert.equal(response.status, 429)
+    assert.equal(response.body.error, 'YOUTUBE_DAILY_QUOTA_EXCEEDED')
+    assert.equal(response.body.message, YOUTUBE_DAILY_QUOTA_MESSAGE)
+    assert.equal(response.body.retryable, true)
+    assert.doesNotMatch(serialized, /Quota exceeded for quota metric/)
+    assert.doesNotMatch(serialized, /project\/secret/)
+  }
+})
+
+test('youtube rate limit and backend errors are classified without exposing Google details', () => {
+  const rateLimited = classifyYouTubeError({
+    endpoint: 'channels.list',
+    status: 403,
+    payload: { error: { message: 'User rate limited', errors: [{ reason: 'userRateLimitExceeded' }] } },
+  })
+  const backend = classifyYouTubeError({
+    endpoint: 'search.list',
+    status: 503,
+    payload: { error: { message: 'Backend error', errors: [{ reason: 'backendError' }] } },
+  })
+
+  assert.equal(buildYouTubeErrorResponse(rateLimited).status, 429)
+  assert.equal(buildYouTubeErrorResponse(rateLimited).body.error, 'YOUTUBE_RATE_LIMITED')
+  assert.equal(buildYouTubeErrorResponse(backend).status, 503)
+  assert.equal(buildYouTubeErrorResponse(backend).body.error, 'YOUTUBE_BACKEND_ERROR')
+  assert.deepEqual(getSafeYouTubeLog(rateLimited), {
+    code: 'YOUTUBE_RATE_LIMITED',
+    reason: 'userRateLimitExceeded',
+    endpoint: 'channels.list',
+    httpStatus: 403,
+    retryable: true,
+  })
+})
+
+test('youtube error sanitation removes api keys and project identifiers', () => {
+  const sanitized = sanitizeGoogleMessage(
+    'Request failed for projects/123456?key=AIzaSecretKey and key=AIzaAnotherSecret'
+  )
+
+  assert.doesNotMatch(sanitized, /AIzaSecretKey|AIzaAnotherSecret|projects\/123456/)
+})
+
+test('youtube search reduces quota-heavy calls and batches channel ids', () => {
+  const youtubeLib = fs.readFileSync('lib/youtube.ts', 'utf8')
+
+  assert.match(youtubeLib, /MAX_SEARCH_QUERIES\s*=\s*2/)
+  assert.match(youtubeLib, /MAX_SEARCH_PAGES_PER_QUERY\s*=\s*1/)
+  assert.match(youtubeLib, /for \(let i = 0; i < channelIds\.length; i \+= 50\)/)
+  assert.match(youtubeLib, /channelsUrl\.searchParams\.set\('id', batchIds\.join\(','\)\)/)
+  assert.match(youtubeLib, /fields/)
+  assert.doesNotMatch(youtubeLib, /youtube\/v3\/videos/)
+})
+
+test('search route keeps free quota, serves identical cache and blocks concurrent youtube calls', () => {
+  const searchRoute = fs.readFileSync('app/api/search/route.ts', 'utf8')
+
+  assert.match(searchRoute, /prisma\.searchCache\.findFirst/)
+  assert.match(searchRoute, /cachedResults\.length >= limits\.results/)
+  assert.match(searchRoute, /selectDiverseProspectPreview\(cachedResults, limits\.results\)/)
+  assert.match(searchRoute, /activeYouTubeSearches/)
+  assert.match(searchRoute, /SEARCH_ALREADY_RUNNING/)
+  assert.match(searchRoute, /SEARCH_RATE_LIMITED/)
+  assert.match(searchRoute, /SEARCH_COOLDOWN_MS/)
+  assert.match(searchRoute, /user\.searchesRemaining <= 0/)
+  assert.match(searchRoute, /buildYouTubeErrorResponse/)
+})
+
+test('dashboard handles youtube 429 without double submission or raw Google errors', () => {
+  const dashboard = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
+
+  assert.match(dashboard, /if \(loading\) return/)
+  assert.match(dashboard, /searchPausedUntil/)
+  assert.match(dashboard, /res\.status === 429/)
+  assert.match(dashboard, /disabled=\{loading \|\| Date\.now\(\) < searchPausedUntil\}/)
+  assert.match(dashboard, /data\.message \|\| data\.error/)
+  assert.doesNotMatch(dashboard, /Quota exceeded for quota metric/)
+})
+
+test('standard Pro pricing has no launch offer route, coupon or discount wiring', () => {
+  const checkoutRoute = fs.readFileSync('app/api/stripe/checkout/route.ts', 'utf8')
+  const stripeHelper = fs.readFileSync('lib/stripeConfig.ts', 'utf8')
+  const sources = [
+    'app/LandingPage.tsx',
+    'app/dashboard/page.tsx',
+    'components/ProGate.tsx',
+    'components/SubscriptionButton.tsx',
+    'app/api/stripe/checkout/route.ts',
+    'lib/stripeConfig.ts',
+    '.env.example',
+  ].map(file => fs.readFileSync(file, 'utf8')).join('\n')
+
+  assert.equal(fs.existsSync('app/api/launch-offer/route.ts'), false)
+  assert.match(checkoutRoute, /getValidatedStripeConfig/)
+  assert.match(stripeHelper, /STRIPE_PRICE_PRO/)
+  assert.match(sources, /9,90/)
+  assert.doesNotMatch(checkoutRoute, /discounts/)
+  assert.doesNotMatch(checkoutRoute, /allow_promotion_codes/)
+  assert.doesNotMatch(checkoutRoute, /promotion_code|coupon/)
+  assert.doesNotMatch(sources, /STRIPE_LAUNCH_PROMOTION_ID/)
+  assert.doesNotMatch(sources, /4,95|4\.95|4,90|4\.90/)
+  assert.doesNotMatch(sources, /offre de lancement|Offre de lancement|5 places/)
 })

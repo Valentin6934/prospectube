@@ -64,6 +64,7 @@ export default function Dashboard() {
   const [subsMax, setSubsMax] = useState(4)
   const [editorEmail, setEditorEmail] = useState('')
   const [loading, setLoading] = useState(false)
+  const [searchPausedUntil, setSearchPausedUntil] = useState(0)
   const [results, setResults] = useState<any[]>([])
   const [searched, setSearched] = useState(false)
   const [canEmail, setCanEmail] = useState(false)
@@ -157,6 +158,10 @@ export default function Dashboard() {
   }
 
   const handleSearch = async () => {
+    if (loading) return
+    if (Date.now() < searchPausedUntil) {
+      return showToast('Patientez quelques secondes avant de relancer une recherche.', 'info')
+    }
     if (!niche) return showToast('Choisissez une niche avant de lancer la recherche.', 'info')
     if (!editorEmail) return showToast('Ajoutez votre email de contact avant de continuer.', 'info')
     setLoading(true)
@@ -164,13 +169,19 @@ export default function Dashboard() {
     setCacheNotice(false)
     setSelectedIds([])
 
-    const res = await fetch('/api/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ niche, lang, subsMin: String(subsMin), subsMax: String(subsMax) }),
-    })
-
-    const data = await res.json()
+    let res: Response
+    let data: any
+    try {
+      res = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ niche, lang, subsMin: String(subsMin), subsMax: String(subsMax) }),
+      })
+      data = await res.json().catch(() => ({}))
+    } catch {
+      setLoading(false)
+      return showToast('La recherche a echoue. Verifiez votre connexion puis reessayez.', 'error')
+    }
     setLoading(false)
 
     if (!res.ok) {
@@ -178,7 +189,11 @@ export default function Dashboard() {
         setUpgradeOpen(true)
         return
       }
-      return showToast(data.error || 'La recherche a échoué.', 'error')
+      if (res.status === 429) {
+        setSearchPausedUntil(Date.now() + 5000)
+        window.setTimeout(() => setSearchPausedUntil(0), 5000)
+      }
+      return showToast(data.message || data.error || 'La recherche a echoue.', 'error')
     }
 
     setResults(data.results)
@@ -511,7 +526,7 @@ export default function Dashboard() {
             <input type="email" value={editorEmail} onChange={e => setEditorEmail(e.target.value)} placeholder="toi@gmail.com" />
           </div>
 
-          <button className="btn-primary" onClick={handleSearch} disabled={loading} style={{ width: '100%', padding: '0.85rem', fontSize: '0.95rem' }}>
+          <button className="btn-primary" onClick={handleSearch} disabled={loading || Date.now() < searchPausedUntil} style={{ width: '100%', padding: '0.85rem', fontSize: '0.95rem' }}>
             {loading ? '⏳ Recherche en cours...' : 'Rechercher des chaînes →'}
           </button>
         </div>
