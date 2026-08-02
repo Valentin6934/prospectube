@@ -1,233 +1,398 @@
+import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { PLAN_LIMITS, filterChannels } from '@/lib/data'
-import { searchYouTubeChannels } from '@/lib/youtube'
+import { PLAN_LIMITS } from '@/lib/data'
+import { discoverYouTubeCatalog, YouTubeCallMetrics } from '@/lib/youtube'
+import { filterYouTubeCatalog, YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
 import { getPlanName, isPro } from '@/lib/plan'
 import { selectDiverseProspectPreview } from '@/lib/freePreview'
 import { buildYouTubeErrorResponse, getSafeYouTubeLog } from '@/lib/youtubeQuota'
+import {
+  buildSearchCacheKey,
+  getCatalogAgeHours,
+  getSearchLimit,
+  getSearchQuotaMessage,
+  SEARCH_NEGATIVE_CACHE_TTL_HOURS,
+  SEARCH_CACHE_TTL_HOURS,
+  SEARCH_CACHE_VERSION,
+  SEARCH_LOCK_TTL_MS,
+  SearchPlan,
+  shouldEnrichSearchCatalog,
+} from '@/lib/searchPolicy'
+import {
+  acquireSearchLock,
+  completeSearchQuota,
+  getReleasedSearchQuotaSnapshot,
+  getSearchQuotaSnapshot,
+  releaseSearchLock,
+  releaseSearchQuota,
+  reserveSearchQuota,
+} from '@/lib/searchQuota'
 
 export const dynamic = 'force-dynamic'
 
 const SUBS_VALUES = [1000, 10000, 50000, 100000, 500000, 1000000, 5000000]
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000
-const SEARCH_COOLDOWN_MS = 2500
-const activeYouTubeSearches = new Map<string, number>()
-const lastYouTubeSearchStartedAt = new Map<string, number>()
+const CACHE_TTL_MS = SEARCH_CACHE_TTL_HOURS * 60 * 60 * 1000
 
-function normalizeCachePart(value: string): string {
-  return String(value || 'all')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'all'
+function hashLogValue(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 12)
 }
 
-function buildCacheKey(niche: string, lang: string, subsMin: number, subsMax: number): string {
-  return `${normalizeCachePart(niche)}-${normalizeCachePart(lang)}-${subsMin}-${subsMax}`
+function parseDiscoveryCatalog(results: unknown): YouTubeDiscoveryCatalog | null {
+  const value = typeof results === 'string' ? (() => {
+    try { return JSON.parse(results) } catch { return null }
+  })() : results
+  if (!value || typeof value !== 'object' || !Array.isArray((value as any).channels)) return null
+  return value as YouTubeDiscoveryCatalog
 }
 
-function parseCachedResults(results: unknown): any[] {
-  if (Array.isArray(results)) return results
+function buildRangeKey(subsMin: number, subsMax: number): string {
+  return `${subsMin}:${subsMax}`
+}
 
-  if (typeof results === 'string') {
-    try {
-      const parsed = JSON.parse(results)
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
+function parseSearchBody(body: any) {
+  const niche = typeof body?.niche === 'string' ? body.niche.trim() : ''
+  const lang = typeof body?.lang === 'string' ? body.lang.trim() : ''
+  const minIndex = Number.parseInt(String(body?.subsMin ?? ''), 10)
+  const maxIndex = Number.parseInt(String(body?.subsMax ?? ''), 10)
+  const requestId = typeof body?.requestId === 'string' ? body.requestId.trim() : ''
+
+  if (!niche || !lang || !Number.isInteger(minIndex) || !Number.isInteger(maxIndex) ||
+      minIndex < 0 || maxIndex >= SUBS_VALUES.length || minIndex > maxIndex ||
+      !/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) {
+    return null
   }
 
-  return []
+  return {
+    niche,
+    lang,
+    minVal: SUBS_VALUES[minIndex],
+    maxVal: SUBS_VALUES[maxIndex],
+    requestId,
+  }
 }
 
-async function saveSearchHistory(
-  userId: string,
-  niche: string,
-  lang: string,
-  subsMin: number,
-  subsMax: number,
+async function getAuthenticatedUser() {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) return null
+  return prisma.user.findUnique({ where: { email: session.user.email } })
+}
+
+async function saveSearchHistory(input: {
+  userId: string
+  niche: string
+  lang: string
+  subsMin: number
+  subsMax: number
   results: any[]
-) {
+}) {
   try {
     await prisma.search.create({
       data: {
-        userId,
-        niche,
-        language: lang || 'Tous',
-        subsMin: String(subsMin),
-        subsMax: String(subsMax),
-        results: JSON.stringify(results),
+        userId: input.userId,
+        niche: input.niche,
+        language: input.lang,
+        subsMin: String(input.subsMin),
+        subsMax: String(input.subsMax),
+        results: JSON.stringify(input.results),
       },
     })
-  } catch (err) {
-    console.error('Erreur sauvegarde historique:', err)
+  } catch (error) {
+    console.error('Search history persistence failed:', {
+      userIdHash: hashLogValue(input.userId),
+      error: error instanceof Error ? error.message : 'Unknown persistence error',
+    })
   }
 }
 
-export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
+function quotaResponse(plan: SearchPlan, remaining: number) {
+  const free = plan === 'Gratuit'
+  return NextResponse.json({
+    error: free ? 'FREE_SEARCH_USED' : 'PRO_DAILY_SEARCH_LIMIT_REACHED',
+    message: getSearchQuotaMessage(plan, remaining),
+    upgrade: free,
+    quota: { limit: getSearchLimit(plan), remaining, period: free ? 'lifetime' : 'utc_day' },
+  }, { status: free ? 403 : 429 })
+}
 
-  const user = await prisma.user.findUnique({ where: { email: session.user.email! } })
-  if (!user) return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
-
-  const proUser = isPro(user.plan)
+export async function GET() {
+  const user = await getAuthenticatedUser()
+  if (!user) return NextResponse.json({ error: 'Non connecte' }, { status: 401 })
   const plan = getPlanName(user.plan)
+  const quota = await getSearchQuotaSnapshot(prisma, user.id, plan)
+  return NextResponse.json({ plan, quota, message: getSearchQuotaMessage(plan, quota.remaining) })
+}
+
+export async function POST(req: NextRequest) {
+  const startedAt = Date.now()
+  const user = await getAuthenticatedUser()
+  if (!user) return NextResponse.json({ error: 'Non connecte' }, { status: 401 })
+
+  const parsed = parseSearchBody(await req.json().catch(() => null))
+  if (!parsed) return NextResponse.json({ error: 'SEARCH_INVALID', message: 'Les criteres de recherche sont invalides.' }, { status: 400 })
+
+  const plan = getPlanName(user.plan)
+  const proUser = isPro(user.plan)
   const limits = PLAN_LIMITS[plan]
+  const cacheKey = buildSearchCacheKey({
+    niche: parsed.niche,
+    lang: parsed.lang,
+  })
+  const cacheKeyHash = hashLogValue(cacheKey)
+  const userIdHash = hashLogValue(user.id)
+  const metrics: YouTubeCallMetrics = {
+    searchList: 0,
+    channelsList: 0,
+    aboutPages: 0,
+    searchQueriesUsed: 0,
+    rawCandidates: 0,
+    uniqueCandidates: 0,
+    hiddenSubscribers: 0,
+    belowMinimum: 0,
+    aboveMaximum: 0,
+    acceptedResults: 0,
+  }
+  let reserved = false
+  let lockAcquired = false
+  let responseStatus = 500
+  let errorCode: string | undefined
 
-  if (!proUser && user.searchesRemaining <= 0)
-    return NextResponse.json({ error: 'Quota épuisé', upgrade: true }, { status: 403 })
-
-  const body = await req.json()
-  const niche = body.niche || ''
-  const lang = body.lang || ''
-  const subsMin = body.subsMin || '1'
-  const subsMax = body.subsMax || '4'
-
-  const minVal = SUBS_VALUES[parseInt(subsMin)] || 0
-  const maxVal = SUBS_VALUES[parseInt(subsMax)] || 5000000
-  const cacheKey = buildCacheKey(niche, lang, minVal, maxVal)
-  const userSearchKey = `${user.id}:${cacheKey}`
-
-  let results: any[] = []
-  let source = 'youtube'
+  const logSearch = (extra: Record<string, unknown>) => console.info('YouTube catalog event:', {
+    catalogHit: false,
+    catalogAge: null,
+    catalogCandidateCount: 0,
+    filteredResultCount: metrics.acceptedResults,
+    enrichmentTriggered: false,
+    queryVariantCount: metrics.searchQueriesUsed,
+    searchListCalls: metrics.searchList,
+    channelsListCalls: metrics.channelsList,
+    cacheVersion: SEARCH_CACHE_VERSION,
+    ...extra,
+  })
 
   try {
-    const cachedSearch = await prisma.searchCache.findFirst({
-      where: {
-        cacheKey,
-        expiresAt: { gt: new Date() },
-      },
+    lockAcquired = await acquireSearchLock({
+      prisma,
+      userId: user.id,
+      requestId: parsed.requestId,
+      cacheKey,
+      expiresAt: new Date(Date.now() + SEARCH_LOCK_TTL_MS),
     })
+    if (!lockAcquired) {
+      responseStatus = 409
+      errorCode = 'SEARCH_ALREADY_RUNNING'
+      return NextResponse.json({
+        error: errorCode,
+        message: 'Une recherche est deja en cours. Patientez quelques instants.',
+        retryable: true,
+      }, { status: responseStatus })
+    }
 
-    const cachedResults = cachedSearch ? parseCachedResults(cachedSearch.results) : []
+    const reservation = await reserveSearchQuota({
+      prisma,
+      userId: user.id,
+      requestId: parsed.requestId,
+      cacheKey,
+      plan,
+    })
+    if (!reservation.reserved) {
+      responseStatus = reservation.duplicate ? 409 : plan === 'Gratuit' ? 403 : 429
+      errorCode = reservation.duplicate ? 'SEARCH_REQUEST_ALREADY_PROCESSED' : undefined
+      if (reservation.duplicate) {
+        return NextResponse.json({ error: errorCode, message: 'Cette requete a deja ete traitee.' }, { status: responseStatus })
+      }
+      return quotaResponse(plan, reservation.snapshot.remaining)
+    }
+    reserved = true
 
-    if (cachedSearch && cachedResults.length > 0 && cachedResults.length >= limits.results) {
-      console.info('Search cache hit:', {
-        cacheKey,
-        userId: user.id,
-        results: cachedResults.length,
+    let catalog: YouTubeDiscoveryCatalog | null = null
+    let catalogHit = false
+    let catalogAge = Number.POSITIVE_INFINITY
+    try {
+      const cachedSearch = await prisma.searchCache.findFirst({
+        where: { cacheKey, algorithmVersion: SEARCH_CACHE_VERSION, expiresAt: { gt: new Date() } },
       })
-      const visibleResults = proUser
-        ? cachedResults.slice(0, limits.results)
-        : selectDiverseProspectPreview(cachedResults, limits.results)
+      catalog = cachedSearch ? parseDiscoveryCatalog(cachedSearch.results) : null
+      catalogHit = Boolean(catalog)
+      catalogAge = catalog ? getCatalogAgeHours(catalog.collectedAt) : Number.POSITIVE_INFINITY
+    } catch (error) {
+      console.error('Search cache read failed:', {
+        cacheKeyHash,
+        error: error instanceof Error ? error.message : 'Unknown cache error',
+      })
+    }
 
-      await saveSearchHistory(user.id, niche, lang, minVal, maxVal, visibleResults)
+    let catalogResults = catalog ? filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, limits.results) : []
+    const enrichmentTriggered = Boolean(catalog && shouldEnrichSearchCatalog({
+      candidateCount: catalog.channels.length,
+      filteredResultCount: catalogResults.length,
+      collectedAt: catalog.collectedAt,
+    }))
+    const negativeCatalogHit = Boolean(catalog && catalog.channels.length === 0)
 
-      const nextFreeSearchesRemaining = Math.max(0, user.searchesRemaining - 1)
-      const searchesRemaining = proUser ? null : nextFreeSearchesRemaining
-      if (!proUser) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { searchesRemaining: nextFreeSearchesRemaining },
+    if (catalog && !enrichmentTriggered) {
+      if (catalogResults.length === 0) {
+        await releaseSearchQuota(prisma, parsed.requestId)
+        reserved = false
+        const emptyQuota = getReleasedSearchQuotaSnapshot(reservation.snapshot)
+        responseStatus = 200
+        logSearch({ catalogHit: true, catalogAge, catalogCandidateCount: catalog.channels.length, filteredResultCount: 0 })
+        return NextResponse.json({
+          results: [], source: 'catalog', cached: true, emptyResult: true,
+          searchesRemaining: emptyQuota.remaining, quota: emptyQuota, plan,
+          canGenerateEmail: limits.emailAI,
         })
       }
-
+      const visibleResults = proUser
+        ? catalogResults
+        : selectDiverseProspectPreview(catalogResults, limits.results)
+      metrics.acceptedResults = visibleResults.length
+      await completeSearchQuota(prisma, parsed.requestId, true)
+      reserved = false
+      await saveSearchHistory({
+        userId: user.id,
+        niche: parsed.niche,
+        lang: parsed.lang,
+        subsMin: parsed.minVal,
+        subsMax: parsed.maxVal,
+        results: visibleResults,
+      })
+      responseStatus = 200
+      logSearch({ catalogHit: true, catalogAge, catalogCandidateCount: catalog.channels.length, filteredResultCount: visibleResults.length })
       return NextResponse.json({
         results: visibleResults,
-        source,
+        source: 'catalog',
         cached: true,
-        searchesRemaining,
+        searchesRemaining: reservation.snapshot.remaining,
+        quota: reservation.snapshot,
         plan,
         canGenerateEmail: limits.emailAI,
       })
     }
 
-    console.info('Search cache miss:', {
-      cacheKey,
-      userId: user.id,
-      cached: Boolean(cachedSearch),
-      cachedResults: cachedResults.length,
-    })
-  } catch (err) {
-    console.error('Erreur lecture cache recherche:', err)
-  }
-
-  if (activeYouTubeSearches.has(userSearchKey)) {
-    return NextResponse.json(
-      {
-        error: 'SEARCH_ALREADY_RUNNING',
-        message: 'Une recherche identique est deja en cours. Patientez quelques secondes.',
-        retryable: true,
-      },
-      { status: 429 }
-    )
-  }
-
-  const lastStartedAt = lastYouTubeSearchStartedAt.get(user.id) || 0
-  if (Date.now() - lastStartedAt < SEARCH_COOLDOWN_MS) {
-    return NextResponse.json(
-      {
-        error: 'SEARCH_RATE_LIMITED',
-        message: 'Patientez quelques secondes avant de relancer une recherche.',
-        retryable: true,
-      },
-      { status: 429 }
-    )
-  }
-
-  activeYouTubeSearches.set(userSearchKey, Date.now())
-  lastYouTubeSearchStartedAt.set(user.id, Date.now())
-
-  try {
+    let discoveredCatalog: YouTubeDiscoveryCatalog
     try {
-      results = await searchYouTubeChannels(niche, lang, minVal, maxVal, limits.results)
-    } catch (err: any) {
-      console.warn('Erreur YouTube normalisee:', getSafeYouTubeLog(err))
-      const response = buildYouTubeErrorResponse(err)
+      discoveredCatalog = await discoverYouTubeCatalog(
+        parsed.niche, parsed.lang, parsed.minVal, parsed.maxVal, metrics,
+        enrichmentTriggered ? catalog : null
+      )
+    } catch (error) {
+      const safeError = getSafeYouTubeLog(error)
+      console.error('YouTube search failed:', { userIdHash, cacheKeyHash, ...safeError })
+      const response = buildYouTubeErrorResponse(error)
+      responseStatus = response.status
+      errorCode = response.body.error
       return NextResponse.json(response.body, { status: response.status })
     }
 
-  await saveSearchHistory(user.id, niche, lang, minVal, maxVal, results)
+    catalog = discoveredCatalog
+    catalogResults = filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, limits.results)
+    const visibleResults = proUser ? catalogResults : selectDiverseProspectPreview(catalogResults, limits.results)
 
-  try {
-    await prisma.searchCache.upsert({
-      where: { cacheKey },
-      update: {
-        niche,
-        lang,
-        subsMin: minVal,
-        subsMax: maxVal,
-        results,
-        expiresAt: new Date(Date.now() + CACHE_TTL_MS),
-      },
-      create: {
-        cacheKey,
-        niche,
-        lang,
-        subsMin: minVal,
-        subsMax: maxVal,
-        results,
-        expiresAt: new Date(Date.now() + CACHE_TTL_MS),
-      },
+    if (visibleResults.length === 0) {
+      catalog.negativeRanges = {
+        ...(catalog.negativeRanges || {}),
+        [buildRangeKey(parsed.minVal, parsed.maxVal)]: new Date(
+          Date.now() + SEARCH_NEGATIVE_CACHE_TTL_HOURS * 3_600_000
+        ).toISOString(),
+      }
+      const catalogTtlHours = catalog.channels.length === 0
+        ? SEARCH_NEGATIVE_CACHE_TTL_HOURS
+        : SEARCH_CACHE_TTL_HOURS
+      try {
+        await prisma.searchCache.upsert({
+          where: { cacheKey },
+          update: { results: catalog, algorithmVersion: SEARCH_CACHE_VERSION, expiresAt: new Date(Date.now() + catalogTtlHours * 3_600_000) },
+          create: { cacheKey, niche: parsed.niche, lang: parsed.lang, subsMin: 0, subsMax: 0, results: catalog, algorithmVersion: SEARCH_CACHE_VERSION, expiresAt: new Date(Date.now() + catalogTtlHours * 3_600_000) },
+        })
+      } catch (error) {
+        console.error('Search catalog write failed:', { cacheKeyHash, error: error instanceof Error ? error.message : 'Unknown cache error' })
+      }
+      await releaseSearchQuota(prisma, parsed.requestId)
+      reserved = false
+      const emptyQuota = getReleasedSearchQuotaSnapshot(reservation.snapshot)
+      responseStatus = 200
+      logSearch({
+        catalogHit, catalogAge: Number.isFinite(catalogAge) ? catalogAge : null, catalogCandidateCount: catalog.channels.length,
+        filteredResultCount: 0, enrichmentTriggered,
+      })
+      return NextResponse.json({
+        results: [],
+        source: catalogHit || negativeCatalogHit ? 'catalog' : 'youtube',
+        cached: false,
+        emptyResult: true,
+        searchesRemaining: emptyQuota.remaining,
+        quota: emptyQuota,
+        plan,
+        canGenerateEmail: limits.emailAI,
+      })
+    }
+
+    try {
+      await prisma.searchCache.upsert({
+        where: { cacheKey },
+        update: {
+          niche: parsed.niche,
+          lang: parsed.lang,
+          subsMin: 0,
+          subsMax: 0,
+          algorithmVersion: SEARCH_CACHE_VERSION,
+          results: catalog,
+          expiresAt: new Date(Date.now() + CACHE_TTL_MS),
+        },
+        create: {
+          cacheKey,
+          niche: parsed.niche,
+          lang: parsed.lang,
+          subsMin: 0,
+          subsMax: 0,
+          algorithmVersion: SEARCH_CACHE_VERSION,
+          results: catalog,
+          expiresAt: new Date(Date.now() + CACHE_TTL_MS),
+        },
+      })
+    } catch (error) {
+      console.error('Search cache write failed:', {
+        cacheKeyHash,
+        error: error instanceof Error ? error.message : 'Unknown cache error',
+      })
+    }
+
+    await completeSearchQuota(prisma, parsed.requestId, false)
+    reserved = false
+    await saveSearchHistory({
+      userId: user.id,
+      niche: parsed.niche,
+      lang: parsed.lang,
+      subsMin: parsed.minVal,
+      subsMax: parsed.maxVal,
+        results: visibleResults,
     })
-  } catch (err) {
-    console.error('Erreur sauvegarde cache recherche:', err)
-  }
-
-  const nextFreeSearchesRemaining = Math.max(0, user.searchesRemaining - 1)
-  const searchesRemaining = proUser ? null : nextFreeSearchesRemaining
-  if (!proUser) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { searchesRemaining: nextFreeSearchesRemaining },
+    responseStatus = 200
+    logSearch({ catalogHit, catalogAge: Number.isFinite(catalogAge) ? catalogAge : null, catalogCandidateCount: catalog.channels.length, filteredResultCount: visibleResults.length, enrichmentTriggered })
+    return NextResponse.json({
+      results: visibleResults,
+      source: 'youtube',
+      cached: false,
+      searchesRemaining: reservation.snapshot.remaining,
+      quota: reservation.snapshot,
+      plan,
+      canGenerateEmail: limits.emailAI,
     })
-  }
-
-  return NextResponse.json({
-    results,
-    source,
-    cached: false,
-    searchesRemaining,
-    plan,
-    canGenerateEmail: limits.emailAI,
-  })
+  } catch (error) {
+    errorCode = 'SEARCH_INTERNAL_ERROR'
+    responseStatus = 500
+    console.error('POST /api/search error:', {
+      userIdHash,
+      cacheKeyHash,
+      error: error instanceof Error ? error.message : 'Unknown search error',
+    })
+    return NextResponse.json({ error: errorCode, message: 'La recherche est temporairement indisponible.' }, { status: responseStatus })
   } finally {
-    activeYouTubeSearches.delete(userSearchKey)
+    if (reserved) await releaseSearchQuota(prisma, parsed.requestId).catch(error => console.error('Search quota release failed:', { userIdHash, error: error instanceof Error ? error.message : 'Unknown error' }))
+    if (lockAcquired) await releaseSearchLock(prisma, parsed.requestId).catch(error => console.error('Search lock release failed:', { userIdHash, error: error instanceof Error ? error.message : 'Unknown error' }))
+    if (responseStatus !== 200) logSearch({})
   }
 }

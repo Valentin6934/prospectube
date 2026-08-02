@@ -23,6 +23,7 @@ model User {
   favorites            Favorite[]
   campaigns            Campaign[]
   googleAccount        GoogleAccount?
+  searchUsages         SearchUsage[]
 }
 
 model GoogleAccount {
@@ -104,6 +105,33 @@ model SearchCache {
   results   Json
   createdAt DateTime @default(now())
   expiresAt DateTime
+  algorithmVersion String @default("youtube-search-v3")
+}
+
+model SearchUsage {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestId   String    @unique
+  cacheKey    String
+  plan        String
+  periodKey   String
+  status      String    @default("pending")
+  cached      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+}
+
+model SearchLock {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  requestId String   @unique
+  cacheKey  String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 }
 
 model Campaign {
