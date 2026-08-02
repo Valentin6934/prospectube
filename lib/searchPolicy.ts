@@ -1,7 +1,9 @@
 export const FREE_LIFETIME_SEARCH_LIMIT = 1
 export const PRO_DAILY_SEARCH_LIMIT = 5
-export const SEARCH_CACHE_VERSION = 'youtube-search-v4'
+export const SEARCH_CACHE_VERSION = 'youtube-search-v5'
 export const SEARCH_CACHE_TTL_HOURS = 48
+export const SEARCH_CATALOG_POOR_REFRESH_HOURS = 12
+export const SEARCH_NEGATIVE_CACHE_TTL_HOURS = 1
 export const SEARCH_LOCK_TTL_MS = 2 * 60 * 1000
 
 export type SearchPlan = 'Gratuit' | 'Pro'
@@ -19,18 +21,29 @@ export function normalizeSearchText(value: unknown): string {
 export function buildSearchCacheKey(input: {
   niche: string
   lang: string
-  subsMin: number
-  subsMax: number
 }): string {
-  const min = Math.max(0, Math.trunc(Number(input.subsMin) || 0))
-  const max = Math.max(min, Math.trunc(Number(input.subsMax) || 0))
   return [
     SEARCH_CACHE_VERSION,
     normalizeSearchText(input.niche),
     normalizeSearchText(input.lang),
-    min,
-    max,
   ].join(':')
+}
+
+export function getCatalogAgeHours(collectedAt: unknown, now = new Date()): number {
+  const collected = new Date(String(collectedAt || ''))
+  if (Number.isNaN(collected.getTime())) return Number.POSITIVE_INFINITY
+  return Math.max(0, (now.getTime() - collected.getTime()) / 3_600_000)
+}
+
+export function shouldEnrichSearchCatalog(input: {
+  candidateCount: number
+  filteredResultCount: number
+  collectedAt: unknown
+  now?: Date
+}): boolean {
+  return input.filteredResultCount < 10 &&
+    input.candidateCount > 0 &&
+    getCatalogAgeHours(input.collectedAt, input.now) >= SEARCH_CATALOG_POOR_REFRESH_HOURS
 }
 
 export function getUtcDayKey(date = new Date()): string {

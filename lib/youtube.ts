@@ -1,6 +1,8 @@
 import { selectDiverseProspectPreview } from '@/lib/freePreview'
 import { PROSPECT_SCORE_THRESHOLDS } from '@/lib/prospectScoreInfo'
+import { SEARCH_CACHE_VERSION } from '@/lib/searchPolicy'
 import { YouTubeApiError, classifyYouTubeError } from '@/lib/youtubeQuota'
+import { filterYouTubeCatalog, mergeCatalogChannels, YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
 import {
   analyzeYouTubeChannelRange,
   buildYouTubeQueryVariants,
@@ -198,6 +200,9 @@ export type YouTubeCallMetrics = {
   acceptedResults: number
 }
 
+export type { YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
+export { filterYouTubeCatalog } from '@/lib/youtubeCatalog'
+
 function getProspectScore(channel: any): number {
   let score = 20
 
@@ -336,13 +341,13 @@ function getAdvancedProspectScore(channel: any) {
   }
 }
 
-export async function searchYouTubeChannels(
+export async function discoverYouTubeCatalog(
   niche: string,
   lang: string,
   subsMin: number,
   subsMax: number,
-  maxResults: number,
-  metrics?: YouTubeCallMetrics
+  metrics?: YouTubeCallMetrics,
+  existingCatalog?: YouTubeDiscoveryCatalog | null
 ) {
   const apiKey = process.env.YOUTUBE_API_KEY
   if (!apiKey || !/^AIza[0-9A-Za-z_-]{20,}$/.test(apiKey.trim())) {
@@ -354,16 +359,30 @@ export async function searchYouTubeChannels(
   }
 
   const queries = buildYouTubeQueryVariants(niche, lang).slice(0, MAX_YOUTUBE_SEARCH_QUERIES)
-  const knownChannelIds = new Set<string>()
+  const knownChannelIds = new Set<string>((existingCatalog?.channels || []).map(channel => channel.id).filter(Boolean))
   const channelsById = new Map<string, any>()
+  const catalogChannelsById = new Map<string, any>((existingCatalog?.channels || []).map(channel => [channel.id, channel]))
+  const queryVariantsUsed = [...(existingCatalog?.queryVariantsUsed || [])]
+  const unusedVariant = queries.find(query => !existingCatalog?.queryVariantsUsed.includes(query))
+  const queriesToRun = existingCatalog
+    ? [{
+        query: existingCatalog.nextPageToken ? existingCatalog.nextPageQuery || queries[0] : unusedVariant,
+        pageToken: existingCatalog.nextPageToken,
+      }]
+    : queries.map(query => ({ query, pageToken: null as string | null }))
+  let nextPageToken: string | null = existingCatalog?.nextPageToken || null
+  let nextPageQuery: string | null = existingCatalog?.nextPageQuery || null
 
-  for (const query of queries) {
+  for (const queryInput of queriesToRun) {
+    const query = queryInput.query
+    if (!query) continue
     const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search')
     const searchParams = buildYouTubeSearchParams({
       query,
       language: lang,
       maxResults: 50,
       fields: YOUTUBE_SEARCH_FIELDS,
+      pageToken: queryInput.pageToken,
     })
     searchUrl.search = searchParams.toString()
     console.info('YouTube search request prepared:', getSafeYouTubeSearchParamsLog(searchParams))
@@ -374,6 +393,9 @@ export async function searchYouTubeChannels(
       metrics.searchQueriesUsed += 1
     }
     const searchData = await fetchYouTubeJson(searchUrl, 'search.list')
+    nextPageToken = typeof searchData.nextPageToken === 'string' ? searchData.nextPageToken : null
+    nextPageQuery = nextPageToken ? query : null
+    if (!queryVariantsUsed.includes(query)) queryVariantsUsed.push(query)
     const searchItems = Array.isArray(searchData.items) ? searchData.items : []
     if (metrics) metrics.rawCandidates += searchItems.length
     const newChannelIds = collectNewYouTubeChannelIds(searchItems, knownChannelIds)
@@ -394,11 +416,16 @@ export async function searchYouTubeChannels(
       }
     }
 
-    const currentRange = analyzeYouTubeChannelRange(Array.from(channelsById.values()), subsMin, subsMax)
+    const discoveredChannels = Array.from(channelsById.values())
+    const existingRangeChannels = Array.from(catalogChannelsById.values()).map(channel => ({
+      id: channel.id,
+      statistics: { subscriberCount: channel.subsNum, hiddenSubscriberCount: false },
+    }))
+    const currentRange = analyzeYouTubeChannelRange([...existingRangeChannels, ...discoveredChannels], subsMin, subsMax)
     if (!shouldRunNextYouTubeQuery({
       acceptedResults: currentRange.accepted.length,
       queriesUsed: metrics?.searchQueriesUsed || queries.indexOf(query) + 1,
-      totalVariants: queries.length,
+      totalVariants: queriesToRun.length,
     })) break
   }
 
@@ -408,11 +435,7 @@ export async function searchYouTubeChannels(
     metrics.belowMinimum = range.belowMinimum
     metrics.aboveMaximum = range.aboveMaximum
   }
-  const allChannels = range.accepted
-
-  if (allChannels.length === 0) return []
-
-  const candidates = allChannels
+  const candidates = Array.from(channelsById.values())
     .map((ch: any) => {
       const subsNum = Number(ch.statistics?.subscriberCount || 0)
       const viewCount = Number(ch.statistics?.viewCount || 0)
@@ -477,7 +500,7 @@ export async function searchYouTubeChannels(
       return true
     })
     .sort((a: any, b: any) => b.score - a.score)
-    .slice(0, Math.max(maxResults * 3, maxResults))
+    .slice(0, 150)
 
   const enriched = await Promise.all(
     candidates.map(async (channel: any) => {
@@ -524,13 +547,29 @@ export async function searchYouTubeChannels(
     })
     .sort((a: any, b: any) => b.score - a.score)
 
-  if (maxResults <= 3) {
-    const preview = selectDiverseProspectPreview(finalResults, maxResults)
-    if (metrics) metrics.acceptedResults = preview.length
-    return preview
-  }
+  const channels = mergeCatalogChannels(Array.from(catalogChannelsById.values()), finalResults)
+  if (metrics) metrics.acceptedResults = channels.filter(channel => channel.subsNum >= subsMin && channel.subsNum <= subsMax).length
+  return {
+    version: SEARCH_CACHE_VERSION,
+    collectedAt: new Date().toISOString(),
+    channels,
+    queryVariantsUsed,
+    nextPageToken,
+    nextPageQuery,
+    negativeRanges: existingCatalog?.negativeRanges,
+  } satisfies YouTubeDiscoveryCatalog
+}
 
-  const results = finalResults.slice(0, maxResults)
-  if (metrics) metrics.acceptedResults = results.length
-  return results
+export async function searchYouTubeChannels(
+  niche: string,
+  lang: string,
+  subsMin: number,
+  subsMax: number,
+  maxResults: number,
+  metrics?: YouTubeCallMetrics
+) {
+  const catalog = await discoverYouTubeCatalog(niche, lang, subsMin, subsMax, metrics)
+  const results = filterYouTubeCatalog(catalog, subsMin, subsMax, Math.max(maxResults * 3, maxResults))
+  if (maxResults <= 3) return selectDiverseProspectPreview(results, maxResults)
+  return results.slice(0, maxResults)
 }

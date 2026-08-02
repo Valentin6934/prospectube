@@ -94,11 +94,17 @@ const {
   FREE_LIFETIME_SEARCH_LIMIT,
   PRO_DAILY_SEARCH_LIMIT,
   SEARCH_CACHE_VERSION,
+  SEARCH_CACHE_TTL_HOURS,
+  SEARCH_CATALOG_POOR_REFRESH_HOURS,
+  SEARCH_NEGATIVE_CACHE_TTL_HOURS,
   buildSearchCacheKey,
+  getCatalogAgeHours,
   getSearchQuotaMessage,
   getUtcDayKey,
   normalizeSearchText,
+  shouldEnrichSearchCatalog,
 } = require('../lib/searchPolicy.ts')
+const { filterYouTubeCatalog, mergeCatalogChannels } = require('../lib/youtubeCatalog.ts')
 const { getReleasedSearchQuotaSnapshot, getSearchQuotaSnapshot } = require('../lib/searchQuota.ts')
 const {
   PROSPECT_SCORE_EXPLANATION,
@@ -1256,16 +1262,45 @@ test('safe YouTube parameter logs omit keys, URLs and query contents', () => {
   assert.doesNotMatch(serialized, /AIza|private query|googleapis|key=/i)
 })
 
-test('search cache keys normalize equivalent criteria and remain versioned', () => {
+test('discovery catalog keys are shared across subscriber ranges and remain versioned', () => {
   const first = buildSearchCacheKey({ niche: ' Cuisine ', lang: 'Français', subsMin: 10000, subsMax: 50000 })
   const second = buildSearchCacheKey({ niche: 'cuisine', lang: '  francais  ', subsMin: 10000, subsMax: 50000 })
   const different = buildSearchCacheKey({ niche: 'cuisine', lang: 'francais', subsMin: 10000, subsMax: 100000 })
 
   assert.equal(first, second)
-  assert.notEqual(first, different)
+  assert.equal(first, different)
   assert.match(first, new RegExp(`^${SEARCH_CACHE_VERSION}:`))
-  assert.equal(SEARCH_CACHE_VERSION, 'youtube-search-v4')
+  assert.equal(SEARCH_CACHE_VERSION, 'youtube-search-v5')
   assert.equal(normalizeSearchText('  Création   vidéo  '), 'creation-video')
+})
+
+test('catalog filtering applies subscriber ranges locally without changing discovery data', () => {
+  const catalog = { channels: [
+    { id: 'low', subsNum: 20000, score: 40 },
+    { id: 'middle', subsNum: 75000, score: 80 },
+    { id: 'high', subsNum: 300000, score: 60 },
+  ] }
+  assert.deepEqual(filterYouTubeCatalog(catalog, 10000, 50000, 20).map(item => item.id), ['low'])
+  assert.deepEqual(filterYouTubeCatalog(catalog, 10000, 100000, 20).map(item => item.id), ['middle', 'low'])
+  assert.equal(catalog.channels.length, 3)
+})
+
+test('catalog channels are deduplicated with newly collected values winning', () => {
+  assert.deepEqual(mergeCatalogChannels(
+    [{ id: 'one', score: 1 }, { id: 'two', score: 2 }],
+    [{ id: 'two', score: 20 }, { id: 'three', score: 3 }]
+  ), [{ id: 'one', score: 1 }, { id: 'two', score: 20 }, { id: 'three', score: 3 }])
+})
+
+test('catalog policy uses 48h TTL, 12h poor refresh and 1h negative cache', () => {
+  assert.equal(SEARCH_CACHE_TTL_HOURS, 48)
+  assert.equal(SEARCH_CATALOG_POOR_REFRESH_HOURS, 12)
+  assert.equal(SEARCH_NEGATIVE_CACHE_TTL_HOURS, 1)
+  const now = new Date('2026-08-02T12:00:00.000Z')
+  assert.equal(getCatalogAgeHours('2026-08-02T00:00:00.000Z', now), 12)
+  assert.equal(shouldEnrichSearchCatalog({ candidateCount: 20, filteredResultCount: 9, collectedAt: '2026-08-02T00:00:00.000Z', now }), true)
+  assert.equal(shouldEnrichSearchCatalog({ candidateCount: 20, filteredResultCount: 9, collectedAt: '2026-08-02T01:00:00.000Z', now }), false)
+  assert.equal(shouldEnrichSearchCatalog({ candidateCount: 20, filteredResultCount: 10, collectedAt: '2026-08-01T00:00:00.000Z', now }), false)
 })
 
 test('product search limits are centralized and reset Pro usage by UTC day', () => {
@@ -1338,7 +1373,7 @@ test('persistent quota reservations are serializable, recover failures and preve
   assert.match(route, /if \(reserved\) await releaseSearchQuota/)
   assert.match(route, /if \(lockAcquired\) await releaseSearchLock/)
   assert.match(route, /completeSearchQuota\(prisma, parsed\.requestId, true\)/)
-  assert.match(route, /cachedResults\.length > 0/)
+  assert.match(route, /catalog && !enrichmentTriggered/)
 })
 
 test('youtube diagnostic is minimal and never prints the API key or keyed URL', () => {
@@ -1372,14 +1407,14 @@ test('search route uses persistent cache, atomic quotas and cross-instance locks
   const searchRoute = fs.readFileSync('app/api/search/route.ts', 'utf8')
 
   assert.match(searchRoute, /prisma\.searchCache\.findFirst/)
-  assert.match(searchRoute, /cachedResults\.length > 0/)
-  assert.match(searchRoute, /selectDiverseProspectPreview\(cachedResults, limits\.results\)/)
+  assert.match(searchRoute, /filterYouTubeCatalog\(catalog, parsed\.minVal, parsed\.maxVal/)
+  assert.match(searchRoute, /selectDiverseProspectPreview\(catalogResults, limits\.results\)/)
   assert.match(searchRoute, /acquireSearchLock/)
   assert.match(searchRoute, /reserveSearchQuota/)
   assert.match(searchRoute, /completeSearchQuota/)
   assert.match(searchRoute, /releaseSearchQuota/)
-  assert.match(searchRoute, /if \(results\.length === 0\)/)
-  assert.match(searchRoute, /quotaConsumed: false/)
+  assert.match(searchRoute, /if \(visibleResults\.length === 0\)/)
+  assert.match(searchRoute, /releaseSearchQuota\(prisma, parsed\.requestId\)/)
   assert.match(searchRoute, /completeSearchQuota\(prisma, parsed\.requestId, false\)/)
   assert.match(searchRoute, /searchQueriesUsed/)
   assert.match(searchRoute, /hiddenSubscribers/)
@@ -1388,6 +1423,25 @@ test('search route uses persistent cache, atomic quotas and cross-instance locks
   assert.match(searchRoute, /PRO_DAILY_SEARCH_LIMIT_REACHED/)
   assert.match(searchRoute, /algorithmVersion: SEARCH_CACHE_VERSION/)
   assert.match(searchRoute, /buildYouTubeErrorResponse/)
+})
+
+test('catalog cache is shared globally, locked by niche/language and emits safe aggregate logs', () => {
+  const route = fs.readFileSync('app/api/search/route.ts', 'utf8')
+  const policy = fs.readFileSync('lib/searchPolicy.ts', 'utf8')
+  const youtube = fs.readFileSync('lib/youtube.ts', 'utf8')
+
+  assert.doesNotMatch(policy, /input\.subsMin|input\.subsMax/)
+  assert.match(route, /cacheKey,\s*expiresAt/)
+  assert.match(route, /SEARCH_CATALOG_POOR_REFRESH_HOURS|shouldEnrichSearchCatalog/)
+  assert.match(route, /SEARCH_NEGATIVE_CACHE_TTL_HOURS/)
+  assert.match(youtube, /existingCatalog\?\.nextPageToken/)
+  assert.match(youtube, /existingCatalog\?\.queryVariantsUsed/)
+  assert.match(route, /catalogHit:/)
+  assert.match(route, /catalogCandidateCount:/)
+  assert.match(route, /filteredResultCount:/)
+  assert.match(route, /searchListCalls:/)
+  const eventBody = route.slice(route.indexOf("console.info('YouTube catalog event:'"), route.indexOf("console.info('YouTube catalog event:'") + 700)
+  assert.doesNotMatch(eventBody, /userIdHash|niche|email|YOUTUBE_API_KEY|googleapis|query:/)
 })
 
 test('dashboard handles youtube 429 without double submission or raw Google errors', () => {
