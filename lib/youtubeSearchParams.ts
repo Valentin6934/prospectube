@@ -22,6 +22,18 @@ const LANGUAGE_CODES: Record<string, string> = {
   pt: 'pt',
 }
 
+const LANGUAGE_QUERY_SUFFIXES: Record<string, string> = {
+  fr: 'français',
+  en: 'english',
+  es: 'español',
+  de: 'deutsch',
+  it: 'italiano',
+  pt: 'português',
+}
+
+export const MAX_YOUTUBE_SEARCH_QUERIES = 2
+export const MIN_YOUTUBE_RESULTS_BEFORE_STOP = 10
+
 function normalizeLanguageLabel(value: unknown): string {
   return String(value || '')
     .trim()
@@ -33,6 +45,79 @@ function normalizeLanguageLabel(value: unknown): string {
 export function normalizeYouTubeLanguage(value: unknown): string | null {
   const normalized = normalizeLanguageLabel(value)
   return normalized ? LANGUAGE_CODES[normalized] || null : null
+}
+
+function normalizeQueryComparison(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+}
+
+export function buildYouTubeQueryVariants(niche: unknown, language: unknown): string[] {
+  const base = String(niche || '').trim().replace(/\s+/g, ' ')
+  if (!base) return []
+
+  const variants = [base]
+  const languageCode = normalizeYouTubeLanguage(language)
+  const suffix = languageCode ? LANGUAGE_QUERY_SUFFIXES[languageCode] : null
+
+  if (suffix) {
+    const normalizedBase = normalizeQueryComparison(base)
+    const normalizedSuffix = normalizeQueryComparison(suffix)
+    if (!normalizedBase.includes(normalizedSuffix)) variants.push(`${base} ${suffix}`)
+  }
+
+  return Array.from(new Set(variants.map(value => value.trim()).filter(Boolean))).slice(0, MAX_YOUTUBE_SEARCH_QUERIES)
+}
+
+export function shouldRunNextYouTubeQuery(input: {
+  acceptedResults: number
+  queriesUsed: number
+  totalVariants: number
+}): boolean {
+  return input.acceptedResults < MIN_YOUTUBE_RESULTS_BEFORE_STOP &&
+    input.queriesUsed < Math.min(input.totalVariants, MAX_YOUTUBE_SEARCH_QUERIES)
+}
+
+export function collectNewYouTubeChannelIds(items: any[], knownIds: Set<string>): string[] {
+  const newIds: string[] = []
+  for (const item of items || []) {
+    const id = typeof item?.snippet?.channelId === 'string' ? item.snippet.channelId : ''
+    if (!id || knownIds.has(id)) continue
+    knownIds.add(id)
+    newIds.push(id)
+  }
+  return newIds
+}
+
+export function analyzeYouTubeChannelRange(channels: any[], subsMin: number, subsMax: number) {
+  const accepted: any[] = []
+  let hiddenSubscribers = 0
+  let belowMinimum = 0
+  let aboveMaximum = 0
+
+  for (const channel of channels) {
+    const subscriberValue = channel?.statistics?.subscriberCount
+    if (channel?.statistics?.hiddenSubscriberCount === true || subscriberValue === undefined || subscriberValue === null) {
+      hiddenSubscribers += 1
+      continue
+    }
+    const subscribers = Number(subscriberValue)
+    if (!Number.isFinite(subscribers)) {
+      hiddenSubscribers += 1
+    } else if (subscribers < subsMin) {
+      belowMinimum += 1
+    } else if (subscribers > subsMax) {
+      aboveMaximum += 1
+    } else {
+      accepted.push(channel)
+    }
+  }
+
+  return { accepted, hiddenSubscribers, belowMinimum, aboveMaximum }
 }
 
 export function buildYouTubeSearchParams(input: {
@@ -55,6 +140,7 @@ export function buildYouTubeSearchParams(input: {
   params.set('type', 'channel')
   params.set('q', query)
   params.set('maxResults', String(maxResults))
+  params.set('order', 'relevance')
   params.set('fields', input.fields)
 
   const relevanceLanguage = normalizeYouTubeLanguage(input.language)

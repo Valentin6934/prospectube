@@ -20,6 +20,7 @@ import {
 import {
   acquireSearchLock,
   completeSearchQuota,
+  getReleasedSearchQuotaSnapshot,
   getSearchQuotaSnapshot,
   releaseSearchLock,
   releaseSearchQuota,
@@ -138,7 +139,18 @@ export async function POST(req: NextRequest) {
   })
   const cacheKeyHash = hashLogValue(cacheKey)
   const userIdHash = hashLogValue(user.id)
-  const metrics: YouTubeCallMetrics = { searchList: 0, channelsList: 0, aboutPages: 0 }
+  const metrics: YouTubeCallMetrics = {
+    searchList: 0,
+    channelsList: 0,
+    aboutPages: 0,
+    searchQueriesUsed: 0,
+    rawCandidates: 0,
+    uniqueCandidates: 0,
+    hiddenSubscribers: 0,
+    belowMinimum: 0,
+    aboveMaximum: 0,
+    acceptedResults: 0,
+  }
   let reserved = false
   let lockAcquired = false
   let responseStatus = 500
@@ -205,10 +217,11 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    if (cachedResults.length >= limits.results) {
+    if (cachedResults.length > 0) {
       const visibleResults = proUser
         ? cachedResults.slice(0, limits.results)
         : selectDiverseProspectPreview(cachedResults, limits.results)
+      metrics.acceptedResults = visibleResults.length
       await completeSearchQuota(prisma, parsed.requestId, true)
       reserved = false
       await saveSearchHistory({
@@ -243,6 +256,29 @@ export async function POST(req: NextRequest) {
       responseStatus = response.status
       errorCode = response.body.error
       return NextResponse.json(response.body, { status: response.status })
+    }
+
+    if (results.length === 0) {
+      await releaseSearchQuota(prisma, parsed.requestId)
+      reserved = false
+      const emptyQuota = getReleasedSearchQuotaSnapshot(reservation.snapshot)
+      responseStatus = 200
+      logSearch({
+        cache: 'miss',
+        quotaBefore: emptyQuota.remaining,
+        quotaAfter: emptyQuota.remaining,
+        quotaConsumed: false,
+      })
+      return NextResponse.json({
+        results: [],
+        source: 'youtube',
+        cached: false,
+        emptyResult: true,
+        searchesRemaining: emptyQuota.remaining,
+        quota: emptyQuota,
+        plan,
+        canGenerateEmail: limits.emailAI,
+      })
     }
 
     try {

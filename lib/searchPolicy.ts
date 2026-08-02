@@ -1,6 +1,6 @@
 export const FREE_LIFETIME_SEARCH_LIMIT = 1
 export const PRO_DAILY_SEARCH_LIMIT = 5
-export const SEARCH_CACHE_VERSION = 'youtube-search-v3'
+export const SEARCH_CACHE_VERSION = 'youtube-search-v4'
 export const SEARCH_CACHE_TTL_HOURS = 48
 export const SEARCH_LOCK_TTL_MS = 2 * 60 * 1000
 

@@ -10,6 +10,14 @@ export type SearchQuotaSnapshot = {
   periodKey: string
 }
 
+export function getReleasedSearchQuotaSnapshot(snapshot: SearchQuotaSnapshot): SearchQuotaSnapshot {
+  return {
+    ...snapshot,
+    used: Math.max(0, snapshot.used - 1),
+    remaining: Math.min(snapshot.limit, snapshot.remaining + 1),
+  }
+}
+
 export async function getSearchQuotaSnapshot(
   db: DbClient,
   userId: string,

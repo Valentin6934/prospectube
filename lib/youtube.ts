@@ -1,68 +1,19 @@
 import { selectDiverseProspectPreview } from '@/lib/freePreview'
-import { SMALL_CREATOR_NICHE_QUERIES, YOUTUBE_NICHE_QUERIES } from '@/lib/niches'
 import { PROSPECT_SCORE_THRESHOLDS } from '@/lib/prospectScoreInfo'
 import { YouTubeApiError, classifyYouTubeError } from '@/lib/youtubeQuota'
 import {
+  analyzeYouTubeChannelRange,
+  buildYouTubeQueryVariants,
   buildYouTubeSearchParams,
+  collectNewYouTubeChannelIds,
   getSafeYouTubeSearchParamsLog,
-  normalizeYouTubeLanguage,
+  MAX_YOUTUBE_SEARCH_QUERIES,
+  shouldRunNextYouTubeQuery,
 } from '@/lib/youtubeSearchParams'
 
-const MAX_SEARCH_QUERIES = 1
-const MAX_SEARCH_PAGES_PER_QUERY = 1
 const YOUTUBE_REQUEST_TIMEOUT_MS = 12_000
 const YOUTUBE_SEARCH_FIELDS = 'items(snippet(channelId,title,description,thumbnails/default/url)),nextPageToken'
-const YOUTUBE_CHANNEL_FIELDS = 'items(id,snippet(title,description,publishedAt,thumbnails/default/url),statistics(subscriberCount,viewCount,videoCount),brandingSettings/channel/description)'
-
-const BASE_NICHE_QUERIES: Record<string, string> = {
-  'Gaming': 'gaming gameplay streamer',
-  'Finance & Business': 'finance business investing entrepreneur',
-  'Tech & Programmation': 'tech programming coding',
-  'Fitness & Santé': 'fitness health workout',
-  'Lifestyle & Vlog': 'lifestyle vlog',
-  'Cuisine': 'cooking recipe',
-  'Musique': 'music',
-  'Éducation': 'education tutorial',
-  'Voyage': 'travel',
-  'Beauté & Mode': 'beauty fashion',
-}
-
-const LANGUAGE_QUERIES: Record<string, string[]> = {
-  fr: ['français', 'france', 'chaîne française', 'youtubeur français'],
-  en: ['english', 'usa', 'uk', 'english channel'],
-  es: ['español', 'españa', 'mexico', 'canal español'],
-  pt: ['português', 'brasil', 'canal português'],
-  de: ['deutsch', 'deutschland', 'deutscher kanal'],
-  it: ['italiano', 'italia', 'canale italiano'],
-}
-
-const SMALL_CREATOR_QUERIES: Record<string, string[]> = {
-  'Gaming': ['petit youtubeur', 'gaming fr', 'gameplay fr', 'streamer fr', 'nouvelle chaîne gaming'],
-  'Finance & Business': ['investissement débutant', 'business français', 'entrepreneur français'],
-  'Tech & Programmation': ['développeur français', 'programmation français', 'coding français'],
-  'Fitness & Santé': ['fitness français', 'musculation français', 'coach sportif français'],
-  'Lifestyle & Vlog': ['vlog français', 'lifestyle français'],
-  'Cuisine': ['recette française', 'cuisine maison'],
-  'Musique': ['musicien français', 'beatmaker français'],
-  'Éducation': ['tutoriel français', 'formation français'],
-  'Voyage': ['vlog voyage français', 'voyage français'],
-  'Beauté & Mode': ['mode française', 'beauté française'],
-}
-
-function buildQueries(niche: string, lang: string): string[] {
-  const base = YOUTUBE_NICHE_QUERIES[niche] || BASE_NICHE_QUERIES[niche] || niche || 'youtube'
-  const languageCode = normalizeYouTubeLanguage(lang)
-  const langTerms = languageCode ? LANGUAGE_QUERIES[languageCode] || [] : []
-  const smallTerms = SMALL_CREATOR_NICHE_QUERIES[niche] || SMALL_CREATOR_QUERIES[niche] || []
-
-  const queries = [
-    `${base} ${langTerms[0] || ''}`,
-    `${base} ${langTerms[1] || ''}`,
-    smallTerms[0] || `${base} ${langTerms[2] || ''}`,
-  ]
-
-  return Array.from(new Set(queries.map(q => q.trim()).filter(Boolean))).slice(0, MAX_SEARCH_QUERIES)
-}
+const YOUTUBE_CHANNEL_FIELDS = 'items(id,snippet(title,description,publishedAt,thumbnails/default/url),statistics(hiddenSubscriberCount,subscriberCount,viewCount,videoCount),brandingSettings/channel/description)'
 
 async function fetchYouTubeJson(url: URL, endpoint: 'search.list' | 'channels.list', idCount = 0) {
   const startedAt = Date.now()
@@ -238,6 +189,13 @@ export type YouTubeCallMetrics = {
   searchList: number
   channelsList: number
   aboutPages: number
+  searchQueriesUsed: number
+  rawCandidates: number
+  uniqueCandidates: number
+  hiddenSubscribers: number
+  belowMinimum: number
+  aboveMaximum: number
+  acceptedResults: number
 }
 
 function getProspectScore(channel: any): number {
@@ -395,58 +353,64 @@ export async function searchYouTubeChannels(
     )
   }
 
-  const queries = buildQueries(niche, lang)
-
-  let allItems: any[] = []
+  const queries = buildYouTubeQueryVariants(niche, lang).slice(0, MAX_YOUTUBE_SEARCH_QUERIES)
+  const knownChannelIds = new Set<string>()
+  const channelsById = new Map<string, any>()
 
   for (const query of queries) {
-    let nextPageToken = ''
+    const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search')
+    const searchParams = buildYouTubeSearchParams({
+      query,
+      language: lang,
+      maxResults: 50,
+      fields: YOUTUBE_SEARCH_FIELDS,
+    })
+    searchUrl.search = searchParams.toString()
+    console.info('YouTube search request prepared:', getSafeYouTubeSearchParamsLog(searchParams))
+    searchUrl.searchParams.set('key', apiKey)
 
-    for (let i = 0; i < MAX_SEARCH_PAGES_PER_QUERY; i++) {
-      const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search')
-      const searchParams = buildYouTubeSearchParams({
-        query,
-        language: lang,
-        maxResults: 50,
-        pageToken: nextPageToken,
-        fields: YOUTUBE_SEARCH_FIELDS,
-      })
-      searchUrl.search = searchParams.toString()
-      console.info('YouTube search request prepared:', getSafeYouTubeSearchParamsLog(searchParams))
-      searchUrl.searchParams.set('key', apiKey)
-
-      if (metrics) metrics.searchList += 1
-      const searchData = await fetchYouTubeJson(searchUrl, 'search.list')
-
-      allItems.push(...(searchData.items || []))
-
-      if (!searchData.nextPageToken) break
-      nextPageToken = searchData.nextPageToken
+    if (metrics) {
+      metrics.searchList += 1
+      metrics.searchQueriesUsed += 1
     }
+    const searchData = await fetchYouTubeJson(searchUrl, 'search.list')
+    const searchItems = Array.isArray(searchData.items) ? searchData.items : []
+    if (metrics) metrics.rawCandidates += searchItems.length
+    const newChannelIds = collectNewYouTubeChannelIds(searchItems, knownChannelIds)
+    if (metrics) metrics.uniqueCandidates = knownChannelIds.size
+
+    for (let i = 0; i < newChannelIds.length; i += 50) {
+      const batchIds = newChannelIds.slice(i, i + 50)
+      const channelsUrl = new URL('https://www.googleapis.com/youtube/v3/channels')
+      channelsUrl.searchParams.set('part', 'snippet,statistics,brandingSettings')
+      channelsUrl.searchParams.set('id', batchIds.join(','))
+      channelsUrl.searchParams.set('fields', YOUTUBE_CHANNEL_FIELDS)
+      channelsUrl.searchParams.set('key', apiKey)
+
+      if (metrics) metrics.channelsList += 1
+      const channelsData = await fetchYouTubeJson(channelsUrl, 'channels.list', batchIds.length)
+      for (const channel of channelsData.items || []) {
+        if (channel?.id) channelsById.set(channel.id, channel)
+      }
+    }
+
+    const currentRange = analyzeYouTubeChannelRange(Array.from(channelsById.values()), subsMin, subsMax)
+    if (!shouldRunNextYouTubeQuery({
+      acceptedResults: currentRange.accepted.length,
+      queriesUsed: metrics?.searchQueriesUsed || queries.indexOf(query) + 1,
+      totalVariants: queries.length,
+    })) break
   }
 
-  const channelIds = Array.from(
-    new Set(allItems.map((item: any) => item.snippet?.channelId).filter(Boolean))
-  )
-
-  if (channelIds.length === 0) return []
-
-  let allChannels: any[] = []
-
-  for (let i = 0; i < channelIds.length; i += 50) {
-    const batchIds = channelIds.slice(i, i + 50)
-
-    const channelsUrl = new URL('https://www.googleapis.com/youtube/v3/channels')
-    channelsUrl.searchParams.set('part', 'snippet,statistics,brandingSettings')
-    channelsUrl.searchParams.set('id', batchIds.join(','))
-    channelsUrl.searchParams.set('fields', YOUTUBE_CHANNEL_FIELDS)
-    channelsUrl.searchParams.set('key', apiKey)
-
-    if (metrics) metrics.channelsList += 1
-    const channelsData = await fetchYouTubeJson(channelsUrl, 'channels.list', batchIds.length)
-
-    allChannels.push(...(channelsData.items || []))
+  const range = analyzeYouTubeChannelRange(Array.from(channelsById.values()), subsMin, subsMax)
+  if (metrics) {
+    metrics.hiddenSubscribers = range.hiddenSubscribers
+    metrics.belowMinimum = range.belowMinimum
+    metrics.aboveMaximum = range.aboveMaximum
   }
+  const allChannels = range.accepted
+
+  if (allChannels.length === 0) return []
 
   const candidates = allChannels
     .map((ch: any) => {
@@ -505,7 +469,6 @@ export async function searchYouTubeChannels(
         scoreReason: advancedScore.reason,
       }
     })
-    .filter((ch: any) => ch.subsNum >= subsMin && ch.subsNum <= subsMax)
     .filter((ch: any) => {
       const text = `${ch.name} ${ch.desc}`
       if (!looksLikeLanguage(text, lang)) {
@@ -562,8 +525,12 @@ export async function searchYouTubeChannels(
     .sort((a: any, b: any) => b.score - a.score)
 
   if (maxResults <= 3) {
-    return selectDiverseProspectPreview(finalResults, maxResults)
+    const preview = selectDiverseProspectPreview(finalResults, maxResults)
+    if (metrics) metrics.acceptedResults = preview.length
+    return preview
   }
 
-  return finalResults.slice(0, maxResults)
+  const results = finalResults.slice(0, maxResults)
+  if (metrics) metrics.acceptedResults = results.length
+  return results
 }

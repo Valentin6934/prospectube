@@ -22,14 +22,16 @@ to YouTube Data API v3. IP restrictions are generally unsuitable for dynamic Ver
 
 For one uncached product search, ProspectTube performs:
 
-- one `search.list` request (100 YouTube quota units / one Search Query metric);
+- one `search.list` request, followed by at most one deterministic variant when fewer than 10
+  subscriber-range matches are available (100 units per request / one Search Query metric each);
 - one `channels.list` request per batch of up to 50 unique channel IDs (1 unit each);
 - no `videos.list` request in the product flow;
 - up to one public `/about` HTML fetch per candidate needing contact enrichment. These HTML requests
   do not consume YouTube Data API units but remain network requests.
 
-There is no automatic retry or pagination. A zero-result search stops after `search.list`. Client
-reloads do not automatically trigger searches.
+There is no automatic retry or pagination. A zero-result search stops after the second bounded
+variant at the latest and releases the product quota reservation. Client reloads do not automatically
+trigger searches.
 
 ## Shared cache and product limits
 
