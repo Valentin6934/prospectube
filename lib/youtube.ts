@@ -2,12 +2,17 @@ import { selectDiverseProspectPreview } from '@/lib/freePreview'
 import { SMALL_CREATOR_NICHE_QUERIES, YOUTUBE_NICHE_QUERIES } from '@/lib/niches'
 import { PROSPECT_SCORE_THRESHOLDS } from '@/lib/prospectScoreInfo'
 import { YouTubeApiError, classifyYouTubeError } from '@/lib/youtubeQuota'
+import {
+  buildYouTubeSearchParams,
+  getSafeYouTubeSearchParamsLog,
+  normalizeYouTubeLanguage,
+} from '@/lib/youtubeSearchParams'
 
 const MAX_SEARCH_QUERIES = 1
 const MAX_SEARCH_PAGES_PER_QUERY = 1
 const YOUTUBE_REQUEST_TIMEOUT_MS = 12_000
-const YOUTUBE_SEARCH_FIELDS = 'items(snippet(channelId,title,description,thumbnails/default/url)),nextPageToken,error'
-const YOUTUBE_CHANNEL_FIELDS = 'items(id,snippet(title,description,publishedAt,thumbnails/default/url),statistics(subscriberCount,viewCount,videoCount),brandingSettings/channel/description),error'
+const YOUTUBE_SEARCH_FIELDS = 'items(snippet(channelId,title,description,thumbnails/default/url)),nextPageToken'
+const YOUTUBE_CHANNEL_FIELDS = 'items(id,snippet(title,description,publishedAt,thumbnails/default/url),statistics(subscriberCount,viewCount,videoCount),brandingSettings/channel/description)'
 
 const BASE_NICHE_QUERIES: Record<string, string> = {
   'Gaming': 'gaming gameplay streamer',
@@ -23,11 +28,12 @@ const BASE_NICHE_QUERIES: Record<string, string> = {
 }
 
 const LANGUAGE_QUERIES: Record<string, string[]> = {
-  'Français': ['français', 'france', 'chaîne française', 'youtubeur français'],
-  'Anglais': ['english', 'usa', 'uk', 'english channel'],
-  'Espagnol': ['español', 'españa', 'mexico', 'canal español'],
-  'Portugais': ['português', 'brasil', 'canal português'],
-  'Allemand': ['deutsch', 'deutschland', 'deutscher kanal'],
+  fr: ['français', 'france', 'chaîne française', 'youtubeur français'],
+  en: ['english', 'usa', 'uk', 'english channel'],
+  es: ['español', 'españa', 'mexico', 'canal español'],
+  pt: ['português', 'brasil', 'canal português'],
+  de: ['deutsch', 'deutschland', 'deutscher kanal'],
+  it: ['italiano', 'italia', 'canale italiano'],
 }
 
 const SMALL_CREATOR_QUERIES: Record<string, string[]> = {
@@ -45,7 +51,8 @@ const SMALL_CREATOR_QUERIES: Record<string, string[]> = {
 
 function buildQueries(niche: string, lang: string): string[] {
   const base = YOUTUBE_NICHE_QUERIES[niche] || BASE_NICHE_QUERIES[niche] || niche || 'youtube'
-  const langTerms = LANGUAGE_QUERIES[lang] || [lang]
+  const languageCode = normalizeYouTubeLanguage(lang)
+  const langTerms = languageCode ? LANGUAGE_QUERIES[languageCode] || [] : []
   const smallTerms = SMALL_CREATOR_NICHE_QUERIES[niche] || SMALL_CREATOR_QUERIES[niche] || []
 
   const queries = [
@@ -397,13 +404,16 @@ export async function searchYouTubeChannels(
 
     for (let i = 0; i < MAX_SEARCH_PAGES_PER_QUERY; i++) {
       const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search')
-      searchUrl.searchParams.set('part', 'snippet')
-      searchUrl.searchParams.set('type', 'channel')
-      searchUrl.searchParams.set('q', query)
-      searchUrl.searchParams.set('maxResults', '50')
-      searchUrl.searchParams.set('fields', YOUTUBE_SEARCH_FIELDS)
+      const searchParams = buildYouTubeSearchParams({
+        query,
+        language: lang,
+        maxResults: 50,
+        pageToken: nextPageToken,
+        fields: YOUTUBE_SEARCH_FIELDS,
+      })
+      searchUrl.search = searchParams.toString()
+      console.info('YouTube search request prepared:', getSafeYouTubeSearchParamsLog(searchParams))
       searchUrl.searchParams.set('key', apiKey)
-      if (nextPageToken) searchUrl.searchParams.set('pageToken', nextPageToken)
 
       if (metrics) metrics.searchList += 1
       const searchData = await fetchYouTubeJson(searchUrl, 'search.list')

@@ -7,6 +7,7 @@ export type YouTubeErrorCode =
   | 'YOUTUBE_RATE_LIMITED'
   | 'YOUTUBE_BACKEND_ERROR'
   | 'YOUTUBE_TIMEOUT'
+  | 'YOUTUBE_INVALID_SEARCH_PARAMETERS'
   | 'YOUTUBE_UNKNOWN_ERROR'
 
 export const YOUTUBE_CONFIGURATION_MESSAGE =
@@ -19,6 +20,8 @@ export const YOUTUBE_BACKEND_ERROR_MESSAGE =
   'YouTube rencontre temporairement un probleme. Reessayez dans quelques instants.'
 export const YOUTUBE_GENERIC_ERROR_MESSAGE =
   'La recherche YouTube a echoue. Reessayez dans quelques instants.'
+export const YOUTUBE_INVALID_SEARCH_PARAMETERS_MESSAGE =
+  'La recherche contient un critere non pris en charge. Modifiez les criteres et reessayez.'
 
 const CONFIGURATION_CODES = new Set<YouTubeErrorCode>([
   'YOUTUBE_KEY_INVALID',
@@ -161,6 +164,14 @@ export function classifyYouTubeError(input: {
     return new YouTubeApiError('YOUTUBE_RATE_LIMITED', YOUTUBE_RATE_LIMIT_MESSAGE, {
       ...common, status: 429, retryable: true,
     })
+  }
+
+  if (matches(reason, ['invalidParameter', 'invalidRelevanceLanguage', 'invalidSearchFilter'])) {
+    return new YouTubeApiError(
+      'YOUTUBE_INVALID_SEARCH_PARAMETERS',
+      YOUTUBE_INVALID_SEARCH_PARAMETERS_MESSAGE,
+      { ...common, status: 400 }
+    )
   }
 
   if (matches(reason, ['backendError', 'internalError']) || input.status === 500 || input.status === 502 || input.status === 503) {

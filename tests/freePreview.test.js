@@ -73,11 +73,17 @@ const {
 const {
   YOUTUBE_DAILY_QUOTA_MESSAGE,
   YOUTUBE_CONFIGURATION_MESSAGE,
+  YOUTUBE_INVALID_SEARCH_PARAMETERS_MESSAGE,
   buildYouTubeErrorResponse,
   classifyYouTubeError,
   getSafeYouTubeLog,
   sanitizeGoogleMessage,
 } = require('../lib/youtubeQuota.ts')
+const {
+  buildYouTubeSearchParams,
+  getSafeYouTubeSearchParamsLog,
+  normalizeYouTubeLanguage,
+} = require('../lib/youtubeSearchParams.ts')
 const {
   FREE_LIFETIME_SEARCH_LIMIT,
   PRO_DAILY_SEARCH_LIMIT,
@@ -1111,6 +1117,93 @@ test('youtube detects project mismatch, timeout and never exposes credentials', 
   assert.doesNotMatch(JSON.stringify(buildYouTubeErrorResponse(mismatch)), /123456789|AIza/)
 })
 
+test('youtube language labels normalize to ISO 639-1 codes', () => {
+  for (const [input, expected] of [
+    ['Français', 'fr'],
+    ['francais', 'fr'],
+    ['fr', 'fr'],
+    ['Anglais', 'en'],
+    ['english', 'en'],
+    ['Español', 'es'],
+    ['Allemand', 'de'],
+    ['Italiano', 'it'],
+    ['Português', 'pt'],
+  ]) {
+    assert.equal(normalizeYouTubeLanguage(input), expected)
+  }
+  assert.equal(normalizeYouTubeLanguage(''), null)
+  assert.equal(normalizeYouTubeLanguage('langue-inconnue'), null)
+})
+
+test('youtube channel search parameters are valid for Gaming in French', () => {
+  const params = buildYouTubeSearchParams({
+    query: 'gaming gameplay streamer français',
+    language: 'Français',
+    maxResults: 50,
+    fields: 'items(snippet(channelId,title)),nextPageToken',
+  })
+
+  assert.equal(params.get('part'), 'snippet')
+  assert.equal(params.get('type'), 'channel')
+  assert.equal(params.get('maxResults'), '50')
+  assert.equal(params.get('relevanceLanguage'), 'fr')
+  assert.equal(params.has('regionCode'), false)
+  assert.equal(Array.from(params.keys()).some(name => /^video/i.test(name)), false)
+  assert.equal(params.has('minSubscribers'), false)
+  assert.equal(params.has('maxSubscribers'), false)
+})
+
+test('empty or unknown language is never sent raw to YouTube', () => {
+  for (const language of ['', 'Klingon']) {
+    const params = buildYouTubeSearchParams({
+      query: 'gaming',
+      language,
+      fields: 'items(snippet(channelId))',
+    })
+    assert.equal(params.has('relevanceLanguage'), false)
+    assert.doesNotMatch(params.toString(), /Klingon/i)
+  }
+})
+
+test('youtube search rejects maxResults outside the supported range', () => {
+  for (const maxResults of [0, 51, 1.5]) {
+    assert.throws(
+      () => buildYouTubeSearchParams({ query: 'gaming', maxResults, fields: 'items' }),
+      /YOUTUBE_SEARCH_MAX_RESULTS_INVALID/
+    )
+  }
+})
+
+test('invalid YouTube search parameters return a safe 400 response', () => {
+  for (const reason of ['invalidParameter', 'invalidRelevanceLanguage', 'invalidSearchFilter']) {
+    const error = classifyYouTubeError({
+      endpoint: 'search.list',
+      status: 400,
+      payload: { error: { message: 'Invalid value supplied by caller', errors: [{ reason }] } },
+    })
+    const response = buildYouTubeErrorResponse(error)
+    assert.equal(response.status, 400)
+    assert.equal(response.body.error, 'YOUTUBE_INVALID_SEARCH_PARAMETERS')
+    assert.equal(response.body.message, YOUTUBE_INVALID_SEARCH_PARAMETERS_MESSAGE)
+    assert.doesNotMatch(JSON.stringify(response), /Invalid value supplied by caller/)
+  }
+})
+
+test('safe YouTube parameter logs omit keys, URLs and query contents', () => {
+  const params = buildYouTubeSearchParams({
+    query: 'private query text',
+    language: 'fr',
+    fields: 'items(snippet(channelId))',
+  })
+  params.set('key', 'AIzaSecretValueThatMustNeverAppear')
+  const log = getSafeYouTubeSearchParamsLog(params)
+  const serialized = JSON.stringify(log)
+
+  assert.deepEqual(log.parameterNames, ['fields', 'maxResults', 'part', 'q', 'relevanceLanguage', 'type'])
+  assert.equal(log.queryLength, 18)
+  assert.doesNotMatch(serialized, /AIza|private query|googleapis|key=/i)
+})
+
 test('search cache keys normalize equivalent criteria and remain versioned', () => {
   const first = buildSearchCacheKey({ niche: ' Cuisine ', lang: 'Français', subsMin: 10000, subsMax: 50000 })
   const second = buildSearchCacheKey({ niche: 'cuisine', lang: '  francais  ', subsMin: 10000, subsMax: 50000 })
@@ -1203,6 +1296,9 @@ test('youtube search uses one search query and batches channel ids', () => {
   assert.match(youtubeLib, /for \(let i = 0; i < channelIds\.length; i \+= 50\)/)
   assert.match(youtubeLib, /channelsUrl\.searchParams\.set\('id', batchIds\.join\(','\)\)/)
   assert.match(youtubeLib, /fields/)
+  assert.doesNotMatch(youtubeLib, /nextPageToken,error/)
+  assert.doesNotMatch(youtubeLib, /brandingSettings\/channel\/description\),error/)
+  assert.doesNotMatch(youtubeLib, /searchParams\.set\(['"]video/i)
   assert.doesNotMatch(youtubeLib, /youtube\/v3\/videos/)
 })
 
