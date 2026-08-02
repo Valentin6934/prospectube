@@ -72,11 +72,22 @@ const {
 } = require('../lib/stripeConfig.ts')
 const {
   YOUTUBE_DAILY_QUOTA_MESSAGE,
+  YOUTUBE_CONFIGURATION_MESSAGE,
   buildYouTubeErrorResponse,
   classifyYouTubeError,
   getSafeYouTubeLog,
   sanitizeGoogleMessage,
 } = require('../lib/youtubeQuota.ts')
+const {
+  FREE_LIFETIME_SEARCH_LIMIT,
+  PRO_DAILY_SEARCH_LIMIT,
+  SEARCH_CACHE_VERSION,
+  buildSearchCacheKey,
+  getSearchQuotaMessage,
+  getUtcDayKey,
+  normalizeSearchText,
+} = require('../lib/searchPolicy.ts')
+const { getSearchQuotaSnapshot } = require('../lib/searchQuota.ts')
 const {
   PROSPECT_SCORE_EXPLANATION,
   PROSPECT_SCORE_LEVELS,
@@ -1062,10 +1073,132 @@ test('youtube error sanitation removes api keys and project identifiers', () => 
   assert.doesNotMatch(sanitized, /AIzaSecretKey|AIzaAnotherSecret|projects\/123456/)
 })
 
-test('youtube search reduces quota-heavy calls and batches channel ids', () => {
+test('youtube configuration errors are classified precisely and stay safe for clients', () => {
+  const cases = [
+    [{ error: { message: 'API key not valid. Please pass a valid API key.', errors: [{ reason: 'keyInvalid' }] } }, 'YOUTUBE_KEY_INVALID'],
+    [{ error: { message: 'API has not been used in project', errors: [{ reason: 'accessNotConfigured' }] } }, 'YOUTUBE_API_DISABLED'],
+    [{ error: { message: 'Requests from referer are blocked', errors: [{ reason: 'ipRefererBlocked' }] } }, 'YOUTUBE_KEY_RESTRICTED'],
+  ]
+
+  for (const [payload, expectedCode] of cases) {
+    const error = classifyYouTubeError({ payload, status: 403, endpoint: 'search.list' })
+    const response = buildYouTubeErrorResponse(error)
+    assert.equal(error.code, expectedCode)
+    assert.equal(response.status, 503)
+    assert.equal(response.body.message, YOUTUBE_CONFIGURATION_MESSAGE)
+    assert.doesNotMatch(JSON.stringify(response), /referer|API key not valid|project/i)
+  }
+})
+
+test('youtube detects project mismatch, timeout and never exposes credentials', () => {
+  const mismatch = classifyYouTubeError({
+    payload: {
+      error: {
+        message: 'Consumer projects/123456789 is not allowed with key=AIzaHiddenSecret123456789',
+        errors: [{ reason: 'forbidden' }],
+      },
+    },
+    status: 403,
+    endpoint: 'search.list',
+    expectedProjectNumber: '987654321',
+  })
+  const timeout = classifyYouTubeError({ endpoint: 'search.list', timedOut: true })
+
+  assert.equal(mismatch.code, 'YOUTUBE_PROJECT_MISMATCH')
+  assert.equal(getSafeYouTubeLog(mismatch).consumerProjectNumber, '123456789')
+  assert.equal(timeout.code, 'YOUTUBE_TIMEOUT')
+  assert.equal(buildYouTubeErrorResponse(timeout).status, 503)
+  assert.doesNotMatch(JSON.stringify(buildYouTubeErrorResponse(mismatch)), /123456789|AIza/)
+})
+
+test('search cache keys normalize equivalent criteria and remain versioned', () => {
+  const first = buildSearchCacheKey({ niche: ' Cuisine ', lang: 'Français', subsMin: 10000, subsMax: 50000 })
+  const second = buildSearchCacheKey({ niche: 'cuisine', lang: '  francais  ', subsMin: 10000, subsMax: 50000 })
+  const different = buildSearchCacheKey({ niche: 'cuisine', lang: 'francais', subsMin: 10000, subsMax: 100000 })
+
+  assert.equal(first, second)
+  assert.notEqual(first, different)
+  assert.match(first, new RegExp(`^${SEARCH_CACHE_VERSION}:`))
+  assert.equal(normalizeSearchText('  Création   vidéo  '), 'creation-video')
+})
+
+test('product search limits are centralized and reset Pro usage by UTC day', () => {
+  assert.equal(FREE_LIFETIME_SEARCH_LIMIT, 1)
+  assert.equal(PRO_DAILY_SEARCH_LIMIT, 5)
+  assert.equal(getUtcDayKey(new Date('2026-08-02T23:59:59.000Z')), '2026-08-02')
+  assert.equal(getUtcDayKey(new Date('2026-08-03T00:00:00.000Z')), '2026-08-03')
+  assert.match(getSearchQuotaMessage('Gratuit', 1), /1 recherche gratuite/)
+  assert.match(getSearchQuotaMessage('Gratuit', 0), /Passez au Plan Pro/)
+  assert.match(getSearchQuotaMessage('Pro', 5), /5 recherche/)
+})
+
+test('free quota allows one new account and treats existing history as used', async () => {
+  const freshDb = {
+    search: { count: async () => 0 },
+    searchUsage: { count: async () => 0 },
+  }
+  const existingDb = {
+    search: { count: async () => 3 },
+    searchUsage: { count: async () => 0 },
+  }
+
+  assert.deepEqual(await getSearchQuotaSnapshot(freshDb, 'user-free', 'Gratuit'), {
+    limit: 1, used: 0, remaining: 1, periodKey: 'lifetime',
+  })
+  assert.deepEqual(await getSearchQuotaSnapshot(existingDb, 'user-free', 'Gratuit'), {
+    limit: 1, used: 1, remaining: 0, periodKey: 'lifetime',
+  })
+})
+
+test('pro quota allows five successes, blocks the sixth and uses the UTC window', async () => {
+  let usageCount = 5
+  let capturedWhere
+  const db = {
+    search: { count: async () => 0 },
+    searchUsage: { count: async ({ where }) => { capturedWhere = where; return usageCount } },
+  }
+  const now = new Date('2026-08-02T18:30:00.000Z')
+  const blocked = await getSearchQuotaSnapshot(db, 'user-pro', 'Pro', now)
+  usageCount = 4
+  const allowed = await getSearchQuotaSnapshot(db, 'user-pro', 'Pro', now)
+
+  assert.equal(blocked.remaining, 0)
+  assert.equal(allowed.remaining, 1)
+  assert.equal(capturedWhere.createdAt.gte.toISOString(), '2026-08-02T00:00:00.000Z')
+})
+
+test('persistent quota reservations are serializable, recover failures and prevent concurrency', () => {
+  const quota = fs.readFileSync('lib/searchQuota.ts', 'utf8')
+  const route = fs.readFileSync('app/api/search/route.ts', 'utf8')
+  const schema = fs.readFileSync('prisma/schema.prisma', 'utf8')
+
+  assert.match(quota, /TransactionIsolationLevel\.Serializable/)
+  assert.match(quota, /error\.code === 'P2034'/)
+  assert.match(schema, /model SearchUsage/)
+  assert.match(schema, /model SearchLock/)
+  assert.match(schema, /userId\s+String\s+@unique/)
+  assert.match(schema, /cacheKey\s+String\s+@unique/)
+  assert.match(route, /if \(reserved\) await releaseSearchQuota/)
+  assert.match(route, /if \(lockAcquired\) await releaseSearchLock/)
+  assert.match(route, /completeSearchQuota\(prisma, parsed\.requestId, true\)/)
+  assert.match(route, /cachedResults\.length >= limits\.results/)
+})
+
+test('youtube diagnostic is minimal and never prints the API key or keyed URL', () => {
+  const diagnostic = fs.readFileSync('scripts/check-youtube-config.mjs', 'utf8')
+  const packageJson = fs.readFileSync('package.json', 'utf8')
+
+  assert.match(packageJson, /"youtube:check": "node scripts\/check-youtube-config\.mjs"/)
+  assert.match(diagnostic, /youtube\/v3\/videos/)
+  assert.match(diagnostic, /fields/)
+  assert.doesNotMatch(diagnostic, /console\.(?:log|error)\(apiKey/)
+  assert.doesNotMatch(diagnostic, /console\.(?:log|error)\(url/)
+})
+
+test('youtube search uses one search query and batches channel ids', () => {
   const youtubeLib = fs.readFileSync('lib/youtube.ts', 'utf8')
 
-  assert.match(youtubeLib, /MAX_SEARCH_QUERIES\s*=\s*2/)
+  assert.match(youtubeLib, /MAX_SEARCH_QUERIES\s*=\s*1/)
   assert.match(youtubeLib, /MAX_SEARCH_PAGES_PER_QUERY\s*=\s*1/)
   assert.match(youtubeLib, /for \(let i = 0; i < channelIds\.length; i \+= 50\)/)
   assert.match(youtubeLib, /channelsUrl\.searchParams\.set\('id', batchIds\.join\(','\)\)/)
@@ -1073,17 +1206,20 @@ test('youtube search reduces quota-heavy calls and batches channel ids', () => {
   assert.doesNotMatch(youtubeLib, /youtube\/v3\/videos/)
 })
 
-test('search route keeps free quota, serves identical cache and blocks concurrent youtube calls', () => {
+test('search route uses persistent cache, atomic quotas and cross-instance locks', () => {
   const searchRoute = fs.readFileSync('app/api/search/route.ts', 'utf8')
 
   assert.match(searchRoute, /prisma\.searchCache\.findFirst/)
   assert.match(searchRoute, /cachedResults\.length >= limits\.results/)
   assert.match(searchRoute, /selectDiverseProspectPreview\(cachedResults, limits\.results\)/)
-  assert.match(searchRoute, /activeYouTubeSearches/)
+  assert.match(searchRoute, /acquireSearchLock/)
+  assert.match(searchRoute, /reserveSearchQuota/)
+  assert.match(searchRoute, /completeSearchQuota/)
+  assert.match(searchRoute, /releaseSearchQuota/)
   assert.match(searchRoute, /SEARCH_ALREADY_RUNNING/)
-  assert.match(searchRoute, /SEARCH_RATE_LIMITED/)
-  assert.match(searchRoute, /SEARCH_COOLDOWN_MS/)
-  assert.match(searchRoute, /user\.searchesRemaining <= 0/)
+  assert.match(searchRoute, /FREE_SEARCH_USED/)
+  assert.match(searchRoute, /PRO_DAILY_SEARCH_LIMIT_REACHED/)
+  assert.match(searchRoute, /algorithmVersion: SEARCH_CACHE_VERSION/)
   assert.match(searchRoute, /buildYouTubeErrorResponse/)
 })
 
@@ -1096,6 +1232,12 @@ test('dashboard handles youtube 429 without double submission or raw Google erro
   assert.match(dashboard, /disabled=\{loading \|\| Date\.now\(\) < searchPausedUntil\}/)
   assert.match(dashboard, /data\.message \|\| data\.error/)
   assert.doesNotMatch(dashboard, /Quota exceeded for quota metric/)
+  assert.match(dashboard, /crypto\.randomUUID\(\)/)
+  assert.match(dashboard, /fetch\('\/api\/search'\)/)
+  assert.match(dashboard, /quotaMessage/)
+  assert.match(dashboard, /searchFeedback/)
+  assert.match(dashboard, /FREE_LIFETIME_SEARCH_LIMIT/)
+  assert.match(dashboard, /PRO_DAILY_SEARCH_LIMIT/)
 })
 
 test('prospect score explanation is transparent and avoids misleading promises', () => {

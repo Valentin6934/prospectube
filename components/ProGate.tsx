@@ -35,16 +35,16 @@ const contextCopy: Record<ProGateContext, { title: string; intro: string }> = {
       'Récupérez vos résultats et leurs données clés en CSV pour les exploiter dans vos outils de suivi, CRM ou tableurs.',
   },
   search: {
-    title: 'Lancez autant de recherches que nécessaire',
+    title: 'Passez à 5 recherches par jour',
     intro:
-      'Supprimez la limite de quota et explorez plus de niches, langues et tailles de chaînes pour trouver davantage de prospects qualifiés.',
+      'Explorez plus de niches, langues et tailles de chaînes avec un quota quotidien clair.',
   },
 }
 
 const benefits = [
   {
-    title: 'Recherches illimitées',
-    text: 'Lancez autant de recherches que nécessaire sans limite de quota.',
+    title: '5 recherches par jour',
+    text: 'Lancez jusqu’à cinq recherches par jour, avec réinitialisation à minuit UTC.',
   },
   {
     title: 'Intelligence artificielle',

@@ -3,8 +3,9 @@ import { SMALL_CREATOR_NICHE_QUERIES, YOUTUBE_NICHE_QUERIES } from '@/lib/niches
 import { PROSPECT_SCORE_THRESHOLDS } from '@/lib/prospectScoreInfo'
 import { YouTubeApiError, classifyYouTubeError } from '@/lib/youtubeQuota'
 
-const MAX_SEARCH_QUERIES = 2
+const MAX_SEARCH_QUERIES = 1
 const MAX_SEARCH_PAGES_PER_QUERY = 1
+const YOUTUBE_REQUEST_TIMEOUT_MS = 12_000
 const YOUTUBE_SEARCH_FIELDS = 'items(snippet(channelId,title,description,thumbnails/default/url)),nextPageToken,error'
 const YOUTUBE_CHANNEL_FIELDS = 'items(id,snippet(title,description,publishedAt,thumbnails/default/url),statistics(subscriberCount,viewCount,videoCount),brandingSettings/channel/description),error'
 
@@ -59,9 +60,11 @@ function buildQueries(niche: string, lang: string): string[] {
 async function fetchYouTubeJson(url: URL, endpoint: 'search.list' | 'channels.list', idCount = 0) {
   const startedAt = Date.now()
   let status = 0
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), YOUTUBE_REQUEST_TIMEOUT_MS)
 
   try {
-    const res = await fetch(url.toString())
+    const res = await fetch(url.toString(), { signal: controller.signal })
     status = res.status
     const data = await res.json().catch(() => ({}))
     const durationMs = Date.now() - startedAt
@@ -71,6 +74,8 @@ async function fetchYouTubeJson(url: URL, endpoint: 'search.list' | 'channels.li
         payload: data,
         status: res.status,
         endpoint,
+        headers: res.headers,
+        expectedProjectNumber: process.env.YOUTUBE_EXPECTED_PROJECT_NUMBER,
         fallbackMessage: `${endpoint} a echoue.`,
       })
       console.warn('YouTube API call failed:', {
@@ -94,9 +99,12 @@ async function fetchYouTubeJson(url: URL, endpoint: 'search.list' | 'channels.li
     return data
   } catch (error) {
     if (error instanceof YouTubeApiError) throw error
+    const timedOut = error instanceof Error && error.name === 'AbortError'
     const classified = classifyYouTubeError({
       status: status || 500,
       endpoint,
+      expectedProjectNumber: process.env.YOUTUBE_EXPECTED_PROJECT_NUMBER,
+      timedOut,
       fallbackMessage: error instanceof Error ? error.message : `${endpoint} a echoue.`,
     })
     console.warn('YouTube API call failed:', {
@@ -108,6 +116,8 @@ async function fetchYouTubeJson(url: URL, endpoint: 'search.list' | 'channels.li
       durationMs: Date.now() - startedAt,
     })
     throw classified
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -215,6 +225,12 @@ async function fetchAboutText(channelId: string): Promise<string> {
   } catch {
     return ''
   }
+}
+
+export type YouTubeCallMetrics = {
+  searchList: number
+  channelsList: number
+  aboutPages: number
 }
 
 function getProspectScore(channel: any): number {
@@ -360,10 +376,17 @@ export async function searchYouTubeChannels(
   lang: string,
   subsMin: number,
   subsMax: number,
-  maxResults: number
+  maxResults: number,
+  metrics?: YouTubeCallMetrics
 ) {
   const apiKey = process.env.YOUTUBE_API_KEY
-  if (!apiKey) throw new Error('YOUTUBE_API_KEY manquante')
+  if (!apiKey || !/^AIza[0-9A-Za-z_-]{20,}$/.test(apiKey.trim())) {
+    throw new YouTubeApiError(
+      'YOUTUBE_KEY_INVALID',
+      'Configuration YouTube invalide.',
+      { status: 503, endpoint: 'configuration' }
+    )
+  }
 
   const queries = buildQueries(niche, lang)
 
@@ -382,6 +405,7 @@ export async function searchYouTubeChannels(
       searchUrl.searchParams.set('key', apiKey)
       if (nextPageToken) searchUrl.searchParams.set('pageToken', nextPageToken)
 
+      if (metrics) metrics.searchList += 1
       const searchData = await fetchYouTubeJson(searchUrl, 'search.list')
 
       allItems.push(...(searchData.items || []))
@@ -408,6 +432,7 @@ export async function searchYouTubeChannels(
     channelsUrl.searchParams.set('fields', YOUTUBE_CHANNEL_FIELDS)
     channelsUrl.searchParams.set('key', apiKey)
 
+    if (metrics) metrics.channelsList += 1
     const channelsData = await fetchYouTubeJson(channelsUrl, 'channels.list', batchIds.length)
 
     allChannels.push(...(channelsData.items || []))
@@ -488,6 +513,7 @@ export async function searchYouTubeChannels(
 
       if (!needsEnrichment) return channel
 
+      if (metrics) metrics.aboutPages += 1
       const aboutText = await fetchAboutText(channel.id)
       if (!aboutText) return channel
 

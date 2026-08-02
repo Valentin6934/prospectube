@@ -12,6 +12,7 @@ import ProspectScoreExplanation from '@/components/ProspectScoreExplanation'
 import { YOUTUBE_NICHES } from '@/lib/niches'
 import { getPlanName, isFree, isPro as isProPlan } from '@/lib/plan'
 import { buildCampaignProspectPayload, getCampaignIdFromCreateResponse } from '@/lib/campaignClient'
+import { FREE_LIFETIME_SEARCH_LIMIT, PRO_DAILY_SEARCH_LIMIT } from '@/lib/searchPolicy'
 
 const NICHES = ['Gaming', 'Finance & Business', 'Tech & Programmation', 'Fitness & Santé', 'Lifestyle & Vlog', 'Cuisine', 'Musique', 'Éducation', 'Voyage', 'Beauté & Mode']
 const LANGS = ['Français', 'Anglais', 'Espagnol', 'Portugais', 'Allemand']
@@ -70,6 +71,8 @@ export default function Dashboard() {
   const [searched, setSearched] = useState(false)
   const [canEmail, setCanEmail] = useState(false)
   const [searchesLeft, setSearchesLeft] = useState<number | null>(null)
+  const [quotaMessage, setQuotaMessage] = useState('')
+  const [searchFeedback, setSearchFeedback] = useState<{ type: 'error' | 'info'; message: string } | null>(null)
   const [plan, setPlan] = useState('Gratuit')
   const [favoriteIds, setFavoriteIds] = useState<string[]>([])
   const [favoriteLoadingId, setFavoriteLoadingId] = useState<string | null>(null)
@@ -99,12 +102,22 @@ export default function Dashboard() {
     if (session?.user) {
       const sessionPlan = getPlanName((session.user as any).plan)
       setPlan(sessionPlan)
-      setSearchesLeft(isProPlan(sessionPlan) ? null : ((session.user as any).searchesRemaining ?? 5))
+      setSearchesLeft(null)
     }
   }, [status, session, router])
 
   useEffect(() => {
     if (status !== 'authenticated') return
+
+    fetch('/api/search')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!data) return
+        setPlan(getPlanName(data.plan))
+        setSearchesLeft(data.quota?.remaining ?? null)
+        setQuotaMessage(data.message || '')
+      })
+      .catch(() => undefined)
 
     fetch('/api/favorites')
       .then(res => res.ok ? res.json() : { favorites: [] })
@@ -168,6 +181,7 @@ export default function Dashboard() {
     setLoading(true)
     setSearched(false)
     setCacheNotice(false)
+    setSearchFeedback(null)
     setSelectedIds([])
 
     let res: Response
@@ -176,7 +190,7 @@ export default function Dashboard() {
       res = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ niche, lang, subsMin: String(subsMin), subsMax: String(subsMax) }),
+        body: JSON.stringify({ niche, lang, subsMin: String(subsMin), subsMax: String(subsMax), requestId: crypto.randomUUID() }),
       })
       data = await res.json().catch(() => ({}))
     } catch {
@@ -186,6 +200,12 @@ export default function Dashboard() {
     setLoading(false)
 
     if (!res.ok) {
+      const message = data.message || data.error || 'La recherche a echoue.'
+      setSearchFeedback({ type: res.status === 429 ? 'info' : 'error', message })
+      if (data.quota) {
+        setSearchesLeft(data.quota.remaining)
+        setQuotaMessage(message)
+      }
       if (data.upgrade) {
         setUpgradeOpen(true)
         return
@@ -194,12 +214,17 @@ export default function Dashboard() {
         setSearchPausedUntil(Date.now() + 5000)
         window.setTimeout(() => setSearchPausedUntil(0), 5000)
       }
-      return showToast(data.message || data.error || 'La recherche a echoue.', 'error')
+      return showToast(message, res.status === 429 ? 'info' : 'error')
     }
 
     setResults(data.results)
     setCanEmail(data.canGenerateEmail)
     setSearchesLeft(data.searchesRemaining)
+    setQuotaMessage(data.plan === 'Pro'
+      ? `${data.searchesRemaining} recherche(s) restante(s) aujourd'hui.`
+      : data.searchesRemaining > 0
+        ? '1 recherche gratuite disponible sur votre compte.'
+        : 'Votre recherche gratuite a ete utilisee. Passez au Plan Pro pour continuer.')
     setPlan(data.plan)
     setSearched(true)
 
@@ -455,7 +480,9 @@ export default function Dashboard() {
           </div>
           {searchesLeft !== null && (
             <div style={{ fontSize: '0.8rem', color: '#A89FCC' }}>
-              {searchesLeft} recherche{searchesLeft !== 1 ? 's' : ''} restante{searchesLeft !== 1 ? 's' : ''}
+              {plan === 'Pro'
+                ? `${searchesLeft}/${PRO_DAILY_SEARCH_LIMIT} aujourd'hui`
+                : `${searchesLeft}/${FREE_LIFETIME_SEARCH_LIMIT} disponible`}
             </div>
           )}
           <button onClick={() => signOut({ callbackUrl: '/' })} style={{ background: 'none', border: '1px solid rgba(83,58,183,0.3)', color: '#A89FCC', padding: '0.4rem 1rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
@@ -489,6 +516,11 @@ export default function Dashboard() {
         )}
 
         <div id="search-form" className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem', scrollMarginTop: '90px' }}>
+          {quotaMessage && (
+            <div style={{ marginBottom: '1rem', padding: '0.7rem 0.85rem', borderRadius: '9px', background: 'rgba(83,58,183,0.12)', border: '1px solid rgba(83,58,183,0.3)', color: '#B9B0D4', fontSize: '0.83rem' }}>
+              {quotaMessage}
+            </div>
+          )}
           <p style={{ color: '#8F86AA', fontSize: '0.86rem', lineHeight: 1.55, margin: '0 0 1.25rem' }}>
             Renseignez vos critères principaux. L’aperçu gratuit affiche une sélection honnête et variée quand les scores disponibles le permettent.
           </p>
@@ -535,6 +567,12 @@ export default function Dashboard() {
         {loading && (
           <div role="status" aria-label="Recherche des chaînes en cours">
             {[0, 1, 2].map(item => <ProspectSkeleton key={item} />)}
+          </div>
+        )}
+
+        {searchFeedback && !loading && (
+          <div role="alert" style={{ marginBottom: '1rem', padding: '0.8rem 1rem', borderRadius: '10px', background: searchFeedback.type === 'error' ? 'rgba(239,68,68,0.10)' : 'rgba(234,179,8,0.10)', border: `1px solid ${searchFeedback.type === 'error' ? 'rgba(239,68,68,0.28)' : 'rgba(234,179,8,0.28)'}`, color: searchFeedback.type === 'error' ? '#fca5a5' : '#fde68a', fontSize: '0.85rem' }}>
+            {searchFeedback.message}
           </div>
         )}
 
