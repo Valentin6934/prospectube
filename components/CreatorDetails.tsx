@@ -176,12 +176,14 @@ export default function CreatorDetails({
               <div style={{ display: 'grid', gap: '0.3rem', color: '#C4BCDF', fontSize: '0.85rem' }}>{weaknesses.map(item => <div key={item}>• {item}</div>)}</div>
             </div>
             {channel.scoreBreakdown && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: '.45rem' }}>
-              {Object.entries(channel.scoreBreakdown).map(([key, value]) => <StatCard key={key} label={({ targeting: 'Pertinence /25', activity: 'Activité /20', performance: 'Performances /20', recentRatio: 'Ratio récent /15', engagement: 'Engagement /10', commercial: 'Potentiel /10' } as Record<string, string>)[key] || key} value={String(value)} />)}
+              {Object.entries(channel.scoreBreakdown).map(([key, value]) => <StatCard key={key} label={({ targeting: 'Pertinence /25', activity: 'Activité /20', performance: 'Performances /15', editingNeed: 'Besoin montage estimé /20', engagement: 'Engagement /10', commercial: 'Potentiel /10' } as Record<string, string>)[key] || key} value={String(value)} />)}
             </div>}
             <StatCard label="Conseil de prospection" value={getProspectingAdvice(channel, score)} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
               <StatCard label="Difficulté estimée" value={getDifficulty(score, hasEmail)} />
               <StatCard label="Confiance des données" value={channel.languageConfidence || 'Faible'} />
+              <StatCard label="Potentiel montage estimé" value={channel.editingPotentialLabel || 'Données limitées'} />
+              <StatCard label="Confiance du score" value={channel.scoreConfidence || 'Faible'} />
             </div>
           </div>
         </section>

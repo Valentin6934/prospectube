@@ -40,6 +40,13 @@ export type ProspectChannel = {
   publishingFrequency?: string | null
   contactability?: string | null
   contentRelevance?: number | null
+  subnicheMatch?: number | null
+  subnicheMatchLabel?: string | null
+  matchMode?: string | null
+  matchNotice?: string | null
+  editingPotential?: number | null
+  editingPotentialLabel?: string | null
+  scoreConfidence?: string | null
   detectedLanguage?: string | null
   languageConfidence?: string | null
   lastPublishedAt?: string | null

@@ -31,6 +31,16 @@ export type SearchTarget = {
   language: string
 }
 
+const SUBNICHE_ASSOCIATIONS: Record<string, string[]> = {
+  fortnite: ['fortnite', 'gameplay fortnite', 'battle royale', 'chapitre fortnite'],
+  'mode homme': ['mode homme', 'style masculin', 'conseils homme', 'tenue homme', 'look homme'],
+  streetwear: ['streetwear', 'mode urbaine', 'sneakers', 'look streetwear'],
+  minecraft: ['minecraft', 'survie minecraft', 'construction minecraft'],
+  roblox: ['roblox', 'gameplay roblox'],
+  'investissement locatif': ['investissement locatif', 'rentabilite locative', 'immobilier locatif'],
+  musculation: ['musculation', 'entrainement musculation', 'prise de masse'],
+}
+
 export function normalizeTargetText(value: unknown): string {
   return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
 }
@@ -50,4 +60,26 @@ export function validateSearchTarget(input: unknown): SearchTarget | null {
 
 export function buildTargetQuery(target: SearchTarget): string {
   return [target.niche === 'Autre' ? '' : target.niche, ...target.subNiches, target.customKeyword].filter(Boolean).join(' ')
+}
+
+export function getSubnicheVocabulary(value: unknown): string[] {
+  const normalized = normalizeTargetText(value)
+  if (!normalized) return []
+  return SUBNICHE_ASSOCIATIONS[normalized] || [normalized]
+}
+
+export function getNicheVocabulary(value: unknown): string[] {
+  const normalized = normalizeTargetText(value)
+  const configured = Object.entries(NICHE_CONFIG).find(([name]) => normalizeTargetText(name) === normalized)?.[1] || []
+  return Array.from(new Set([normalized, ...configured.flatMap(getSubnicheVocabulary)]))
+}
+
+export function getPrimarySearchFocus(target: SearchTarget): string {
+  return target.customKeyword || target.subNiches[0] || target.niche
+}
+
+export function getSearchFocusVariant(target: SearchTarget): string | null {
+  const focus = getPrimarySearchFocus(target)
+  const terms = getSubnicheVocabulary(focus)
+  return terms.find(term => normalizeTargetText(term) !== normalizeTargetText(focus)) || null
 }

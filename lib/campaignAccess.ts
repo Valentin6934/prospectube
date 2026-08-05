@@ -3,6 +3,7 @@ import { Prisma, PrismaClient } from '@prisma/client'
 export const FREE_LIFETIME_CAMPAIGN_LIMIT = 1
 export const FREE_CAMPAIGN_PROSPECT_LIMIT = 5
 export const FREE_CAMPAIGN_MARKER_PERIOD = 'free-campaign'
+export const FREE_CAMPAIGN_COMPLETED_PERIOD = 'free-campaign-completed'
 
 type DbClient = PrismaClient | Prisma.TransactionClient
 
@@ -24,6 +25,22 @@ export async function markFreeCampaignUsed(db: DbClient, userId: string, campaig
     status: 'succeeded',
     completedAt: new Date(),
   } })
+}
+
+export async function markFreeCampaignCompleted(db: DbClient, userId: string, campaignId: string) {
+  await db.searchUsage.upsert({
+    where: { requestId: `free-campaign-completed:${userId}` },
+    update: { cacheKey: campaignId, status: 'succeeded', completedAt: new Date() },
+    create: {
+      userId,
+      requestId: `free-campaign-completed:${userId}`,
+      cacheKey: campaignId,
+      plan: 'Gratuit',
+      periodKey: FREE_CAMPAIGN_COMPLETED_PERIOD,
+      status: 'succeeded',
+      completedAt: new Date(),
+    },
+  })
 }
 
 export async function canUseFreeCampaign(db: DbClient, userId: string, campaignId: string): Promise<boolean> {

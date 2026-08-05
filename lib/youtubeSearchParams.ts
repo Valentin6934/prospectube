@@ -56,19 +56,22 @@ function normalizeQueryComparison(value: string): string {
     .replace(/\s+/g, ' ')
 }
 
-export function buildYouTubeQueryVariants(niche: unknown, language: unknown): string[] {
+export function buildYouTubeQueryVariants(niche: unknown, language: unknown, alternative?: unknown): string[] {
   const base = String(niche || '').trim().replace(/\s+/g, ' ')
   if (!base) return []
 
-  const variants = [base]
+  const variants: string[] = []
   const languageCode = normalizeYouTubeLanguage(language)
   const suffix = languageCode ? LANGUAGE_QUERY_SUFFIXES[languageCode] : null
 
-  if (suffix) {
-    const normalizedBase = normalizeQueryComparison(base)
-    const normalizedSuffix = normalizeQueryComparison(suffix)
-    if (!normalizedBase.includes(normalizedSuffix)) variants.push(`${base} ${suffix}`)
+  const withLanguage = (value: string) => {
+    if (!suffix || normalizeQueryComparison(value).includes(normalizeQueryComparison(suffix))) return value
+    return `${value} ${suffix}`
   }
+  variants.push(withLanguage(base))
+  const alternate = String(alternative || '').trim().replace(/\s+/g, ' ')
+  if (alternate) variants.push(withLanguage(alternate))
+  else if (suffix && !normalizeQueryComparison(base).includes(normalizeQueryComparison(suffix))) variants.push(`${base} video ${suffix}`)
 
   return Array.from(new Set(variants.map(value => value.trim()).filter(Boolean))).slice(0, MAX_YOUTUBE_SEARCH_QUERIES)
 }

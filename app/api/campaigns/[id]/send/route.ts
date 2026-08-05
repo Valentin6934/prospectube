@@ -10,7 +10,7 @@ import {
   SEND_MODE,
 } from '@/lib/gmail'
 import { isPro, requireProResponse } from '@/lib/plan'
-import { FREE_CAMPAIGN_PROSPECT_LIMIT, canUseFreeCampaign, freeCampaignLimitResponse } from '@/lib/campaignAccess'
+import { FREE_CAMPAIGN_PROSPECT_LIMIT, canUseFreeCampaign, freeCampaignLimitResponse, markFreeCampaignCompleted } from '@/lib/campaignAccess'
 import {
   CAMPAIGN_SEND_LIMIT,
   getCampaignSendSummary,
@@ -446,6 +446,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const summary = getCampaignSendSummary(results)
+  if (!isPro(user.plan) && results.some(result => result.success)) {
+    await markFreeCampaignCompleted(prisma, user.id, campaign.id).catch(error => {
+      console.error('Free campaign completion marker failed:', {
+        campaignId: campaign.id,
+        error: error instanceof Error ? error.message : 'Unknown persistence error',
+      })
+    })
+  }
 
   return NextResponse.json({
     results,

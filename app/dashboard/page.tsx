@@ -74,6 +74,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false)
   const [searchPausedUntil, setSearchPausedUntil] = useState(0)
   const [results, setResults] = useState<any[]>([])
+  const [resultMeta, setResultMeta] = useState<{ analyzed: number; matched: number; displayed: number; limit: number; nearby?: boolean } | null>(null)
+  const [visibleResults, setVisibleResults] = useState(10)
   const [searched, setSearched] = useState(false)
   const [canEmail, setCanEmail] = useState(false)
   const [searchesLeft, setSearchesLeft] = useState<number | null>(null)
@@ -194,6 +196,8 @@ export default function Dashboard() {
     setCacheNotice(false)
     setSearchFeedback(null)
     setSelectedIds([])
+    setResultMeta(null)
+    setVisibleResults(10)
 
     let res: Response
     let data: any
@@ -201,7 +205,7 @@ export default function Dashboard() {
       res = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ niche, lang, subNiches, customKeyword, emailOnly, activeOnly, minMedianViews, minContentRelevance: 20, subsMin: String(subsMin), subsMax: String(subsMax), requestId: crypto.randomUUID() }),
+        body: JSON.stringify({ niche, lang, subNiches, customKeyword, emailOnly, activeOnly, minMedianViews, minContentRelevance: 10, subsMin: String(subsMin), subsMax: String(subsMax), requestId: crypto.randomUUID() }),
       })
       data = await res.json().catch(() => ({}))
     } catch {
@@ -229,6 +233,7 @@ export default function Dashboard() {
     }
 
     setResults(data.results)
+    setResultMeta(data.resultMeta || null)
     setCanEmail(data.canGenerateEmail)
     setSearchesLeft(data.searchesRemaining)
     setQuotaMessage(data.plan === 'Pro'
@@ -302,11 +307,6 @@ export default function Dashboard() {
   }
 
   const addToCampaign = (channel: any) => {
-    if (!isPro) {
-      setUpgradeOpen(true)
-      return
-    }
-
     const channelId = channel?.channelId || channel?.id
     if (!channelId) return showToast('Cette chaîne ne peut pas être ajoutée.', 'error')
 
@@ -575,12 +575,13 @@ export default function Dashboard() {
             <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Mot-clé personnalisé</label>
             <input value={customKeyword} maxLength={80} onChange={event => setCustomKeyword(event.target.value)} placeholder="Optionnel" />
           </div>
-          <button type="button" onClick={() => setAdvancedOpen(value => !value)} style={{ background: 'none', border: 0, color: '#a78bfa', cursor: 'pointer', marginBottom: '.8rem' }}>{advancedOpen ? 'Masquer les filtres avancés' : 'Afficher les filtres avancés'}</button>
+          <button type="button" onClick={() => setAdvancedOpen(value => !value)} style={{ background: 'none', border: 0, color: '#a78bfa', cursor: 'pointer', marginBottom: '.8rem' }}>{advancedOpen ? 'Masquer les filtres avancés' : `Afficher les filtres avancés${Number(emailOnly) + Number(activeOnly) + Number(minMedianViews > 0) ? ` (${Number(emailOnly) + Number(activeOnly) + Number(minMedianViews > 0)})` : ''}`}</button>
           {advancedOpen && (
             <div style={{ display: 'grid', gap: '.7rem', padding: '.8rem', marginBottom: '1rem', border: '1px solid rgba(139,92,246,.2)', borderRadius: '10px', color: '#C4BCDF', fontSize: '.82rem' }}>
               <label><input type="checkbox" checked={activeOnly} onChange={event => setActiveOnly(event.target.checked)} /> Chaînes actives uniquement</label>
               <label><input type="checkbox" checked={emailOnly} onChange={event => setEmailOnly(event.target.checked)} /> Email public requis</label>
               <label>Vues médianes minimales <input type="number" min={0} max={10000000} value={minMedianViews} onChange={event => setMinMedianViews(Number(event.target.value))} /></label>
+              <button type="button" className="btn-secondary" onClick={() => { setEmailOnly(false); setActiveOnly(false); setMinMedianViews(0) }}>Réinitialiser les filtres</button>
             </div>
           )}
 
@@ -626,7 +627,7 @@ export default function Dashboard() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
               <h3 className="font-display" style={{ fontWeight: 600, fontSize: '1rem' }}>
-                {results.length} chaîne{results.length !== 1 ? 's' : ''} trouvée{results.length !== 1 ? 's' : ''}
+                {resultMeta ? `${resultMeta.analyzed} analysées · ${resultMeta.matched} correspondances · ${Math.min(visibleResults, results.length)} affichées` : `${results.length} chaîne${results.length !== 1 ? 's' : ''} trouvée${results.length !== 1 ? 's' : ''}`}
               </h3>
               <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 <ProspectScoreExplanation />
@@ -646,7 +647,9 @@ export default function Dashboard() {
                 actionHref="#search-form"
               />
             ) : (
-              results.map(ch => (
+              <>
+              {resultMeta?.nearby && <div style={{ marginBottom: '0.8rem', color: '#fde68a', fontSize: '0.82rem' }}>La sous-catégorie exacte a peu de résultats. Les profils proches restent dans la niche, la langue et la fourchette choisies.</div>}
+              {results.slice(0, visibleResults).map(ch => (
                 <div key={ch.id} className="card prospect-card" style={{ position: 'relative', padding: '1rem', marginBottom: '0.85rem', display: 'block', border: selectedIds.includes(ch.id) ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
                   <input
                     type="checkbox"
@@ -670,6 +673,8 @@ export default function Dashboard() {
                       ch.recentMedianViews ? `👁 ${formatCompactNumber(ch.recentMedianViews)} vues médianes` : 'Données limitées',
                       ch.publishingFrequency || null,
                       ch.contentRelevance !== undefined ? `Pertinence ${ch.contentRelevance}%` : null,
+                      ch.subnicheMatchLabel ? `Sous-niche ${ch.subnicheMatchLabel}` : null,
+                      ch.editingPotentialLabel ? `Montage estimé ${ch.editingPotentialLabel}` : null,
                       ch.contactability ? `Contactabilité ${ch.contactability}` : null,
                     ].filter(Boolean)
 
@@ -908,7 +913,10 @@ export default function Dashboard() {
                     </button>
                   </div>
                 </div>
-              ))
+              ))}
+              {visibleResults < results.length && <button className="btn-secondary" onClick={() => setVisibleResults(value => value + 10)} style={{ width: '100%', marginTop: '0.4rem' }}>Afficher plus</button>}
+              {resultMeta && resultMeta.matched > resultMeta.displayed && <div style={{ marginTop: '0.65rem', textAlign: 'center', color: '#6B5F96', fontSize: '0.78rem' }}>{resultMeta.displayed} profils affichés sur {resultMeta.matched} correspondances, selon la limite de votre plan.</div>}
+              </>
             )}
           </div>
         )}

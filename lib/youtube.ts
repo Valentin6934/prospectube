@@ -2,7 +2,7 @@ import { selectDiverseProspectPreview } from '@/lib/freePreview'
 import { PROSPECT_SCORE_THRESHOLDS } from '@/lib/prospectScoreInfo'
 import { SEARCH_CACHE_VERSION } from '@/lib/searchPolicy'
 import { calculateProspectScore, getContactability, type RecentVideo } from '@/lib/prospectScoring'
-import { buildTargetQuery, type SearchTarget } from '@/lib/searchTargeting'
+import { getPrimarySearchFocus, getSearchFocusVariant, type SearchTarget } from '@/lib/searchTargeting'
 import { YouTubeApiError, classifyYouTubeError } from '@/lib/youtubeQuota'
 import { filterYouTubeCatalog, mergeCatalogChannels, YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
 import {
@@ -18,7 +18,7 @@ import {
 const YOUTUBE_REQUEST_TIMEOUT_MS = 12_000
 const YOUTUBE_SEARCH_FIELDS = 'items(id/videoId,snippet(channelId,title,description,publishedAt,thumbnails/default/url)),nextPageToken'
 const YOUTUBE_CHANNEL_FIELDS = 'items(id,snippet(title,description,publishedAt,thumbnails/default/url),statistics(hiddenSubscriberCount,subscriberCount,viewCount,videoCount),brandingSettings/channel/description)'
-const YOUTUBE_VIDEO_FIELDS = 'items(id,snippet(channelId,title,description,publishedAt,categoryId,defaultLanguage),statistics(viewCount,likeCount,commentCount))'
+const YOUTUBE_VIDEO_FIELDS = 'items(id,snippet(channelId,title,description,publishedAt,categoryId,defaultLanguage),statistics(viewCount,likeCount,commentCount),contentDetails/duration)'
 
 async function fetchYouTubeJson(url: URL, endpoint: 'search.list' | 'channels.list' | 'videos.list', idCount = 0) {
   const startedAt = Date.now()
@@ -191,7 +191,11 @@ export async function discoverYouTubeCatalog(
     )
   }
 
-  const queries = buildYouTubeQueryVariants(target ? buildTargetQuery(target) : niche, lang).slice(0, MAX_YOUTUBE_SEARCH_QUERIES)
+  const queries = buildYouTubeQueryVariants(
+    target ? getPrimarySearchFocus(target) : niche,
+    lang,
+    target ? getSearchFocusVariant(target) : null
+  ).slice(0, MAX_YOUTUBE_SEARCH_QUERIES)
   const knownChannelIds = new Set<string>((existingCatalog?.channels || []).map(channel => channel.id).filter(Boolean))
   const channelsById = new Map<string, any>()
   const videoIds = new Set<string>()
@@ -279,7 +283,7 @@ export async function discoverYouTubeCatalog(
   for (let i = 0; i < allVideoIds.length; i += 50) {
     const batchIds = allVideoIds.slice(i, i + 50)
     const videosUrl = new URL('https://www.googleapis.com/youtube/v3/videos')
-    videosUrl.searchParams.set('part', 'snippet,statistics')
+    videosUrl.searchParams.set('part', 'snippet,statistics,contentDetails')
     videosUrl.searchParams.set('id', batchIds.join(','))
     videosUrl.searchParams.set('fields', YOUTUBE_VIDEO_FIELDS)
     videosUrl.searchParams.set('key', apiKey)
@@ -290,7 +294,12 @@ export async function discoverYouTubeCatalog(
       if (!channelId) continue
       const sample = videosByChannel.get(channelId) || []
       const existingIndex = sample.findIndex(item => item.title === video.snippet?.title)
-      const normalized = { ...video.snippet, viewCount: Number(video.statistics?.viewCount || 0), likeCount: video.statistics?.likeCount === undefined ? undefined : Number(video.statistics.likeCount), commentCount: video.statistics?.commentCount === undefined ? undefined : Number(video.statistics.commentCount) }
+      const duration = String(video.contentDetails?.duration || '')
+      const durationMatch = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
+      const durationSeconds = durationMatch
+        ? Number(durationMatch[1] || 0) * 3600 + Number(durationMatch[2] || 0) * 60 + Number(durationMatch[3] || 0)
+        : 0
+      const normalized = { ...video.snippet, viewCount: Number(video.statistics?.viewCount || 0), likeCount: video.statistics?.likeCount === undefined ? undefined : Number(video.statistics.likeCount), commentCount: video.statistics?.commentCount === undefined ? undefined : Number(video.statistics.commentCount), durationSeconds }
       if (existingIndex >= 0) sample[existingIndex] = normalized
       else sample.push(normalized)
       videosByChannel.set(channelId, sample)
@@ -363,6 +372,8 @@ export async function discoverYouTubeCatalog(
         scoreReason: `${scoreData.relevance.relevantCount}/${scoreData.relevance.sampleSize} videos correspondent au ciblage • ${scoreData.frequency}`,
         scoreBreakdown: scoreData.scoreBreakdown,
         contentRelevance: scoreData.relevance.score,
+        subnicheMatch: scoreData.relevance.subnicheScore,
+        subnicheMatchLabel: scoreData.relevance.subnicheLabel,
         detectedLanguage: scoreData.language.language,
         languageConfidence: scoreData.language.confidence,
         recentMedianViews: scoreData.medianViews,
@@ -371,9 +382,12 @@ export async function discoverYouTubeCatalog(
         publishingFrequency: scoreData.frequency,
         lastPublishedAt: scoreData.lastPublishedAt,
         contactability: contactability.level,
+        editingPotential: scoreData.editingPotential.value,
+        editingPotentialLabel: scoreData.editingPotential.label,
+        scoreConfidence: scoreData.confidence,
       }
     })
-    .filter((ch: any) => ch.contentRelevance >= 20 && !(ch.languageConfidence !== 'Faible' && ch.detectedLanguage && ch.detectedLanguage !== ({ Français: 'fr', Anglais: 'en', Espagnol: 'es', Allemand: 'de', Italien: 'it', Portugais: 'pt' } as Record<string, string>)[lang]))
+    .filter((ch: any) => ch.contentRelevance >= 10 && !(ch.languageConfidence === 'Élevée' && ch.detectedLanguage && ch.detectedLanguage !== ({ Français: 'fr', Anglais: 'en', Espagnol: 'es', Allemand: 'de', Italien: 'it', Portugais: 'pt' } as Record<string, string>)[lang]))
     .sort((a: any, b: any) => b.score - a.score)
     .slice(0, 150)
 

@@ -108,8 +108,8 @@ const {
 } = require('../lib/searchPolicy.ts')
 const { filterYouTubeCatalog, mergeCatalogChannels } = require('../lib/youtubeCatalog.ts')
 const { getReleasedSearchQuotaSnapshot, getSearchQuotaSnapshot, releaseSearchQuota, reserveSearchQuota } = require('../lib/searchQuota.ts')
-const { FREE_LIFETIME_CAMPAIGN_LIMIT, FREE_CAMPAIGN_PROSPECT_LIMIT, FREE_CAMPAIGN_MARKER_PERIOD } = require('../lib/campaignAccess.ts')
-const { NICHE_CONFIG, validateSearchTarget, buildTargetQuery } = require('../lib/searchTargeting.ts')
+const { FREE_LIFETIME_CAMPAIGN_LIMIT, FREE_CAMPAIGN_PROSPECT_LIMIT, FREE_CAMPAIGN_MARKER_PERIOD, FREE_CAMPAIGN_COMPLETED_PERIOD } = require('../lib/campaignAccess.ts')
+const { NICHE_CONFIG, validateSearchTarget, buildTargetQuery, getSubnicheVocabulary, getPrimarySearchFocus, getSearchFocusVariant } = require('../lib/searchTargeting.ts')
 const { classifyRegistrationError, getSafePrismaMeta, normalizeAccountEmail, validateRegistrationInput } = require('../lib/registration.ts')
 const { calculateMedian, calculateTrimmedMean, scoreVideoTopicMatch, scoreChannelContentRelevance, detectDominantContentLanguage, calculateProspectScore, getContactability } = require('../lib/prospectScoring.ts')
 const {
@@ -1154,10 +1154,18 @@ test('youtube language labels normalize to ISO 639-1 codes', () => {
 })
 
 test('youtube query variants are deterministic, unique and limited to two', () => {
-  assert.deepEqual(buildYouTubeQueryVariants(' Gaming ', 'Français'), ['Gaming', 'Gaming français'])
+  assert.deepEqual(buildYouTubeQueryVariants(' Gaming ', 'Français'), ['Gaming français', 'Gaming video français'])
   assert.deepEqual(buildYouTubeQueryVariants('Gaming français', 'fr'), ['Gaming français'])
   assert.deepEqual(buildYouTubeQueryVariants('Immobilier', 'Klingon'), ['Immobilier'])
   assert.equal(buildYouTubeQueryVariants('Gaming', 'Français').length <= MAX_YOUTUBE_SEARCH_QUERIES, true)
+})
+
+test('subniche discovery produces useful deterministic French queries', () => {
+  const fortnite = { niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' }
+  assert.equal(getPrimarySearchFocus(fortnite), 'Fortnite')
+  assert.equal(getSearchFocusVariant(fortnite), 'gameplay fortnite')
+  assert.deepEqual(buildYouTubeQueryVariants(getPrimarySearchFocus(fortnite), fortnite.language, getSearchFocusVariant(fortnite)), ['Fortnite français', 'gameplay fortnite français'])
+  assert.ok(getSubnicheVocabulary('Mode homme').includes('style masculin'))
 })
 
 test('adaptive YouTube search stops at ten results and permits one fallback below ten', () => {
@@ -1276,7 +1284,7 @@ test('discovery catalog keys are shared across subscriber ranges and remain vers
   assert.equal(first, second)
   assert.equal(first, different)
   assert.match(first, new RegExp(`^${SEARCH_CACHE_VERSION}:`))
-  assert.equal(SEARCH_CACHE_VERSION, 'youtube-search-v6')
+  assert.equal(SEARCH_CACHE_VERSION, 'youtube-search-v7')
   assert.equal(normalizeSearchText('  Création   vidéo  '), 'creation-video')
 })
 
@@ -1637,12 +1645,12 @@ test('dominant language rejects confident Portuguese content for a French target
   assert.equal(language.confidence, 'Élevée')
 })
 
-test('catalog V6 varies by discovery target but not by local subscriber bounds', () => {
+test('catalog V7 is shared by subniches and local subscriber bounds', () => {
   const base = buildSearchCacheKey({ niche: 'Gaming', lang: 'Français', subNiches: ['Minecraft'], customKeyword: '' })
   const reordered = buildSearchCacheKey({ niche: 'Gaming', lang: 'Français', subNiches: ['Minecraft'], customKeyword: '' })
   const otherSubNiche = buildSearchCacheKey({ niche: 'Gaming', lang: 'Français', subNiches: ['Speedrun'], customKeyword: '' })
   assert.equal(base, reordered)
-  assert.notEqual(base, otherSubNiche)
+  assert.equal(base, otherSubNiche)
   assert.doesNotMatch(base, /10000|50000/)
 })
 
@@ -1658,13 +1666,26 @@ test('free campaign discovery is limited and durable without enabling campaign A
   assert.equal(FREE_LIFETIME_CAMPAIGN_LIMIT, 1)
   assert.equal(FREE_CAMPAIGN_PROSPECT_LIMIT, 5)
   assert.equal(FREE_CAMPAIGN_MARKER_PERIOD, 'free-campaign')
+  assert.equal(FREE_CAMPAIGN_COMPLETED_PERIOD, 'free-campaign-completed')
   const campaignRoute = fs.readFileSync('app/api/campaigns/route.ts', 'utf8')
   const prospectRoute = fs.readFileSync('app/api/campaigns/[id]/prospects/route.ts', 'utf8')
   const generateRoute = fs.readFileSync('app/api/campaigns/[id]/generate/route.ts', 'utf8')
+  const sendRoute = fs.readFileSync('app/api/campaigns/[id]/send/route.ts', 'utf8')
+  const dashboard = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
   assert.match(campaignRoute, /hasUsedFreeCampaign/)
   assert.match(campaignRoute, /markFreeCampaignUsed/)
   assert.match(prospectRoute, /FREE_CAMPAIGN_PROSPECT_LIMIT/)
   assert.match(generateRoute, /requireProResponse/)
+  assert.match(sendRoute, /markFreeCampaignCompleted/)
+  assert.doesNotMatch(dashboard.match(/const addToCampaign[\s\S]*?const toggleSelected/)?.[0] || '', /setUpgradeOpen/)
+})
+
+test('subniche filtering relaxes only topic qualification when strict matches are empty', () => {
+  const target = { niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' }
+  const nearby = filterYouTubeCatalog({ channels: [{ id: 'near', subsNum: 20000, score: 40, recentVideos: [{ title: 'Actualite gaming francaise' }] }] }, 10000, 100000, 20, {}, target)
+  assert.equal(nearby.length, 1)
+  assert.equal(nearby[0].matchMode, 'nearby')
+  assert.deepEqual(filterYouTubeCatalog({ channels: [{ id: 'outside', subsNum: 200000, recentVideos: [{ title: 'Fortnite francais' }] }] }, 10000, 100000, 20, {}, target), [])
 })
 
 test('registration validates and normalizes valid accounts for immediate credentials login', () => {

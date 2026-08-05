@@ -1,6 +1,6 @@
-import { normalizeTargetText, type SearchTarget } from './searchTargeting'
+import { getNicheVocabulary, getSubnicheVocabulary, normalizeTargetText, type SearchTarget } from './searchTargeting'
 
-export type RecentVideo = { title?: string; description?: string; publishedAt?: string; viewCount?: number; likeCount?: number; commentCount?: number; categoryId?: string; defaultLanguage?: string }
+export type RecentVideo = { title?: string; description?: string; publishedAt?: string; viewCount?: number; likeCount?: number; commentCount?: number; categoryId?: string; defaultLanguage?: string; durationSeconds?: number }
 
 const STOP_WORDS: Record<string, string[]> = {
   fr: [' le ', ' la ', ' les ', ' des ', ' une ', ' avec ', ' pour ', ' dans ', ' sur ', ' est ', ' vous '],
@@ -27,8 +27,15 @@ export function calculateTrimmedMean(values: number[], trimRatio = 0.1): number 
 }
 
 export function buildTopicVocabulary(target: SearchTarget): string[] {
-  return Array.from(new Set([target.niche, ...target.subNiches, target.customKeyword]
+  return Array.from(new Set([...getNicheVocabulary(target.niche), target.customKeyword]
     .flatMap(value => normalizeTargetText(value).split(' ')).filter(value => value.length >= 3)))
+}
+
+export function buildSubnicheVocabulary(target: SearchTarget): string[] {
+  return Array.from(new Set([...target.subNiches, target.customKeyword]
+    .flatMap(getSubnicheVocabulary)
+    .flatMap(value => [normalizeTargetText(value), ...normalizeTargetText(value).split(' ')])
+    .filter(value => value.length >= 3)))
 }
 
 export function scoreVideoTopicMatch(video: RecentVideo, vocabulary: string[]): number {
@@ -44,8 +51,8 @@ export function detectDominantContentLanguage(videos: RecentVideo[]) {
   for (const video of videos) {
     const declared = String(video.defaultLanguage || '').slice(0, 2).toLowerCase()
     if (declared in scores) scores[declared] += 5
-    const text = ` ${normalizeTargetText(`${video.title || ''} ${video.description || ''}`)} `
-    for (const [code, words] of Object.entries(STOP_WORDS)) scores[code] += words.filter(word => text.includes(word.trim())).length
+    const tokens = new Set(normalizeTargetText(`${video.title || ''} ${video.description || ''}`).split(' ').filter(Boolean))
+    for (const [code, words] of Object.entries(STOP_WORDS)) scores[code] += words.filter(word => tokens.has(word.trim())).length
   }
   const ordered = Object.entries(scores).sort((a, b) => b[1] - a[1])
   const [language, score] = ordered[0]
@@ -57,8 +64,25 @@ export function scoreChannelContentRelevance(videos: RecentVideo[], target: Sear
   const vocabulary = buildTopicVocabulary(target)
   const matches = videos.map(video => scoreVideoTopicMatch(video, vocabulary))
   const relevantCount = matches.filter(score => score >= 25).length
-  const score = videos.length ? Math.round((relevantCount / videos.length) * 70 + calculateMedian(matches) * 0.3) : 0
-  return { score: Math.min(100, score), relevantCount, sampleSize: videos.length }
+  const score = videos.length ? Math.round((relevantCount / videos.length) * 75 + calculateMedian(matches) * 0.25) : 0
+  const subVocabulary = buildSubnicheVocabulary(target)
+  const subMatches = videos.map(video => scoreVideoTopicMatch(video, subVocabulary))
+  const subnicheScore = subVocabulary.length && videos.length ? Math.round(calculateMedian(subMatches)) : 100
+  const subnicheLabel = subnicheScore >= 60 ? 'Forte' : subnicheScore >= 25 ? 'Moyenne' : subnicheScore > 0 ? 'Faible' : 'Non confirmee'
+  return { score: Math.min(100, score), relevantCount, sampleSize: videos.length, subnicheScore, subnicheLabel }
+}
+
+export function calculateEditingPotential(videos: RecentVideo[], medianViews: number, frequency: string) {
+  const longForm = videos.filter(video => Number(video.durationSeconds || 0) >= 480).length
+  const editingSignals = videos.filter(video => /gameplay|best of|vlog|interview|podcast|tutoriel|test|review|reaction|documentaire/i.test(`${video.title || ''} ${video.description || ''}`)).length
+  const points = Math.min(20,
+    (videos.length >= 8 ? 5 : videos.length >= 4 ? 3 : 1) +
+    (/tres active|très active/i.test(frequency) ? 5 : frequency === 'Active' ? 4 : 1) +
+    (medianViews >= 10000 ? 5 : medianViews >= 3000 ? 3 : medianViews > 0 ? 1 : 0) +
+    (longForm >= 3 || editingSignals >= 3 ? 5 : longForm || editingSignals ? 3 : 0)
+  )
+  const value = points * 5
+  return { points, value, label: value >= 75 ? 'Eleve' : value >= 45 ? 'Moyen' : 'Faible', longFormCount: longForm }
 }
 
 export function calculateRecentViewSubscriberRatio(videos: RecentVideo[], subscribers: number): number {
@@ -95,14 +119,15 @@ export function calculateProspectScore(input: { videos: RecentVideo[]; target: S
   const ageDays = latest ? (Date.now() - latest) / 86400000 : Infinity
   const activity = Math.min(20, (ageDays <= 30 ? 10 : ageDays <= 90 ? 6 : 1) + (frequency === 'Très active' ? 10 : frequency === 'Active' ? 7 : frequency === 'Occasionnelle' ? 3 : 0))
   const medianViews = calculateMedian(input.videos.map(video => Number(video.viewCount || 0)))
-  const performance = Math.min(20, medianViews >= 100000 ? 20 : medianViews >= 30000 ? 16 : medianViews >= 10000 ? 12 : medianViews >= 3000 ? 7 : medianViews > 0 ? 3 : 0)
+  const performance = Math.min(15, medianViews >= 100000 ? 15 : medianViews >= 30000 ? 12 : medianViews >= 10000 ? 9 : medianViews >= 3000 ? 5 : medianViews > 0 ? 2 : 0)
   const ratio = calculateRecentViewSubscriberRatio(input.videos, input.subscribers)
-  const ratioPoints = Math.min(15, ratio >= 1 ? 15 : ratio >= 0.5 ? 12 : ratio >= 0.2 ? 9 : ratio >= 0.08 ? 5 : ratio > 0 ? 2 : 0)
   const engagementRate = calculateRecentEngagementRate(input.videos)
   const engagement = engagementRate === null ? 0 : Math.min(10, engagementRate >= 6 ? 10 : engagementRate >= 3 ? 8 : engagementRate >= 1.5 ? 5 : 2)
   const commercial = Math.min(10, (input.subscribers >= 10000 && input.subscribers <= 500000 ? 6 : input.subscribers <= 1000000 ? 3 : 1) + (activity >= 13 ? 4 : activity >= 7 ? 2 : 0))
-  const scoreBreakdown = { targeting, activity, performance, recentRatio: ratioPoints, engagement, commercial }
+  const editingPotential = calculateEditingPotential(input.videos, medianViews, frequency)
+  const scoreBreakdown = { targeting, activity, performance, editingNeed: editingPotential.points, engagement, commercial }
   const score = Object.values(scoreBreakdown).reduce((sum, value) => sum + value, 0)
   const label = score >= 80 ? 'Excellent prospect' : score >= 65 ? 'Bon prospect' : score >= 50 ? 'Prospect moyen' : 'Données limitées'
-  return { score, label, scoreBreakdown, relevance, language, frequency, medianViews, recentViewSubscriberRatio: ratio, engagementRate, lastPublishedAt: latest ? new Date(latest).toISOString() : null }
+  const confidence = input.videos.length >= 8 && latest > Date.now() - 90 * 86400000 ? 'Elevee' : input.videos.length >= 4 ? 'Moyenne' : 'Faible'
+  return { score, label, scoreBreakdown, relevance, language, frequency, medianViews, recentViewSubscriberRatio: ratio, engagementRate, editingPotential, confidence, lastPublishedAt: latest ? new Date(latest).toISOString() : null }
 }

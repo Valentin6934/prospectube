@@ -2,7 +2,7 @@ export const FREE_LIFETIME_SEARCH_LIMIT = 3
 export const FREE_SEARCH_QUOTA_VERSION = 1
 export const FREE_SEARCH_PERIOD_KEY = `free-lifetime-v${FREE_SEARCH_QUOTA_VERSION}`
 export const PRO_DAILY_SEARCH_LIMIT = 5
-export const SEARCH_CACHE_VERSION = 'youtube-search-v6'
+export const SEARCH_CACHE_VERSION = 'youtube-search-v7'
 export const SEARCH_CACHE_TTL_HOURS = 48
 export const SEARCH_CATALOG_POOR_REFRESH_HOURS = 12
 export const SEARCH_NEGATIVE_CACHE_TTL_HOURS = 1
@@ -30,8 +30,6 @@ export function buildSearchCacheKey(input: {
     SEARCH_CACHE_VERSION,
     normalizeSearchText(input.niche),
     normalizeSearchText(input.lang),
-    normalizeSearchText((input.subNiches || []).slice().sort().join('-')),
-    normalizeSearchText(input.customKeyword || ''),
   ].join(':')
 }
 
