@@ -66,11 +66,6 @@ function getDifficulty(score: number, hasEmail: boolean): string {
   return 'Élevée'
 }
 
-function getReplyProbability(score: number, hasEmail: boolean): string {
-  const probability = Math.min(85, Math.max(15, score * 0.7 + (hasEmail ? 15 : 0)))
-  return `${Math.round(probability)}%`
-}
-
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem' }}>
@@ -104,7 +99,7 @@ export default function CreatorDetails({
   const views = channel.totalViews || channel.viewCount || 0
   const subscribers = channel.subsNum || 0
   const videos = channel.videoCount || 0
-  const viewsPerSubscriber = channel.viewsPerSubscriber || (subscribers > 0 ? views / subscribers : 0)
+  const viewsPerSubscriber = channel.recentViewSubscriberRatio || 0
   const reasons = getReasonParts(channel.scoreReason)
   const weaknesses = getWeaknesses(channel, viewsPerSubscriber)
   const hasEmail = Boolean(channel.email)
@@ -149,7 +144,10 @@ export default function CreatorDetails({
             <StatCard label="Vues" value={channel.totalViewsFormatted || formatCompactNumber(views)} />
             <StatCard label="Vidéos" value={channel.videoCountFormatted || formatCompactNumber(videos)} />
             <StatCard label="Création" value={getCreatedYear(channel.createdAt || channel.publishedAt || channel.channelCreatedAt)} />
-            <StatCard label="Vues / abonné" value={viewsPerSubscriber ? viewsPerSubscriber.toFixed(1) : 'Inconnu'} />
+            <StatCard label="Vues médianes récentes" value={channel.recentMedianViews ? formatCompactNumber(channel.recentMedianViews) : 'Données limitées'} />
+            <StatCard label="Ratio récent vues / abonné" value={viewsPerSubscriber ? viewsPerSubscriber.toFixed(2) : 'Données limitées'} />
+            <StatCard label="Contactabilité" value={channel.contactability || 'Faible'} />
+            <StatCard label="Pertinence contenu" value={channel.contentRelevance !== undefined ? `${channel.contentRelevance}%` : 'Données limitées'} />
           </div>
         </section>
 
@@ -177,10 +175,15 @@ export default function CreatorDetails({
               <div style={{ color: '#A89FCC', fontSize: '0.78rem', marginBottom: '0.35rem' }}>Points faibles</div>
               <div style={{ display: 'grid', gap: '0.3rem', color: '#C4BCDF', fontSize: '0.85rem' }}>{weaknesses.map(item => <div key={item}>• {item}</div>)}</div>
             </div>
+            {channel.scoreBreakdown && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: '.45rem' }}>
+              {Object.entries(channel.scoreBreakdown).map(([key, value]) => <StatCard key={key} label={({ recentViews: 'Vues récentes /30', growthPotential: 'Croissance /20', publishingRhythm: 'Fréquence /15', recentActivity: 'Activité /15', editingNeed: 'Délégation montage /15', targeting: 'Pertinence /5' } as Record<string, string>)[key] || key} value={String(value)} />)}
+            </div>}
             <StatCard label="Conseil de prospection" value={getProspectingAdvice(channel, score)} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
               <StatCard label="Difficulté estimée" value={getDifficulty(score, hasEmail)} />
-              <StatCard label="Probabilité de réponse" value={getReplyProbability(score, hasEmail)} />
+              <StatCard label="Confiance des données" value={channel.languageConfidence || 'Faible'} />
+              <StatCard label="Potentiel montage estimé" value={channel.editingPotentialLabel || 'Données limitées'} />
+              <StatCard label="Confiance du score" value={channel.scoreConfidence || 'Faible'} />
             </div>
           </div>
         </section>

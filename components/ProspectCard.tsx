@@ -34,6 +34,23 @@ export type ProspectChannel = {
   createdAt?: string | null
   publishedAt?: string | null
   channelCreatedAt?: string | null
+  recentMedianViews?: number | null
+  recentViewSubscriberRatio?: number | null
+  recentEngagementRate?: number | null
+  publishingFrequency?: string | null
+  contactability?: string | null
+  contentRelevance?: number | null
+  subnicheMatch?: number | null
+  subnicheMatchLabel?: string | null
+  matchMode?: string | null
+  matchNotice?: string | null
+  editingPotential?: number | null
+  editingPotentialLabel?: string | null
+  scoreConfidence?: string | null
+  detectedLanguage?: string | null
+  languageConfidence?: string | null
+  lastPublishedAt?: string | null
+  scoreBreakdown?: Record<string, number> | null
 }
 
 type ProspectCardProps = {
@@ -71,7 +88,7 @@ export default function ProspectCard({
   removing = false,
   showFavoriteButton = false,
   showRemoveButton = false,
-  canUseCampaigns = false,
+  canUseCampaigns = true,
   onGenerateEmail,
   onAddFavorite,
   onRemoveFavorite,

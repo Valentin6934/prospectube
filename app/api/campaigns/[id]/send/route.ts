@@ -10,6 +10,7 @@ import {
   SEND_MODE,
 } from '@/lib/gmail'
 import { isPro, requireProResponse } from '@/lib/plan'
+import { FREE_CAMPAIGN_PROSPECT_LIMIT, canUseFreeCampaign, freeCampaignLimitResponse, markFreeCampaignCompleted } from '@/lib/campaignAccess'
 import {
   CAMPAIGN_SEND_LIMIT,
   getCampaignSendSummary,
@@ -265,13 +266,12 @@ async function persistCampaignDeliveryStatus(input: {
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecte' }, { status: 401 })
-  if (!isPro(user.plan)) return requireProResponse()
 
   const body = await req.json().catch(() => ({}))
   const requestedIds: string[] = Array.isArray(body.prospectIds)
     ? body.prospectIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
     : []
-  const prospectIds = limitUniqueCampaignSelection(requestedIds)
+  const prospectIds = limitUniqueCampaignSelection(requestedIds).slice(0, isPro(user.plan) ? CAMPAIGN_SEND_LIMIT : FREE_CAMPAIGN_PROSPECT_LIMIT)
 
   if (prospectIds.length === 0) {
     return NextResponse.json({ error: 'Selectionnez au moins un prospect.' }, { status: 400 })
@@ -344,6 +344,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         : 'Aucun prospect eligible. Verifiez email, sujet et message.',
     })
   }
+  if (!isPro(user.plan) && !(await canUseFreeCampaign(prisma, user.id, campaign.id))) return freeCampaignLimitResponse()
 
   let accessToken: string
   try {
@@ -445,6 +446,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const summary = getCampaignSendSummary(results)
+  if (!isPro(user.plan) && results.some(result => result.success)) {
+    await markFreeCampaignCompleted(prisma, user.id, campaign.id).catch(error => {
+      console.error('Free campaign completion marker failed:', {
+        campaignId: campaign.id,
+        error: error instanceof Error ? error.message : 'Unknown persistence error',
+      })
+    })
+  }
 
   return NextResponse.json({
     results,

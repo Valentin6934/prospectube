@@ -195,10 +195,10 @@ export function validateStripePriceForPro(price: Stripe.Price, expectedMode: Str
     })
   }
 
-  if (price.unit_amount !== 990) {
+  if (price.unit_amount !== 490) {
     throw new StripeConfigError(
       'STRIPE_PRICE_AMOUNT_INVALID',
-      'Le Price Stripe Pro doit etre de 990 centimes.',
+      'Le Price Stripe Pro doit etre de 490 centimes.',
       { priceId, mode: expectedMode }
     )
   }

@@ -3,8 +3,9 @@ import { getServerSession } from 'next-auth'
 import { Prisma } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { isPro, requireProResponse } from '@/lib/plan'
+import { isPro } from '@/lib/plan'
 import { normalizeCampaignMessage } from '@/lib/campaignWorkflow'
+import { canUseFreeCampaign, freeCampaignLimitResponse } from '@/lib/campaignAccess'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,7 +63,10 @@ export async function PATCH(
 ) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecte' }, { status: 401 })
-  if (!isPro(user.plan)) return requireProResponse()
+
+  if (!isPro(user.plan) && !(await canUseFreeCampaign(prisma, user.id, params.id))) {
+    return freeCampaignLimitResponse()
+  }
 
   const body = await req.json().catch(() => ({}))
   const normalized = normalizeCampaignMessage({

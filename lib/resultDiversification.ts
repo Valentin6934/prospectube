@@ -1,0 +1,179 @@
+import { createHash } from 'node:crypto'
+import { normalizeSearchText, SEARCH_CACHE_VERSION } from './searchPolicy'
+import type { SearchTarget } from './searchTargeting'
+
+export function buildExposureTargetKey(target: SearchTarget, subsMin: number, subsMax: number): string {
+  return buildUserTargetKey(target, subsMin, subsMax)
+}
+
+export function buildUserTargetKey(target: SearchTarget, subsMin: number, subsMax: number): string {
+  const normalizedSubNiches = target.subNiches.map(normalizeSearchText).sort()
+  const normalized = [
+    SEARCH_CACHE_VERSION,
+    target.niche,
+    ...normalizedSubNiches,
+    target.language,
+    target.customKeyword,
+    subsMin,
+    subsMax,
+  ].map(value => normalizeSearchText(String(value))).join(':')
+  return createHash('sha256').update(normalized).digest('hex').slice(0, 20)
+}
+
+function deterministicUnit(seed: string, channelId: string): number {
+  const value = createHash('sha256').update(`${seed}:${channelId}`).digest().readUInt32BE(0)
+  return value / 0xffffffff
+}
+
+export function extractChannelIdsFromSearchResults(rows: Array<{ results: string }>): Set<string> {
+  const ids = new Set<string>()
+  for (const row of rows) {
+    try {
+      const results = JSON.parse(row.results)
+      if (!Array.isArray(results)) continue
+      for (const channel of results) {
+        const id = typeof channel?.id === 'string' ? channel.id : typeof channel?.channelId === 'string' ? channel.channelId : ''
+        if (id) ids.add(id)
+      }
+    } catch {}
+  }
+  return ids
+}
+
+export function getUserTargetExposure(rows: Array<{ results: string }>, targetKey: string) {
+  const seenChannelIds = new Set<string>()
+  const previousSearchChannelIds = new Set<string>()
+  let foundPreviousSearch = false
+
+  for (const row of rows) {
+    try {
+      const results = JSON.parse(row.results)
+      if (!Array.isArray(results)) continue
+      const matchingIds = results.flatMap(channel => {
+        if (channel?._rotationTargetKey !== targetKey) return []
+        const id = typeof channel?.id === 'string' ? channel.id : typeof channel?.channelId === 'string' ? channel.channelId : ''
+        return id ? [id] : []
+      })
+      if (!matchingIds.length) continue
+      matchingIds.forEach(id => seenChannelIds.add(id))
+      if (!foundPreviousSearch) {
+        matchingIds.forEach(id => previousSearchChannelIds.add(id))
+        foundPreviousSearch = true
+      }
+    } catch {}
+  }
+
+  return { seenChannelIds, previousSearchChannelIds }
+}
+
+export function markSearchResultsForTarget(results: any[], targetKey: string): any[] {
+  return results.map(result => ({ ...result, _rotationTargetKey: targetKey }))
+}
+
+export function countGlobalChannelExposure(rows: Array<{ results: string }>): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    extractChannelIdsFromSearchResults([row]).forEach(id => counts.set(id, (counts.get(id) || 0) + 1))
+  }
+  return counts
+}
+
+function prospectQualityValue(channel: any, key: string): number {
+  const value = Number(channel?.[key] || 0)
+  return Number.isFinite(value) ? value : 0
+}
+
+export function sortProspectsByQuality(channels: any[]): any[] {
+  return channels.slice().sort((a, b) => {
+    const matchTier = Number(a.matchMode === 'nearby') - Number(b.matchMode === 'nearby')
+    if (matchTier) return matchTier
+
+    const qualityKeys = ['score', 'editingPotential', 'subnicheMatch']
+    for (const key of qualityKeys) {
+      const difference = prospectQualityValue(b, key) - prospectQualityValue(a, key)
+      if (difference) return difference
+    }
+
+    const noveltyDifference = Number(Boolean(a.previouslySeen)) - Number(Boolean(b.previouslySeen))
+    if (noveltyDifference) return noveltyDifference
+
+    const diversificationDifference = prospectQualityValue(b, 'diversificationRank') - prospectQualityValue(a, 'diversificationRank')
+    if (diversificationDifference) return diversificationDifference
+
+    return String(a.id || a.channelId || '').localeCompare(String(b.id || b.channelId || ''))
+  })
+}
+
+function rotationGroup(channel: any): number {
+  const seenForRotation = Boolean(channel.previouslySeen || channel.alreadyInCampaign)
+  const nearby = channel.matchMode === 'nearby'
+  if (!seenForRotation && !nearby) return 0
+  if (!seenForRotation && nearby) return 1
+  if (seenForRotation && !nearby) return 2
+  return 3
+}
+
+export function sortProspectsForRotation(channels: any[]): any[] {
+  return channels.slice().sort((a, b) => {
+    const aNearby = a.matchMode === 'nearby'
+    const bNearby = b.matchMode === 'nearby'
+    if (aNearby !== bNearby) {
+      const strict = aNearby ? b : a
+      const nearby = aNearby ? a : b
+      const strictAdvantage = prospectQualityValue(strict, 'score') - prospectQualityValue(nearby, 'score')
+      if (strictAdvantage >= 20) return aNearby ? 1 : -1
+    }
+
+    const groupDifference = rotationGroup(a) - rotationGroup(b)
+    if (groupDifference) return groupDifference
+
+    const qualityKeys = ['score', 'editingPotential', 'subnicheMatch']
+    for (const key of qualityKeys) {
+      const difference = prospectQualityValue(b, key) - prospectQualityValue(a, key)
+      if (difference) return difference
+    }
+
+    const recentDifference = Number(Boolean(a.recentlySeen)) - Number(Boolean(b.recentlySeen))
+    if (recentDifference) return recentDifference
+    const campaignDifference = Number(Boolean(a.alreadyInCampaign)) - Number(Boolean(b.alreadyInCampaign))
+    if (campaignDifference) return campaignDifference
+    const diversificationDifference = prospectQualityValue(b, 'diversificationRank') - prospectQualityValue(a, 'diversificationRank')
+    if (diversificationDifference) return diversificationDifference
+    return String(a.id || a.channelId || '').localeCompare(String(b.id || b.channelId || ''))
+  })
+}
+
+export function diversifyProspects(input: {
+  channels: any[]
+  seenChannelIds: Set<string>
+  previousSearchChannelIds?: Set<string>
+  campaignChannelIds: Set<string>
+  globalExposure: Map<string, number>
+  userSeed: string
+  targetKey: string
+  now?: Date
+  limit: number
+}) {
+  const day = (input.now || new Date()).toISOString().slice(0, 10)
+  const seed = createHash('sha256').update(`${input.userSeed}:${input.targetKey}:${day}:${SEARCH_CACHE_VERSION}`).digest('hex')
+  const ranked = sortProspectsForRotation(input.channels.map(channel => {
+    const id = String(channel.id || channel.channelId || '')
+    const seen = input.seenChannelIds.has(id)
+    const recentlySeen = input.previousSearchChannelIds?.has(id) || false
+    const inCampaign = input.campaignChannelIds.has(id)
+    const quality = Number(channel.contentRelevance || 0) * 0.4 + Number(channel.subnicheMatch || 0) * 0.25 + Number(channel.score || 0) * 0.35
+    const novelty = seen ? 0 : 15
+    const exposure = Math.max(0, 10 - Math.min(10, input.globalExposure.get(id) || 0))
+    const jitter = (deterministicUnit(seed, id) - 0.5) * 4
+    return {
+      ...channel,
+      previouslySeen: seen,
+      recentlySeen,
+      alreadyInCampaign: inCampaign,
+      diversificationRank: quality * 0.75 + novelty + exposure + jitter - (recentlySeen ? 30 : 0) - (inCampaign ? 20 : 0),
+    }
+  }))
+  const results = ranked.slice(0, input.limit)
+  const newCount = results.filter(channel => !channel.previouslySeen).length
+  return { results, newCount, seenCount: results.length - newCount }
+}

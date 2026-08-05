@@ -46,7 +46,6 @@ export async function GET(req: NextRequest) {
     select: { id: true, plan: true },
   })
   if (!currentUser) return clearOAuthCookies(oauthRedirect('user_error', payload))
-  if (!isPro(currentUser.plan)) return clearOAuthCookies(oauthRedirect('pro_required', payload))
 
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET

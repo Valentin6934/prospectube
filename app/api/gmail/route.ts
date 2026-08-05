@@ -24,7 +24,6 @@ export async function GET() {
   try {
     const user = await getCurrentUser()
     if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
-    if (!isPro(user.plan)) return requireProResponse()
 
     const account = await prisma.googleAccount.findUnique({
       where: { userId: user.id },
@@ -62,7 +61,6 @@ export async function GET() {
 export async function DELETE() {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
-  if (!isPro(user.plan)) return requireProResponse()
 
   const account = await prisma.googleAccount.findUnique({
     where: { userId: user.id },

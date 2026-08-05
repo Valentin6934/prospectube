@@ -232,7 +232,7 @@ export default function CampaignsPage() {
   const [sendSummary, setSendSummary] = useState<SendSummary | null>(null)
   const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
-  const canUseCampaigns = isPro(plan)
+  const canUseCampaigns = status === 'authenticated'
   const gmailDraftsDisabled = shouldDisableGmailDrafts(gmail)
   const gmailNeedsReconnect = gmail?.state === 'expired' || Boolean(gmail?.reconnectRequired)
 

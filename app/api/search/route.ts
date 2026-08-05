@@ -6,8 +6,10 @@ import { prisma } from '@/lib/prisma'
 import { PLAN_LIMITS } from '@/lib/data'
 import { discoverYouTubeCatalog, YouTubeCallMetrics } from '@/lib/youtube'
 import { filterYouTubeCatalog, YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
-import { getPlanName, isPro } from '@/lib/plan'
-import { selectDiverseProspectPreview } from '@/lib/freePreview'
+import { getPlanName } from '@/lib/plan'
+import { validateSearchTarget } from '@/lib/searchTargeting'
+import { buildUserTargetKey, countGlobalChannelExposure, diversifyProspects, extractChannelIdsFromSearchResults, getUserTargetExposure, markSearchResultsForTarget } from '@/lib/resultDiversification'
+import { calculateCatalogCoverage, getUserCoverage } from '@/lib/catalogCoverage'
 import { buildYouTubeErrorResponse, getSafeYouTubeLog } from '@/lib/youtubeQuota'
 import {
   buildSearchCacheKey,
@@ -52,22 +54,51 @@ function buildRangeKey(subsMin: number, subsMax: number): string {
   return `${subsMin}:${subsMax}`
 }
 
+function buildResultMeta(returned: any[]) {
+  const strict = returned.filter(item => item.matchMode !== 'nearby')
+  const nearby = returned.filter(item => item.matchMode === 'nearby')
+  return {
+    matched: returned.length,
+    strict: strict.length,
+    nearby: nearby.length,
+    newCount: returned.filter(item => !item.previouslySeen).length,
+    seenCount: returned.filter(item => item.previouslySeen).length,
+  }
+}
+
+function getCatalogLogDetails(catalog: YouTubeDiscoveryCatalog) {
+  const variants = Object.values(catalog.variantPerformance || {})
+  return {
+    catalogAgeHours: getCatalogAgeHours(catalog.collectedAt),
+    catalogTotalChannels: catalog.channels.length,
+    catalogStrictMatches: catalog.coverage?.totalStrictMatchesKnown || 0,
+    catalogNearbyMatches: catalog.coverage?.totalNearbyMatchesKnown || 0,
+    catalogCoverageRate: catalog.coverage?.coverageRate || 0,
+    catalogNewlyDiscovered: catalog.newlyDiscoveredThisRun || 0,
+    catalogAlreadyKnown: catalog.alreadyKnownThisRun || 0,
+    queryVariantIds: variants.map(item => item.variantId),
+    queryVariantYields: variants.map(item => item.yield),
+    selectedVariantLevels: variants.map(item => item.level),
+    duplicateVideoResults: catalog.duplicateVideoResults || 0,
+  }
+}
+
 function parseSearchBody(body: any) {
-  const niche = typeof body?.niche === 'string' ? body.niche.trim() : ''
-  const lang = typeof body?.lang === 'string' ? body.lang.trim() : ''
+  const target = validateSearchTarget(body)
   const minIndex = Number.parseInt(String(body?.subsMin ?? ''), 10)
   const maxIndex = Number.parseInt(String(body?.subsMax ?? ''), 10)
   const requestId = typeof body?.requestId === 'string' ? body.requestId.trim() : ''
 
-  if (!niche || !lang || !Number.isInteger(minIndex) || !Number.isInteger(maxIndex) ||
+  if (!target || !Number.isInteger(minIndex) || !Number.isInteger(maxIndex) ||
       minIndex < 0 || maxIndex >= SUBS_VALUES.length || minIndex > maxIndex ||
       !/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) {
     return null
   }
 
   return {
-    niche,
-    lang,
+    niche: target.niche,
+    lang: target.language,
+    target,
     minVal: SUBS_VALUES[minIndex],
     maxVal: SUBS_VALUES[maxIndex],
     requestId,
@@ -87,6 +118,7 @@ async function saveSearchHistory(input: {
   subsMin: number
   subsMax: number
   results: any[]
+  targetKey: string
 }) {
   try {
     await prisma.search.create({
@@ -96,7 +128,7 @@ async function saveSearchHistory(input: {
         language: input.lang,
         subsMin: String(input.subsMin),
         subsMax: String(input.subsMax),
-        results: JSON.stringify(input.results),
+        results: JSON.stringify(markSearchResultsForTarget(input.results, input.targetKey)),
       },
     })
   } catch (error) {
@@ -134,13 +166,15 @@ export async function POST(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'SEARCH_INVALID', message: 'Les criteres de recherche sont invalides.' }, { status: 400 })
 
   const plan = getPlanName(user.plan)
-  const proUser = isPro(user.plan)
   const limits = PLAN_LIMITS[plan]
   const cacheKey = buildSearchCacheKey({
     niche: parsed.niche,
     lang: parsed.lang,
+    subNiches: parsed.target.subNiches,
+    customKeyword: parsed.target.customKeyword,
   })
   const cacheKeyHash = hashLogValue(cacheKey)
+  const userTargetKey = buildUserTargetKey(parsed.target, parsed.minVal, parsed.maxVal)
   const userIdHash = hashLogValue(user.id)
   const metrics: YouTubeCallMetrics = {
     searchList: 0,
@@ -153,22 +187,63 @@ export async function POST(req: NextRequest) {
     belowMinimum: 0,
     aboveMaximum: 0,
     acceptedResults: 0,
+    videosList: 0,
+    rejectedLanguage: 0,
+    rejectedNiche: 0,
   }
   let reserved = false
   let lockAcquired = false
   let responseStatus = 500
   let errorCode: string | undefined
 
+  const selectVisibleResults = async (channels: any[], sourceCatalog: YouTubeDiscoveryCatalog) => {
+    const [userSearches, globalSearches, campaignProspects] = await Promise.all([
+      prisma.search.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'desc' }, take: 100, select: { results: true } }),
+      prisma.search.findMany({ orderBy: { createdAt: 'desc' }, take: 200, select: { results: true, userId: true } }),
+      prisma.campaignProspect.findMany({ where: { campaign: { userId: user.id } }, select: { channelId: true } }),
+    ])
+    const { seenChannelIds, previousSearchChannelIds } = getUserTargetExposure(userSearches, userTargetKey)
+    const globalExposure = countGlobalChannelExposure(globalSearches)
+    const catalogIds = new Set(sourceCatalog.channels.map(channel => String(channel.id || channel.channelId || '')).filter(Boolean))
+    const usersExposedCount = new Set(globalSearches.filter(row => Array.from(extractChannelIdsFromSearchResults([row])).some(id => catalogIds.has(id))).map(row => row.userId)).size
+    const diversified = diversifyProspects({
+      channels,
+      seenChannelIds,
+      previousSearchChannelIds,
+      campaignChannelIds: new Set(campaignProspects.map(item => item.channelId)),
+      globalExposure,
+      userSeed: user.id,
+      targetKey: userTargetKey,
+      limit: Math.min(20, channels.length),
+    })
+    const coverage = calculateCatalogCoverage({
+      channels: sourceCatalog.channels,
+      matchedChannels: channels,
+      globalExposure,
+      newlyDiscoveredThisRun: sourceCatalog.newlyDiscoveredThisRun,
+      alreadyKnownThisRun: sourceCatalog.alreadyKnownThisRun,
+      rawVideoResults: sourceCatalog.rawVideoResults,
+      duplicateVideoResults: sourceCatalog.duplicateVideoResults,
+      previous: sourceCatalog.coverage,
+      usersExposedCount,
+    })
+    return { ...diversified, coverage, userCoverage: getUserCoverage(channels, seenChannelIds) }
+  }
+
   const logSearch = (extra: Record<string, unknown>) => console.info('YouTube catalog event:', {
-    catalogHit: false,
-    catalogAge: null,
-    catalogCandidateCount: 0,
-    filteredResultCount: metrics.acceptedResults,
-    enrichmentTriggered: false,
     queryVariantCount: metrics.searchQueriesUsed,
     searchListCalls: metrics.searchList,
-    channelsListCalls: metrics.channelsList,
-    cacheVersion: SEARCH_CACHE_VERSION,
+    rawVideoResults: metrics.rawCandidates,
+    uniqueChannelIds: metrics.uniqueCandidates,
+    channelCatalogCandidates: 0,
+    rejectedBySubscribers: metrics.hiddenSubscribers + metrics.belowMinimum + metrics.aboveMaximum,
+    rejectedByLanguage: metrics.rejectedLanguage,
+    rejectedByNiche: metrics.rejectedNiche,
+    strictSubnicheMatches: 0,
+    nearbySubnicheMatches: 0,
+    displayedResults: 0,
+    catalogHit: false,
+    durationMs: Date.now() - startedAt,
     ...extra,
   })
 
@@ -224,11 +299,14 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    let catalogResults = catalog ? filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, limits.results) : []
+    let catalogResults = catalog ? filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, 150, parsed.target) : []
+    const cachedSelection = catalog ? await selectVisibleResults(catalogResults, catalog) : null
     const enrichmentTriggered = Boolean(catalog && shouldEnrichSearchCatalog({
       candidateCount: catalog.channels.length,
       filteredResultCount: catalogResults.length,
       collectedAt: catalog.collectedAt,
+      newForUser: cachedSelection?.userCoverage.newForUser,
+      coverageRate: cachedSelection?.coverage.coverageRate,
     }))
     const negativeCatalogHit = Boolean(catalog && catalog.channels.length === 0)
 
@@ -238,16 +316,16 @@ export async function POST(req: NextRequest) {
         reserved = false
         const emptyQuota = getReleasedSearchQuotaSnapshot(reservation.snapshot)
         responseStatus = 200
-        logSearch({ catalogHit: true, catalogAge, catalogCandidateCount: catalog.channels.length, filteredResultCount: 0 })
+        logSearch({ catalogHit: true, rawVideoResults: catalog.rawVideoResults || 0, uniqueChannelIds: catalog.channels.length, channelCatalogCandidates: catalog.channels.length, ...getCatalogLogDetails(catalog) })
         return NextResponse.json({
           results: [], source: 'catalog', cached: true, emptyResult: true,
           searchesRemaining: emptyQuota.remaining, quota: emptyQuota, plan,
           canGenerateEmail: limits.emailAI,
         })
       }
-      const visibleResults = proUser
-        ? catalogResults
-        : selectDiverseProspectPreview(catalogResults, limits.results)
+      const selection = cachedSelection || await selectVisibleResults(catalogResults, catalog)
+      catalog.coverage = selection.coverage
+      const visibleResults = selection.results
       metrics.acceptedResults = visibleResults.length
       await completeSearchQuota(prisma, parsed.requestId, true)
       reserved = false
@@ -258,11 +336,24 @@ export async function POST(req: NextRequest) {
         subsMin: parsed.minVal,
         subsMax: parsed.maxVal,
         results: visibleResults,
+        targetKey: userTargetKey,
       })
       responseStatus = 200
-      logSearch({ catalogHit: true, catalogAge, catalogCandidateCount: catalog.channels.length, filteredResultCount: visibleResults.length })
+      logSearch({
+        catalogHit: true,
+        rawVideoResults: catalog.rawVideoResults || 0,
+        uniqueChannelIds: catalog.channels.length,
+        channelCatalogCandidates: catalog.channels.length,
+        strictSubnicheMatches: catalogResults.filter(item => item.matchMode !== 'nearby').length,
+        nearbySubnicheMatches: catalogResults.filter(item => item.matchMode === 'nearby').length,
+        displayedResults: Math.min(20, visibleResults.length),
+        userNewResults: selection.newCount,
+        userSeenResults: selection.seenCount,
+        ...getCatalogLogDetails(catalog),
+      })
       return NextResponse.json({
         results: visibleResults,
+        resultMeta: buildResultMeta(visibleResults),
         source: 'catalog',
         cached: true,
         searchesRemaining: reservation.snapshot.remaining,
@@ -276,7 +367,8 @@ export async function POST(req: NextRequest) {
     try {
       discoveredCatalog = await discoverYouTubeCatalog(
         parsed.niche, parsed.lang, parsed.minVal, parsed.maxVal, metrics,
-        enrichmentTriggered ? catalog : null
+        enrichmentTriggered ? catalog : null,
+        parsed.target
       )
     } catch (error) {
       const safeError = getSafeYouTubeLog(error)
@@ -288,8 +380,10 @@ export async function POST(req: NextRequest) {
     }
 
     catalog = discoveredCatalog
-    catalogResults = filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, limits.results)
-    const visibleResults = proUser ? catalogResults : selectDiverseProspectPreview(catalogResults, limits.results)
+    catalogResults = filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, 150, parsed.target)
+    const selection = await selectVisibleResults(catalogResults, catalog)
+    catalog.coverage = selection.coverage
+    const visibleResults = selection.results
 
     if (visibleResults.length === 0) {
       catalog.negativeRanges = {
@@ -314,10 +408,7 @@ export async function POST(req: NextRequest) {
       reserved = false
       const emptyQuota = getReleasedSearchQuotaSnapshot(reservation.snapshot)
       responseStatus = 200
-      logSearch({
-        catalogHit, catalogAge: Number.isFinite(catalogAge) ? catalogAge : null, catalogCandidateCount: catalog.channels.length,
-        filteredResultCount: 0, enrichmentTriggered,
-      })
+      logSearch({ catalogHit, rawVideoResults: catalog.rawVideoResults || metrics.rawCandidates, uniqueChannelIds: catalog.channels.length, channelCatalogCandidates: catalog.channels.length, ...getCatalogLogDetails(catalog) })
       return NextResponse.json({
         results: [],
         source: catalogHit || negativeCatalogHit ? 'catalog' : 'youtube',
@@ -368,12 +459,25 @@ export async function POST(req: NextRequest) {
       lang: parsed.lang,
       subsMin: parsed.minVal,
       subsMax: parsed.maxVal,
-        results: visibleResults,
+      results: visibleResults,
+      targetKey: userTargetKey,
     })
     responseStatus = 200
-    logSearch({ catalogHit, catalogAge: Number.isFinite(catalogAge) ? catalogAge : null, catalogCandidateCount: catalog.channels.length, filteredResultCount: visibleResults.length, enrichmentTriggered })
+    logSearch({
+      catalogHit,
+      rawVideoResults: catalog.rawVideoResults || metrics.rawCandidates,
+      uniqueChannelIds: catalog.channels.length,
+      channelCatalogCandidates: catalog.channels.length,
+      strictSubnicheMatches: catalogResults.filter(item => item.matchMode !== 'nearby').length,
+      nearbySubnicheMatches: catalogResults.filter(item => item.matchMode === 'nearby').length,
+      displayedResults: Math.min(20, visibleResults.length),
+      userNewResults: selection.newCount,
+      userSeenResults: selection.seenCount,
+      ...getCatalogLogDetails(catalog),
+    })
     return NextResponse.json({
       results: visibleResults,
+      resultMeta: buildResultMeta(visibleResults),
       source: 'youtube',
       cached: false,
       searchesRemaining: reservation.snapshot.remaining,

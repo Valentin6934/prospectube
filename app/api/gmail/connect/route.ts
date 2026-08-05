@@ -43,7 +43,6 @@ export async function GET(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Utilisateur introuvable.' }, { status: 404 })
     }
-    if (!isPro(user.plan)) return requireProResponse()
 
     const clientId = process.env.GOOGLE_CLIENT_ID?.trim()
     if (!clientId) {

@@ -31,8 +31,8 @@ const LANGUAGE_QUERY_SUFFIXES: Record<string, string> = {
   pt: 'português',
 }
 
-export const MAX_YOUTUBE_SEARCH_QUERIES = 2
-export const MIN_YOUTUBE_RESULTS_BEFORE_STOP = 10
+export const MAX_SEARCH_LIST_CALLS = 3
+export const MAX_YOUTUBE_SEARCH_QUERIES = MAX_SEARCH_LIST_CALLS
 
 function normalizeLanguageLabel(value: unknown): string {
   return String(value || '')
@@ -56,30 +56,32 @@ function normalizeQueryComparison(value: string): string {
     .replace(/\s+/g, ' ')
 }
 
-export function buildYouTubeQueryVariants(niche: unknown, language: unknown): string[] {
+export function buildYouTubeQueryVariants(niche: unknown, language: unknown, alternatives?: unknown): string[] {
   const base = String(niche || '').trim().replace(/\s+/g, ' ')
   if (!base) return []
 
-  const variants = [base]
+  const variants: string[] = []
   const languageCode = normalizeYouTubeLanguage(language)
   const suffix = languageCode ? LANGUAGE_QUERY_SUFFIXES[languageCode] : null
 
-  if (suffix) {
-    const normalizedBase = normalizeQueryComparison(base)
-    const normalizedSuffix = normalizeQueryComparison(suffix)
-    if (!normalizedBase.includes(normalizedSuffix)) variants.push(`${base} ${suffix}`)
+  const withLanguage = (value: string) => {
+    if (!suffix || normalizeQueryComparison(value).includes(normalizeQueryComparison(suffix))) return value
+    return `${value} ${suffix}`
   }
+  variants.push(withLanguage(base))
+  const alternateValues = (Array.isArray(alternatives) ? alternatives : [alternatives])
+    .map(value => String(value || '').trim().replace(/\s+/g, ' ')).filter(Boolean)
+  for (const alternate of alternateValues) variants.push(withLanguage(alternate))
+  if (!alternateValues.length && suffix && !normalizeQueryComparison(base).includes(normalizeQueryComparison(suffix))) variants.push(`${base} video ${suffix}`)
 
   return Array.from(new Set(variants.map(value => value.trim()).filter(Boolean))).slice(0, MAX_YOUTUBE_SEARCH_QUERIES)
 }
 
 export function shouldRunNextYouTubeQuery(input: {
-  acceptedResults: number
   queriesUsed: number
   totalVariants: number
 }): boolean {
-  return input.acceptedResults < MIN_YOUTUBE_RESULTS_BEFORE_STOP &&
-    input.queriesUsed < Math.min(input.totalVariants, MAX_YOUTUBE_SEARCH_QUERIES)
+  return input.queriesUsed < Math.min(input.totalVariants, MAX_SEARCH_LIST_CALLS)
 }
 
 export function collectNewYouTubeChannelIds(items: any[], knownIds: Set<string>): string[] {
@@ -126,6 +128,7 @@ export function buildYouTubeSearchParams(input: {
   maxResults?: number
   pageToken?: string | null
   fields: string
+  type?: 'channel' | 'video'
 }): URLSearchParams {
   const query = String(input.query || '').trim()
   const maxResults = input.maxResults ?? 50
@@ -137,7 +140,7 @@ export function buildYouTubeSearchParams(input: {
 
   const params = new URLSearchParams()
   params.set('part', 'snippet')
-  params.set('type', 'channel')
+  params.set('type', input.type || 'channel')
   params.set('q', query)
   params.set('maxResults', String(maxResults))
   params.set('order', 'relevance')

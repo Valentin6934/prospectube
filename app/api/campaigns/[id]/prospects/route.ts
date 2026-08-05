@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isPro, requireProResponse } from '@/lib/plan'
+import { FREE_CAMPAIGN_PROSPECT_LIMIT, canUseFreeCampaign, freeCampaignLimitResponse } from '@/lib/campaignAccess'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,18 +61,21 @@ async function getCurrentUser() {
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
-  if (!isPro(user.plan)) return requireProResponse()
 
   const campaign = await prisma.campaign.findFirst({
     where: {
       id: params.id,
       userId: user.id,
     },
-    select: { id: true },
+    select: { id: true, _count: { select: { prospects: true } } },
   })
 
   if (!campaign) {
     return NextResponse.json({ error: 'Campagne introuvable' }, { status: 404 })
+  }
+  if (!isPro(user.plan) && !(await canUseFreeCampaign(prisma, user.id, campaign.id))) return freeCampaignLimitResponse()
+  if (!isPro(user.plan) && campaign._count.prospects >= FREE_CAMPAIGN_PROSPECT_LIMIT) {
+    return freeCampaignLimitResponse('La campagne d’essai est limitee a 5 prospects. Passez au Plan Pro pour continuer.')
   }
 
   const channel = await req.json().catch(() => ({}))
@@ -100,11 +104,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   let result
   try {
-    result = await prisma.campaignProspect.createMany({
-      data: [prospectData],
-      skipDuplicates: true,
-    })
+    result = isPro(user.plan)
+      ? await prisma.campaignProspect.createMany({ data: [prospectData], skipDuplicates: true })
+      : await prisma.$transaction(async tx => {
+          const existing = await tx.campaignProspect.findUnique({ where: { campaignId_channelId: { campaignId: campaign.id, channelId } }, select: { id: true } })
+          if (existing) return { count: 0 }
+          const count = await tx.campaignProspect.count({ where: { campaignId: campaign.id } })
+          if (count >= FREE_CAMPAIGN_PROSPECT_LIMIT) throw new Error('FREE_CAMPAIGN_PROSPECT_LIMIT')
+          return tx.campaignProspect.createMany({ data: [prospectData], skipDuplicates: true })
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   } catch (error) {
+    if (error instanceof Error && error.message === 'FREE_CAMPAIGN_PROSPECT_LIMIT') return freeCampaignLimitResponse('La campagne d’essai est limitee a 5 prospects. Passez au Plan Pro pour continuer.')
     if (!isMissingColumnError(error)) {
       console.error('POST /api/campaigns/[id]/prospects error:', {
         campaignId: campaign.id,

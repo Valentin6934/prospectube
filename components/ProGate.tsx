@@ -20,9 +20,9 @@ const contextCopy: Record<ProGateContext, { title: string; intro: string }> = {
       'ProspectTube Pro centralise la recherche, l’organisation et la préparation de vos prises de contact pour transformer YouTube en vrai canal de prospection.',
   },
   campaigns: {
-    title: 'Prospectez plus vite avec les campagnes Pro',
+    title: 'Passez à des campagnes régulières avec Pro',
     intro:
-      'Créez des campagnes, regroupez vos prospects, connectez Gmail et gardez le suivi de vos messages dans le même espace.',
+      'Après votre campagne d’essai, créez de nouvelles campagnes et ajoutez davantage de prospects avec le Plan Pro.',
   },
   ai: {
     title: 'Générez des emails personnalisés avec ProspectTube Pro',
@@ -52,11 +52,11 @@ const benefits = [
   },
   {
     title: 'Campagnes',
-    text: 'Créez des campagnes, ajoutez des prospects, suivez les statuts et organisez la prospection.',
+    text: 'Dépassez la campagne d’essai limitée à cinq prospects et organisez votre prospection régulière.',
   },
   {
     title: 'Gmail',
-    text: 'Connectez votre compte Gmail pour créer des brouillons ou envoyer directement les emails.',
+    text: 'Créez des lots de brouillons plus importants tout en conservant la protection anti-doublon.',
   },
   {
     title: 'Export CSV',
@@ -119,7 +119,7 @@ export default function ProGate({
         <aside style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: '16px', background: 'rgba(255,255,255,0.04)', padding: '1rem' }}>
           <div style={{ color: '#8F86AA', fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '0.35rem' }}>Plan Pro</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.45rem' }}>
-            <strong style={{ color: '#F0EDF8', fontSize: compact ? '1.65rem' : '2rem', lineHeight: 1 }}>9,90 €</strong>
+            <strong style={{ color: '#F0EDF8', fontSize: compact ? '1.65rem' : '2rem', lineHeight: 1 }}>4,90 €</strong>
             <span style={{ color: '#A89FCC', fontSize: '0.86rem' }}>/ mois</span>
           </div>
           <p style={{ color: '#8F86AA', fontSize: '0.78rem', lineHeight: 1.55, margin: '0.65rem 0 0.9rem' }}>
@@ -127,7 +127,7 @@ export default function ProGate({
           </p>
           <SubscriptionButton
             plan="Gratuit"
-            label="Passer à Pro pour 9,90 €/mois"
+            label="Passer à Pro pour 4,90 €/mois"
             fullWidth
             style={{ minHeight: '46px', marginTop: 0, fontSize: '0.86rem', fontWeight: 850 }}
           />
