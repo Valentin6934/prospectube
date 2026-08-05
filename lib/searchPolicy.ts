@@ -45,11 +45,15 @@ export function shouldEnrichSearchCatalog(input: {
   candidateCount: number
   filteredResultCount: number
   collectedAt: unknown
+  newForUser?: number
+  coverageRate?: number
   now?: Date
 }): boolean {
-  return input.filteredResultCount < 10 &&
-    input.candidateCount > 0 &&
-    getCatalogAgeHours(input.collectedAt, input.now) >= SEARCH_CATALOG_POOR_REFRESH_HOURS
+  const oldEnough = getCatalogAgeHours(input.collectedAt, input.now) >= SEARCH_CATALOG_POOR_REFRESH_HOURS
+  const poor = input.filteredResultCount < 20
+  const exhaustedForUser = input.newForUser !== undefined && input.newForUser < 10
+  const highlyCovered = Number(input.coverageRate || 0) >= 0.8
+  return input.candidateCount > 0 && oldEnough && (poor || exhaustedForUser || highlyCovered)
 }
 
 export function getUtcDayKey(date = new Date()): string {

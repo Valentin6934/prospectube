@@ -9,6 +9,7 @@ import { filterYouTubeCatalog, YouTubeDiscoveryCatalog } from '@/lib/youtubeCata
 import { getPlanName } from '@/lib/plan'
 import { validateSearchTarget } from '@/lib/searchTargeting'
 import { buildExposureTargetKey, countGlobalChannelExposure, diversifyProspects, extractChannelIdsFromSearchResults } from '@/lib/resultDiversification'
+import { calculateCatalogCoverage, getUserCoverage } from '@/lib/catalogCoverage'
 import { buildYouTubeErrorResponse, getSafeYouTubeLog } from '@/lib/youtubeQuota'
 import {
   buildSearchCacheKey,
@@ -64,6 +65,24 @@ function buildResultMeta(catalog: YouTubeDiscoveryCatalog, matched: any[], retur
     displayed: displayed.length,
     newCount: displayed.filter(item => !item.previouslySeen).length,
     seenCount: displayed.filter(item => item.previouslySeen).length,
+    newlyDiscovered: catalog.newlyDiscoveredThisRun || 0,
+  }
+}
+
+function getCatalogLogDetails(catalog: YouTubeDiscoveryCatalog) {
+  const variants = Object.values(catalog.variantPerformance || {})
+  return {
+    catalogAgeHours: getCatalogAgeHours(catalog.collectedAt),
+    catalogTotalChannels: catalog.channels.length,
+    catalogStrictMatches: catalog.coverage?.totalStrictMatchesKnown || 0,
+    catalogNearbyMatches: catalog.coverage?.totalNearbyMatchesKnown || 0,
+    catalogCoverageRate: catalog.coverage?.coverageRate || 0,
+    catalogNewlyDiscovered: catalog.newlyDiscoveredThisRun || 0,
+    catalogAlreadyKnown: catalog.alreadyKnownThisRun || 0,
+    queryVariantIds: variants.map(item => item.variantId),
+    queryVariantYields: variants.map(item => item.yield),
+    selectedVariantLevels: variants.map(item => item.level),
+    duplicateVideoResults: catalog.duplicateVideoResults || 0,
   }
 }
 
@@ -178,21 +197,37 @@ export async function POST(req: NextRequest) {
   let responseStatus = 500
   let errorCode: string | undefined
 
-  const selectVisibleResults = async (channels: any[]) => {
+  const selectVisibleResults = async (channels: any[], sourceCatalog: YouTubeDiscoveryCatalog) => {
     const [userSearches, globalSearches, campaignProspects] = await Promise.all([
       prisma.search.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'desc' }, take: 100, select: { results: true } }),
-      prisma.search.findMany({ orderBy: { createdAt: 'desc' }, take: 200, select: { results: true } }),
+      prisma.search.findMany({ orderBy: { createdAt: 'desc' }, take: 200, select: { results: true, userId: true } }),
       prisma.campaignProspect.findMany({ where: { campaign: { userId: user.id } }, select: { channelId: true } }),
     ])
-    return diversifyProspects({
+    const seenChannelIds = extractChannelIdsFromSearchResults(userSearches)
+    const globalExposure = countGlobalChannelExposure(globalSearches)
+    const catalogIds = new Set(sourceCatalog.channels.map(channel => String(channel.id || channel.channelId || '')).filter(Boolean))
+    const usersExposedCount = new Set(globalSearches.filter(row => Array.from(extractChannelIdsFromSearchResults([row])).some(id => catalogIds.has(id))).map(row => row.userId)).size
+    const diversified = diversifyProspects({
       channels,
-      seenChannelIds: extractChannelIdsFromSearchResults(userSearches),
+      seenChannelIds,
       campaignChannelIds: new Set(campaignProspects.map(item => item.channelId)),
-      globalExposure: countGlobalChannelExposure(globalSearches),
+      globalExposure,
       userSeed: user.id,
       targetKey: buildExposureTargetKey(parsed.target, parsed.minVal, parsed.maxVal),
       limit: Math.min(50, channels.length),
     })
+    const coverage = calculateCatalogCoverage({
+      channels: sourceCatalog.channels,
+      matchedChannels: channels,
+      globalExposure,
+      newlyDiscoveredThisRun: sourceCatalog.newlyDiscoveredThisRun,
+      alreadyKnownThisRun: sourceCatalog.alreadyKnownThisRun,
+      rawVideoResults: sourceCatalog.rawVideoResults,
+      duplicateVideoResults: sourceCatalog.duplicateVideoResults,
+      previous: sourceCatalog.coverage,
+      usersExposedCount,
+    })
+    return { ...diversified, coverage, userCoverage: getUserCoverage(channels, seenChannelIds) }
   }
 
   const logSearch = (extra: Record<string, unknown>) => console.info('YouTube catalog event:', {
@@ -265,10 +300,13 @@ export async function POST(req: NextRequest) {
     }
 
     let catalogResults = catalog ? filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, 150, parsed.target) : []
+    const cachedSelection = catalog ? await selectVisibleResults(catalogResults, catalog) : null
     const enrichmentTriggered = Boolean(catalog && shouldEnrichSearchCatalog({
       candidateCount: catalog.channels.length,
       filteredResultCount: catalogResults.length,
       collectedAt: catalog.collectedAt,
+      newForUser: cachedSelection?.userCoverage.newForUser,
+      coverageRate: cachedSelection?.coverage.coverageRate,
     }))
     const negativeCatalogHit = Boolean(catalog && catalog.channels.length === 0)
 
@@ -278,14 +316,15 @@ export async function POST(req: NextRequest) {
         reserved = false
         const emptyQuota = getReleasedSearchQuotaSnapshot(reservation.snapshot)
         responseStatus = 200
-        logSearch({ catalogHit: true, rawVideoResults: catalog.rawVideoResults || 0, uniqueChannelIds: catalog.channels.length, channelCatalogCandidates: catalog.channels.length })
+        logSearch({ catalogHit: true, rawVideoResults: catalog.rawVideoResults || 0, uniqueChannelIds: catalog.channels.length, channelCatalogCandidates: catalog.channels.length, ...getCatalogLogDetails(catalog) })
         return NextResponse.json({
           results: [], source: 'catalog', cached: true, emptyResult: true,
           searchesRemaining: emptyQuota.remaining, quota: emptyQuota, plan,
           canGenerateEmail: limits.emailAI,
         })
       }
-      const selection = await selectVisibleResults(catalogResults)
+      const selection = cachedSelection || await selectVisibleResults(catalogResults, catalog)
+      catalog.coverage = selection.coverage
       const visibleResults = selection.results
       metrics.acceptedResults = visibleResults.length
       await completeSearchQuota(prisma, parsed.requestId, true)
@@ -307,6 +346,9 @@ export async function POST(req: NextRequest) {
         strictSubnicheMatches: catalogResults.filter(item => item.matchMode !== 'nearby').length,
         nearbySubnicheMatches: catalogResults.filter(item => item.matchMode === 'nearby').length,
         displayedResults: Math.min(20, visibleResults.length),
+        userNewResults: selection.newCount,
+        userSeenResults: selection.seenCount,
+        ...getCatalogLogDetails(catalog),
       })
       return NextResponse.json({
         results: visibleResults,
@@ -338,7 +380,8 @@ export async function POST(req: NextRequest) {
 
     catalog = discoveredCatalog
     catalogResults = filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, 150, parsed.target)
-    const selection = await selectVisibleResults(catalogResults)
+    const selection = await selectVisibleResults(catalogResults, catalog)
+    catalog.coverage = selection.coverage
     const visibleResults = selection.results
 
     if (visibleResults.length === 0) {
@@ -364,7 +407,7 @@ export async function POST(req: NextRequest) {
       reserved = false
       const emptyQuota = getReleasedSearchQuotaSnapshot(reservation.snapshot)
       responseStatus = 200
-      logSearch({ catalogHit, rawVideoResults: catalog.rawVideoResults || metrics.rawCandidates, uniqueChannelIds: catalog.channels.length, channelCatalogCandidates: catalog.channels.length })
+      logSearch({ catalogHit, rawVideoResults: catalog.rawVideoResults || metrics.rawCandidates, uniqueChannelIds: catalog.channels.length, channelCatalogCandidates: catalog.channels.length, ...getCatalogLogDetails(catalog) })
       return NextResponse.json({
         results: [],
         source: catalogHit || negativeCatalogHit ? 'catalog' : 'youtube',
@@ -426,6 +469,9 @@ export async function POST(req: NextRequest) {
       strictSubnicheMatches: catalogResults.filter(item => item.matchMode !== 'nearby').length,
       nearbySubnicheMatches: catalogResults.filter(item => item.matchMode === 'nearby').length,
       displayedResults: Math.min(20, visibleResults.length),
+      userNewResults: selection.newCount,
+      userSeenResults: selection.seenCount,
+      ...getCatalogLogDetails(catalog),
     })
     return NextResponse.json({
       results: visibleResults,

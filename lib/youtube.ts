@@ -3,6 +3,7 @@ import { PROSPECT_SCORE_THRESHOLDS } from '@/lib/prospectScoreInfo'
 import { SEARCH_CACHE_VERSION } from '@/lib/searchPolicy'
 import { calculateProspectScore, getContactability, scoreChannelContentRelevance, type RecentVideo } from '@/lib/prospectScoring'
 import { getPrimarySearchFocus, getSearchFocusVariants, type SearchTarget } from '@/lib/searchTargeting'
+import { buildDiscoveryFallbackQueries, selectNextDiscoveryVariant, updateVariantPerformance, type DiscoveryVariant } from '@/lib/discoveryVariants'
 import { YouTubeApiError, classifyYouTubeError } from '@/lib/youtubeQuota'
 import { filterYouTubeCatalog, mergeCatalogChannels, YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
 import {
@@ -10,12 +11,11 @@ import {
   buildYouTubeQueryVariants,
   buildYouTubeSearchParams,
   collectNewYouTubeChannelIds,
-  MAX_YOUTUBE_SEARCH_QUERIES,
   shouldRunNextYouTubeQuery,
 } from '@/lib/youtubeSearchParams'
 
 const YOUTUBE_REQUEST_TIMEOUT_MS = 12_000
-const YOUTUBE_SEARCH_FIELDS = 'items(id/videoId,snippet(channelId,title,description,publishedAt,thumbnails/default/url)),nextPageToken'
+const YOUTUBE_SEARCH_FIELDS = 'items(id/videoId,snippet(channelId,title,description,publishedAt,thumbnails/default/url))'
 const YOUTUBE_CHANNEL_FIELDS = 'items(id,snippet(title,description,publishedAt,thumbnails/default/url),statistics(hiddenSubscriberCount,subscriberCount,viewCount,videoCount),brandingSettings/channel/description)'
 const YOUTUBE_VIDEO_FIELDS = 'items(id,snippet(channelId,title,description,publishedAt,categoryId,defaultLanguage),statistics(viewCount,likeCount,commentCount),contentDetails/duration)'
 
@@ -192,29 +192,28 @@ export async function discoverYouTubeCatalog(
     )
   }
 
-  const queries = buildYouTubeQueryVariants(
-    target ? getPrimarySearchFocus(target) : niche,
-    lang,
-    target ? getSearchFocusVariants(target) : null
-  ).slice(0, MAX_YOUTUBE_SEARCH_QUERIES)
+  const resolvedTarget = target || { niche, subNiches: [], customKeyword: '', language: lang }
+  const configuredVariants = buildDiscoveryFallbackQueries(resolvedTarget)
+  const fallbackQueries = buildYouTubeQueryVariants(getPrimarySearchFocus(resolvedTarget), lang, getSearchFocusVariants(resolvedTarget))
+  const variants = configuredVariants.length ? configuredVariants : fallbackQueries.map((query, index) => ({ id: `fallback-${index}`, query, level: index === 0 ? 'strict' : index === 1 ? 'format' : 'fallback', terms: [] } as DiscoveryVariant))
   const knownChannelIds = new Set<string>((existingCatalog?.channels || []).map(channel => channel.id).filter(Boolean))
   const channelsById = new Map<string, any>()
   const videoIds = new Set<string>()
   const videosByChannel = new Map<string, RecentVideo[]>()
   const catalogChannelsById = new Map<string, any>((existingCatalog?.channels || []).map(channel => [channel.id, channel]))
   const queryVariantsUsed = [...(existingCatalog?.queryVariantsUsed || [])]
-  const unusedVariant = queries.find(query => !existingCatalog?.queryVariantsUsed.includes(query))
-  const queriesToRun = existingCatalog
-    ? [{
-        query: existingCatalog.nextPageToken ? existingCatalog.nextPageQuery || queries[0] : unusedVariant,
-        pageToken: existingCatalog.nextPageToken,
-      }]
-    : queries.map(query => ({ query, pageToken: null as string | null }))
-  let nextPageToken: string | null = existingCatalog?.nextPageToken || null
-  let nextPageQuery: string | null = existingCatalog?.nextPageQuery || null
+  const selectedVariants: DiscoveryVariant[] = []
+  const orderedVariants: DiscoveryVariant[] = []
+  while (orderedVariants.length < variants.length) {
+    const next = selectNextDiscoveryVariant(variants, orderedVariants, existingCatalog?.variantPerformance)
+    if (!next) break
+    orderedVariants.push(next)
+  }
+  const variantPerformance = { ...(existingCatalog?.variantPerformance || {}) }
+  let duplicateVideoResults = 0
 
-  for (const queryInput of queriesToRun) {
-    const query = queryInput.query
+  for (const variant of orderedVariants) {
+    const query = variant.query
     if (!query) continue
     const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search')
     const searchParams = buildYouTubeSearchParams({
@@ -222,7 +221,6 @@ export async function discoverYouTubeCatalog(
       language: lang,
       maxResults: 50,
       fields: YOUTUBE_SEARCH_FIELDS,
-      pageToken: queryInput.pageToken,
       type: 'video',
     })
     searchUrl.search = searchParams.toString()
@@ -233,20 +231,23 @@ export async function discoverYouTubeCatalog(
       metrics.searchQueriesUsed += 1
     }
     const searchData = await fetchYouTubeJson(searchUrl, 'search.list')
-    nextPageToken = typeof searchData.nextPageToken === 'string' ? searchData.nextPageToken : null
-    nextPageQuery = nextPageToken ? query : null
+    selectedVariants.push(variant)
     if (!queryVariantsUsed.includes(query)) queryVariantsUsed.push(query)
     const searchItems = Array.isArray(searchData.items) ? searchData.items : []
+    const queryChannelIds = new Set<string>()
     for (const item of searchItems) {
       const videoId = item?.id?.videoId
       const channelId = item?.snippet?.channelId
       if (typeof videoId === 'string') videoIds.add(videoId)
       if (typeof channelId === 'string') {
+        queryChannelIds.add(channelId)
         const samples = videosByChannel.get(channelId) || []
         samples.push({ title: item.snippet?.title, description: item.snippet?.description, publishedAt: item.snippet?.publishedAt })
         videosByChannel.set(channelId, samples)
       }
     }
+    const queryDuplicates = Math.max(0, searchItems.length - queryChannelIds.size)
+    duplicateVideoResults += queryDuplicates
     if (metrics) metrics.rawCandidates += searchItems.length
     const newChannelIds = collectNewYouTubeChannelIds(searchItems, knownChannelIds)
     if (metrics) metrics.uniqueCandidates = knownChannelIds.size
@@ -272,13 +273,45 @@ export async function discoverYouTubeCatalog(
       statistics: { subscriberCount: channel.subsNum, hiddenSubscriberCount: false },
     }))
     const currentRange = analyzeYouTubeChannelRange([...existingRangeChannels, ...discoveredChannels], subsMin, subsMax)
+    const expectedLanguageCode = ({ Français: 'fr', Anglais: 'en', Espagnol: 'es', Allemand: 'de', Italien: 'it', Portugais: 'pt' } as Record<string, string>)[lang]
     const validTargetedResults = target
-      ? currentRange.accepted.filter(channel => scoreChannelContentRelevance(videosByChannel.get(channel.id) || [], target).subnicheScore >= 25).length
+      ? currentRange.accepted.filter(channel => {
+          const samples = videosByChannel.get(channel.id) || []
+          const relevance = scoreChannelContentRelevance(samples, target)
+          const scoreData = calculateProspectScore({ videos: samples, target, subscribers: Number(channel.statistics?.subscriberCount || 0) })
+          const languageAllowed = scoreData.language.confidence !== 'Élevée' || !scoreData.language.language || scoreData.language.language === expectedLanguageCode
+          return relevance.subnicheScore >= 25 && languageAllowed
+        }).length
       : currentRange.accepted.length
+    const queryEnrichedChannels = Array.from(queryChannelIds).map(id => channelsById.get(id)).filter(Boolean)
+    const queryRange = analyzeYouTubeChannelRange(queryEnrichedChannels, subsMin, subsMax)
+    const queryLanguageChannels = queryEnrichedChannels.filter(channel => {
+      const samples = videosByChannel.get(channel.id) || []
+      const language = calculateProspectScore({ videos: samples, target: resolvedTarget, subscribers: Number(channel.statistics?.subscriberCount || 0) }).language
+      return language.confidence !== 'Élevée' || !language.language || language.language === expectedLanguageCode
+    })
+    const queryLanguageIds = new Set(queryLanguageChannels.map(channel => channel.id))
+    const queryStrictMatches = queryRange.accepted.filter(channel => {
+      const relevance = scoreChannelContentRelevance(videosByChannel.get(channel.id) || [], resolvedTarget)
+      return queryLanguageIds.has(channel.id) && relevance.subnicheScore >= 25
+    }).length
+    const queryNearbyMatches = queryRange.accepted.filter(channel => queryLanguageIds.has(channel.id)).length - queryStrictMatches
+    variantPerformance[variant.id] = updateVariantPerformance(variantPerformance[variant.id], {
+      variantId: variant.id,
+      level: variant.level,
+      rawVideos: searchItems.length,
+      uniqueChannels: queryChannelIds.size,
+      channelsAfterLanguage: queryLanguageChannels.length,
+      channelsAfterSubscribers: queryRange.accepted.length,
+      strictMatches: queryStrictMatches,
+      nearbyMatches: Math.max(0, queryNearbyMatches),
+      duplicateVideos: queryDuplicates,
+      lastUsedAt: new Date().toISOString(),
+    })
     if (!shouldRunNextYouTubeQuery({
       acceptedResults: validTargetedResults,
-      queriesUsed: metrics?.searchQueriesUsed || queries.indexOf(query) + 1,
-      totalVariants: queriesToRun.length,
+      queriesUsed: metrics?.searchQueriesUsed || orderedVariants.indexOf(variant) + 1,
+      totalVariants: orderedVariants.length,
     })) break
   }
 
@@ -412,17 +445,25 @@ export async function discoverYouTubeCatalog(
     .sort((a: any, b: any) => b.score - a.score)
 
   const channels = mergeCatalogChannels(Array.from(catalogChannelsById.values()), finalResults)
+  const newlyDiscoveredThisRun = channels.filter(channel => !catalogChannelsById.has(channel.id)).length
+  const alreadyKnownThisRun = channels.length - newlyDiscoveredThisRun
   if (metrics) metrics.acceptedResults = channels.filter(channel => channel.subsNum >= subsMin && channel.subsNum <= subsMax).length
   return {
     version: SEARCH_CACHE_VERSION,
     collectedAt: new Date().toISOString(),
     channels,
     queryVariantsUsed,
-    nextPageToken,
-    nextPageQuery,
+    nextPageToken: null,
+    nextPageQuery: null,
     negativeRanges: existingCatalog?.negativeRanges,
     rawVideoResults: (existingCatalog?.rawVideoResults || 0) + (metrics?.rawCandidates || 0),
     completeness: metrics && metrics.acceptedResults >= 20 ? 'complete' : metrics && metrics.acceptedResults >= 10 ? 'partial' : 'poor',
+    variantPerformance,
+    newlyDiscoveredThisRun,
+    alreadyKnownThisRun,
+    duplicateVideoResults,
+    lastEnrichmentAt: new Date().toISOString(),
+    enrichmentCount: (existingCatalog?.enrichmentCount || 0) + 1,
   } satisfies YouTubeDiscoveryCatalog
 }
 

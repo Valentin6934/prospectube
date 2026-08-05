@@ -114,6 +114,8 @@ const { getReleasedSearchQuotaSnapshot, getSearchQuotaSnapshot, releaseSearchQuo
 const { FREE_LIFETIME_CAMPAIGN_LIMIT, FREE_CAMPAIGN_PROSPECT_LIMIT, FREE_CAMPAIGN_MARKER_PERIOD, FREE_CAMPAIGN_COMPLETED_PERIOD } = require('../lib/campaignAccess.ts')
 const { NICHE_CONFIG, validateSearchTarget, buildTargetQuery, getSubnicheVocabulary, getPrimarySearchFocus, getSearchFocusVariant, getSearchFocusVariants } = require('../lib/searchTargeting.ts')
 const { buildExposureTargetKey, countGlobalChannelExposure, diversifyProspects, extractChannelIdsFromSearchResults } = require('../lib/resultDiversification.ts')
+const { buildDiscoveryFallbackQueries, calculateQueryVariantYield, classifyQueryBreadth, rankQueryVariants, selectComplementaryVariant, selectNextDiscoveryVariant, updateVariantPerformance } = require('../lib/discoveryVariants.ts')
+const { calculateCatalogCoverage, getUserCoverage } = require('../lib/catalogCoverage.ts')
 const { classifyRegistrationError, getSafePrismaMeta, normalizeAccountEmail, validateRegistrationInput } = require('../lib/registration.ts')
 const { calculateMedian, calculateTrimmedMean, scoreVideoTopicMatch, scoreChannelContentRelevance, detectDominantContentLanguage, calculateProspectScore, getContactability } = require('../lib/prospectScoring.ts')
 const {
@@ -1324,7 +1326,7 @@ test('catalog policy uses 48h TTL, 12h poor refresh and 1h negative cache', () =
   assert.equal(getCatalogAgeHours('2026-08-02T00:00:00.000Z', now), 12)
   assert.equal(shouldEnrichSearchCatalog({ candidateCount: 20, filteredResultCount: 9, collectedAt: '2026-08-02T00:00:00.000Z', now }), true)
   assert.equal(shouldEnrichSearchCatalog({ candidateCount: 20, filteredResultCount: 9, collectedAt: '2026-08-02T01:00:00.000Z', now }), false)
-  assert.equal(shouldEnrichSearchCatalog({ candidateCount: 20, filteredResultCount: 10, collectedAt: '2026-08-01T00:00:00.000Z', now }), false)
+  assert.equal(shouldEnrichSearchCatalog({ candidateCount: 20, filteredResultCount: 20, collectedAt: '2026-08-01T00:00:00.000Z', now }), false)
 })
 
 test('product search limits are centralized and reset Pro usage by UTC day', () => {
@@ -1493,7 +1495,7 @@ test('youtube diagnostic is minimal and never prints the API key or keyed URL', 
 test('youtube search uses at most three targeted queries and batches only new channel ids', () => {
   const youtubeLib = fs.readFileSync('lib/youtube.ts', 'utf8')
 
-  assert.match(youtubeLib, /MAX_YOUTUBE_SEARCH_QUERIES/)
+  assert.match(youtubeLib, /buildDiscoveryFallbackQueries/)
   assert.match(youtubeLib, /shouldRunNextYouTubeQuery/)
   assert.match(youtubeLib, /for \(let i = 0; i < newChannelIds\.length; i \+= 50\)/)
   assert.match(youtubeLib, /channelsUrl\.searchParams\.set\('id', batchIds\.join\(','\)\)/)
@@ -1538,8 +1540,8 @@ test('catalog cache is shared globally, locked by niche/language and emits safe 
   assert.match(route, /cacheKey,\s*expiresAt/)
   assert.match(route, /SEARCH_CATALOG_POOR_REFRESH_HOURS|shouldEnrichSearchCatalog/)
   assert.match(route, /SEARCH_NEGATIVE_CACHE_TTL_HOURS/)
-  assert.match(youtube, /existingCatalog\?\.nextPageToken/)
-  assert.match(youtube, /existingCatalog\?\.queryVariantsUsed/)
+  assert.doesNotMatch(youtube, /pageToken:/)
+  assert.match(youtube, /existingCatalog\?\.variantPerformance/)
   assert.match(route, /catalogHit:/)
   assert.match(route, /channelCatalogCandidates:/)
   assert.match(route, /strictSubnicheMatches:/)
@@ -1749,6 +1751,70 @@ test('prospect score confidence follows the observed video sample size', () => {
   assert.equal(calculateProspectScore({ videos: [video], target, subscribers: 20000 }).confidence, 'Faible')
   assert.equal(calculateProspectScore({ videos: Array.from({ length: 3 }, () => video), target, subscribers: 20000 }).confidence, 'Moyenne')
   assert.equal(calculateProspectScore({ videos: Array.from({ length: 8 }, () => video), target, subscribers: 20000 }).confidence, 'Elevee')
+})
+
+test('adaptive fallback hierarchy is strict, format then a distinct broad query', () => {
+  const fortnite = buildDiscoveryFallbackQueries({ niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' })
+  assert.deepEqual(fortnite.slice(0, 3).map(item => item.level), ['strict', 'format', 'fallback'])
+  assert.equal(fortnite[0].query, 'fortnite français')
+  assert.equal(fortnite[1].query, 'gameplay fortnite français')
+  assert.equal(fortnite[2].query, 'fortnite battle royale')
+  assert.equal(new Set(fortnite.map(item => item.query)).size, fortnite.length)
+  assert.equal(classifyQueryBreadth('unknown'), 'strict')
+})
+
+test('variant yield rewards strict matches and penalizes duplicate-heavy results', () => {
+  const efficient = calculateQueryVariantYield({ strictMatches: 10, nearbyMatches: 4, uniqueChannels: 30, duplicateVideos: 5, rawVideos: 35 })
+  const duplicateHeavy = calculateQueryVariantYield({ strictMatches: 10, nearbyMatches: 4, uniqueChannels: 10, duplicateVideos: 40, rawVideos: 50 })
+  assert.ok(efficient > duplicateHeavy)
+})
+
+test('variant ranking prefers known yield while preserving complementary exploration', () => {
+  const variants = buildDiscoveryFallbackQueries({ niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' })
+  const performance = {
+    [variants[1].id]: { variantId: variants[1].id, level: 'format', rawVideos: 50, uniqueChannels: 35, channelsAfterLanguage: 25, channelsAfterSubscribers: 20, strictMatches: 15, nearbyMatches: 5, duplicateVideos: 15, lastUsedAt: '2026-08-05', uses: 1, yield: 20 },
+    [variants[0].id]: { variantId: variants[0].id, level: 'strict', rawVideos: 50, uniqueChannels: 5, channelsAfterLanguage: 3, channelsAfterSubscribers: 3, strictMatches: 1, nearbyMatches: 2, duplicateVideos: 45, lastUsedAt: '2026-08-05', uses: 1, yield: 1 },
+  }
+  assert.equal(rankQueryVariants(variants, performance)[0].id, variants[1].id)
+  const selected = [variants[1]]
+  assert.notEqual(selectComplementaryVariant(rankQueryVariants(variants, performance), selected)?.level, 'format')
+  assert.equal(selectNextDiscoveryVariant(variants, [], performance)?.id, variants[1].id)
+})
+
+test('variant performance updates are cumulative and deterministic', () => {
+  const current = { variantId: 'safe-hash', level: 'strict', rawVideos: 50, uniqueChannels: 30, channelsAfterLanguage: 20, channelsAfterSubscribers: 15, strictMatches: 12, nearbyMatches: 3, duplicateVideos: 20, lastUsedAt: '2026-08-05' }
+  const first = updateVariantPerformance(undefined, current)
+  const second = updateVariantPerformance(first, current)
+  assert.equal(second.uses, 2)
+  assert.equal(second.rawVideos, 100)
+  assert.equal(second.strictMatches, 24)
+  assert.equal(second.yield, calculateQueryVariantYield(second))
+})
+
+test('catalog coverage distinguishes known, shown and user-new channels', () => {
+  const channels = [{ id: 'a' }, { id: 'b', matchMode: 'nearby' }, { id: 'c' }]
+  const coverage = calculateCatalogCoverage({ channels, matchedChannels: channels, globalExposure: new Map([['a', 2]]), newlyDiscoveredThisRun: 2, alreadyKnownThisRun: 1, rawVideoResults: 6, duplicateVideoResults: 3, now: new Date('2026-08-05') })
+  assert.equal(coverage.totalChannelsKnown, 3)
+  assert.equal(coverage.channelsShownAtLeastOnce, 1)
+  assert.equal(coverage.channelsNeverShown, 2)
+  assert.equal(coverage.coverageRate, 0.333)
+  assert.equal(coverage.duplicateVideoResults, 3)
+  assert.deepEqual(getUserCoverage(channels, new Set(['a', 'b'])), { newForUser: 1, alreadySeenByUser: 2, catalogRemainingForUser: 1 })
+})
+
+test('high coverage or few new prospects enrich only after the twelve-hour delay', () => {
+  const recent = { candidateCount: 30, filteredResultCount: 20, newForUser: 2, coverageRate: 0.9, collectedAt: '2026-08-05T08:00:00Z', now: new Date('2026-08-05T10:00:00Z') }
+  assert.equal(shouldEnrichSearchCatalog(recent), false)
+  assert.equal(shouldEnrichSearchCatalog({ ...recent, collectedAt: '2026-08-04T20:00:00Z' }), true)
+})
+
+test('variant and coverage diagnostics contain hashes and aggregates, never raw targets', () => {
+  const route = fs.readFileSync('app/api/search/route.ts', 'utf8')
+  const youtube = fs.readFileSync('lib/youtube.ts', 'utf8')
+  assert.match(route, /queryVariantIds/)
+  assert.match(route, /catalogCoverageRate/)
+  assert.doesNotMatch(route.slice(route.indexOf('function getCatalogLogDetails'), route.indexOf('function parseSearchBody')), /\.query|userId|email|title/)
+  assert.doesNotMatch(youtube, /console\.(?:info|log)\([^\n]*(?:variant\.query|queryVariantsUsed)/)
 })
 
 test('registration validates and normalizes valid accounts for immediate credentials login', () => {

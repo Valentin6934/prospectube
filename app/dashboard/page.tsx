@@ -70,7 +70,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false)
   const [searchPausedUntil, setSearchPausedUntil] = useState(0)
   const [results, setResults] = useState<any[]>([])
-  const [resultMeta, setResultMeta] = useState<{ rawVideos: number; analyzed: number; matched: number; strict: number; nearby: number; displayed: number; newCount: number; seenCount: number } | null>(null)
+  const [resultMeta, setResultMeta] = useState<{ rawVideos: number; analyzed: number; matched: number; strict: number; nearby: number; displayed: number; newCount: number; seenCount: number; newlyDiscovered?: number } | null>(null)
   const [visibleResults, setVisibleResults] = useState(20)
   const [searched, setSearched] = useState(false)
   const [canEmail, setCanEmail] = useState(false)
@@ -635,6 +635,7 @@ export default function Dashboard() {
             ) : (
               <>
               {resultMeta && <div style={{ marginBottom: '0.8rem', color: '#A89FCC', fontSize: '0.82rem' }}>{resultMeta.newCount} nouveaux prospects · {resultMeta.seenCount} déjà consultés{resultMeta.newCount === 0 ? ' · Vous avez déjà consulté la majorité des prospects disponibles pour cette recherche.' : ''}</div>}
+              {Boolean(resultMeta?.newlyDiscovered) && <div style={{ marginBottom: '0.8rem', color: '#86efac', fontSize: '0.78rem' }}>Catalogue enrichi : {resultMeta?.newlyDiscovered} nouvelles chaînes découvertes</div>}
               {results.slice(0, visibleResults).map((ch, index) => (
                 <div key={ch.id}>
                 {ch.matchMode === 'nearby' && (index === 0 || results[index - 1]?.matchMode !== 'nearby') && <div style={{ margin: '1.2rem 0 0.8rem', paddingTop: '1rem', borderTop: '1px solid rgba(234,179,8,0.25)', color: '#fde68a', fontSize: '0.85rem', fontWeight: 700 }}>Résultats proches ({resultMeta?.nearby || 0})</div>}

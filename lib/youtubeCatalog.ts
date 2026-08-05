@@ -1,5 +1,7 @@
 import { calculateProspectScore } from './prospectScoring'
 import type { SearchTarget } from './searchTargeting'
+import type { QueryVariantPerformance } from './discoveryVariants'
+import type { CatalogCoverage } from './catalogCoverage'
 
 export type YouTubeDiscoveryCatalog = {
   version: string
@@ -11,6 +13,13 @@ export type YouTubeDiscoveryCatalog = {
   negativeRanges?: Record<string, string>
   rawVideoResults?: number
   completeness?: 'poor' | 'partial' | 'complete'
+  variantPerformance?: Record<string, QueryVariantPerformance>
+  coverage?: CatalogCoverage
+  newlyDiscoveredThisRun?: number
+  alreadyKnownThisRun?: number
+  duplicateVideoResults?: number
+  lastEnrichmentAt?: string
+  enrichmentCount?: number
 }
 
 export function mergeCatalogChannels(existing: any[], discovered: any[]): any[] {
