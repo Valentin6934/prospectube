@@ -92,6 +92,8 @@ const {
 } = require('../lib/youtubeSearchParams.ts')
 const {
   FREE_LIFETIME_SEARCH_LIMIT,
+  FREE_SEARCH_PERIOD_KEY,
+  FREE_SEARCH_QUOTA_VERSION,
   PRO_DAILY_SEARCH_LIMIT,
   SEARCH_CACHE_VERSION,
   SEARCH_CACHE_TTL_HOURS,
@@ -105,7 +107,7 @@ const {
   shouldEnrichSearchCatalog,
 } = require('../lib/searchPolicy.ts')
 const { filterYouTubeCatalog, mergeCatalogChannels } = require('../lib/youtubeCatalog.ts')
-const { getReleasedSearchQuotaSnapshot, getSearchQuotaSnapshot } = require('../lib/searchQuota.ts')
+const { getReleasedSearchQuotaSnapshot, getSearchQuotaSnapshot, releaseSearchQuota, reserveSearchQuota } = require('../lib/searchQuota.ts')
 const { FREE_LIFETIME_CAMPAIGN_LIMIT, FREE_CAMPAIGN_PROSPECT_LIMIT, FREE_CAMPAIGN_MARKER_PERIOD } = require('../lib/campaignAccess.ts')
 const { NICHE_CONFIG, validateSearchTarget, buildTargetQuery } = require('../lib/searchTargeting.ts')
 const { classifyRegistrationError, getSafePrismaMeta, normalizeAccountEmail, validateRegistrationInput } = require('../lib/registration.ts')
@@ -1317,31 +1319,101 @@ test('product search limits are centralized and reset Pro usage by UTC day', () 
   assert.match(getSearchQuotaMessage('Pro', 5), /5 recherche/)
 })
 
-test('free quota allows three successful lifetime searches and uses existing history', async () => {
+test('free quota gives new and reset legacy accounts three searches regardless of history', async () => {
   const freshDb = {
-    search: { count: async () => 0 },
-    searchUsage: { count: async () => 0 },
+    user: { findUnique: async () => ({ searchesRemaining: 3 }) },
   }
-  const existingDb = {
-    search: { count: async () => 3 },
-    searchUsage: { count: async () => 0 },
+  const legacyDb = {
+    user: { findUnique: async () => ({ searchesRemaining: 3 }) },
+    search: { count: async () => 99 },
+    searchUsage: { count: async () => 99 },
   }
 
   assert.deepEqual(await getSearchQuotaSnapshot(freshDb, 'user-free', 'Gratuit'), {
-    limit: 3, used: 0, remaining: 3, periodKey: 'lifetime',
+    limit: 3, used: 0, remaining: 3, periodKey: FREE_SEARCH_PERIOD_KEY,
   })
-  assert.deepEqual(await getSearchQuotaSnapshot(existingDb, 'user-free', 'Gratuit'), {
-    limit: 3, used: 3, remaining: 0, periodKey: 'lifetime',
+  assert.deepEqual(await getSearchQuotaSnapshot(legacyDb, 'legacy-free', 'Gratuit'), {
+    limit: 3, used: 0, remaining: 3, periodKey: FREE_SEARCH_PERIOD_KEY,
   })
 })
 
-test('existing free users receive the exact remaining lifetime quota without negatives', async () => {
-  for (const [historyCount, remaining] of [[0, 3], [1, 2], [2, 1], [3, 0], [8, 0]]) {
-    const db = { search: { count: async () => historyCount }, searchUsage: { count: async () => 0 } }
+test('free quota is always clamped between zero and three', async () => {
+  for (const [stored, remaining] of [[-4, 0], [0, 0], [1, 1], [2, 2], [3, 3], [8, 3]]) {
+    const db = { user: { findUnique: async () => ({ searchesRemaining: stored }) } }
     const snapshot = await getSearchQuotaSnapshot(db, 'legacy-user', 'Gratuit')
     assert.equal(snapshot.remaining, remaining)
     assert.ok(snapshot.remaining >= 0)
+    assert.ok(snapshot.remaining <= FREE_LIFETIME_SEARCH_LIMIT)
   }
+})
+
+test('free quota backfill is versioned, idempotent and excludes Pro accounts', () => {
+  const migration = fs.readFileSync('prisma/migrations/20260805120000_reset_existing_free_search_quota/migration.sql', 'utf8')
+  const schema = fs.readFileSync('prisma/schema.prisma', 'utf8')
+  assert.equal(FREE_SEARCH_QUOTA_VERSION, 1)
+  assert.match(FREE_SEARCH_PERIOD_KEY, /free-lifetime-v1/)
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "freeSearchQuotaVersion"/)
+  assert.match(migration, /"freeSearchQuotaVersion" < 1/)
+  assert.match(migration, /LOWER\(BTRIM\("plan"\)\) <> 'pro'/)
+  assert.match(migration, /"searchesRemaining" = 3/)
+  assert.match(migration, /"freeSearchQuotaVersion" = 1/)
+  assert.match(schema, /searchesRemaining\s+Int\s+@default\(3\)/)
+  assert.match(schema, /freeSearchQuotaVersion\s+Int\s+@default\(1\)/)
+  assert.doesNotMatch(migration, /DELETE|DROP|TRUNCATE/i)
+})
+
+function createFreeQuotaPrisma(initialRemaining = 3) {
+  let remaining = initialRemaining
+  const usages = new Map()
+  const tx = {
+    user: {
+      findUnique: async () => ({ searchesRemaining: remaining }),
+      updateMany: async ({ where, data }) => {
+        if (where.searchesRemaining?.gt !== undefined && remaining <= where.searchesRemaining.gt) return { count: 0 }
+        if (where.searchesRemaining?.lt !== undefined && remaining >= where.searchesRemaining.lt) return { count: 0 }
+        remaining = typeof data.searchesRemaining === 'number'
+          ? data.searchesRemaining
+          : remaining + (data.searchesRemaining?.increment || 0)
+        return { count: 1 }
+      },
+    },
+    searchUsage: {
+      findUnique: async ({ where }) => usages.get(where.requestId) || null,
+      findFirst: async ({ where }) => {
+        const usage = usages.get(where.requestId)
+        return usage?.status === where.status ? usage : null
+      },
+      create: async ({ data }) => { usages.set(data.requestId, { ...data }); return data },
+      deleteMany: async ({ where }) => {
+        const usage = usages.get(where.requestId)
+        if (!usage || usage.status !== where.status) return { count: 0 }
+        usages.delete(where.requestId)
+        return { count: 1 }
+      },
+    },
+  }
+  return {
+    prisma: { ...tx, $transaction: async callback => callback(tx) },
+    getRemaining: () => remaining,
+  }
+}
+
+test('free quota allows three reservations, blocks the fourth and restores failed work', async () => {
+  const state = createFreeQuotaPrisma(3)
+  for (let index = 1; index <= 3; index += 1) {
+    const result = await reserveSearchQuota({ prisma: state.prisma, userId: 'free', requestId: `request-${index}`, cacheKey: 'cache', plan: 'Gratuit' })
+    assert.equal(result.reserved, true)
+  }
+  const blocked = await reserveSearchQuota({ prisma: state.prisma, userId: 'free', requestId: 'request-4', cacheKey: 'cache', plan: 'Gratuit' })
+  assert.equal(blocked.reserved, false)
+  assert.equal(blocked.snapshot.remaining, 0)
+  assert.equal(state.getRemaining(), 0)
+
+  const releasedState = createFreeQuotaPrisma(3)
+  await reserveSearchQuota({ prisma: releasedState.prisma, userId: 'free', requestId: 'failed-request', cacheKey: 'cache', plan: 'Gratuit' })
+  assert.equal(releasedState.getRemaining(), 2)
+  await releaseSearchQuota(releasedState.prisma, 'failed-request')
+  assert.equal(releasedState.getRemaining(), 3)
 })
 
 test('pro quota allows five successes, blocks the sixth and uses the UTC window', async () => {

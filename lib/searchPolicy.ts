@@ -1,4 +1,6 @@
 export const FREE_LIFETIME_SEARCH_LIMIT = 3
+export const FREE_SEARCH_QUOTA_VERSION = 1
+export const FREE_SEARCH_PERIOD_KEY = `free-lifetime-v${FREE_SEARCH_QUOTA_VERSION}`
 export const PRO_DAILY_SEARCH_LIMIT = 5
 export const SEARCH_CACHE_VERSION = 'youtube-search-v6'
 export const SEARCH_CACHE_TTL_HOURS = 48

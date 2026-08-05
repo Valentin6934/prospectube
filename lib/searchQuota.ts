@@ -1,5 +1,5 @@
 import { Prisma, PrismaClient } from '@prisma/client'
-import { getSearchLimit, getUtcDayKey, getUtcDayStart, SearchPlan } from './searchPolicy'
+import { FREE_LIFETIME_SEARCH_LIMIT, FREE_SEARCH_PERIOD_KEY, getSearchLimit, getUtcDayKey, getUtcDayStart, SearchPlan } from './searchPolicy'
 
 type DbClient = PrismaClient | Prisma.TransactionClient
 
@@ -25,17 +25,12 @@ export async function getSearchQuotaSnapshot(
   now = new Date()
 ): Promise<SearchQuotaSnapshot> {
   const limit = getSearchLimit(plan)
-  const periodKey = plan === 'Pro' ? getUtcDayKey(now) : 'lifetime'
+  const periodKey = plan === 'Pro' ? getUtcDayKey(now) : FREE_SEARCH_PERIOD_KEY
 
   if (plan === 'Gratuit') {
-    const [historyCount, usageCount] = await Promise.all([
-      db.search.count({ where: { userId } }),
-      db.searchUsage.count({
-        where: { userId, periodKey: 'lifetime', status: { in: ['pending', 'succeeded'] } },
-      }),
-    ])
-    const used = Math.min(limit, Math.max(historyCount, usageCount))
-    return { limit, used, remaining: Math.max(0, limit - used), periodKey }
+    const user = await db.user.findUnique({ where: { id: userId }, select: { searchesRemaining: true } })
+    const remaining = Math.min(limit, Math.max(0, user?.searchesRemaining ?? 0))
+    return { limit, used: limit - remaining, remaining, periodKey }
   }
 
   const used = await db.searchUsage.count({
@@ -69,6 +64,16 @@ export async function reserveSearchQuota(input: {
         const snapshot = await getSearchQuotaSnapshot(tx, input.userId, input.plan, now)
         if (snapshot.remaining <= 0) {
           return { reserved: false as const, duplicate: false as const, snapshot }
+        }
+
+        if (input.plan === 'Gratuit') {
+          const decremented = await tx.user.updateMany({
+            where: { id: input.userId, searchesRemaining: { gt: 0 } },
+            data: { searchesRemaining: snapshot.remaining - 1 },
+          })
+          if (decremented.count !== 1) {
+            return { reserved: false as const, duplicate: false as const, snapshot: await getSearchQuotaSnapshot(tx, input.userId, input.plan, now) }
+          }
         }
 
         await tx.searchUsage.create({
@@ -107,7 +112,20 @@ export async function completeSearchQuota(prisma: PrismaClient, requestId: strin
 }
 
 export async function releaseSearchQuota(prisma: PrismaClient, requestId: string) {
-  await prisma.searchUsage.deleteMany({ where: { requestId, status: 'pending' } })
+  await prisma.$transaction(async tx => {
+    const usage = await tx.searchUsage.findFirst({
+      where: { requestId, status: 'pending' },
+      select: { userId: true, plan: true },
+    })
+    if (!usage) return
+    const deleted = await tx.searchUsage.deleteMany({ where: { requestId, status: 'pending' } })
+    if (deleted.count === 1 && usage.plan === 'Gratuit') {
+      await tx.user.updateMany({
+        where: { id: usage.userId, searchesRemaining: { lt: FREE_LIFETIME_SEARCH_LIMIT } },
+        data: { searchesRemaining: { increment: 1 } },
+      })
+    }
+  })
 }
 
 export async function acquireSearchLock(input: {
