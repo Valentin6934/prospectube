@@ -37,9 +37,9 @@ type DiscoveryConfig = {
 const CONFIG: Record<string, DiscoveryConfig> = {
   fortnite: {
     strictQueryTerms: ['fortnite'],
-    formatQueryTerms: ['gameplay fortnite'],
-    fallbackQueryTerms: ['fortnite battle royale', 'createurs fortnite'],
-    synonyms: ['battle royale', 'chapitre fortnite'],
+    formatQueryTerms: ['fortnite gameplay astuces'],
+    fallbackQueryTerms: ['fortnite actualite challenge', 'fortnite battle royale'],
+    synonyms: ['battle royale', 'chapitre fortnite', 'astuces fortnite', 'actualite fortnite'],
     excludeTerms: ['fortnight'],
   },
   'mode homme': {
@@ -61,8 +61,8 @@ export function getDiscoveryConfig(target: SearchTarget): DiscoveryConfig {
   const focus = normalizeTargetText(target.customKeyword || target.subNiches[0] || target.niche)
   return CONFIG[focus] || {
     strictQueryTerms: [focus],
-    formatQueryTerms: [`${focus} video`],
-    fallbackQueryTerms: [`createurs ${focus}`],
+    formatQueryTerms: [`${focus} tutoriel conseils`],
+    fallbackQueryTerms: [`${focus} actualite`, `${focus} test avis`],
     synonyms: [],
     excludeTerms: [],
   }
@@ -82,7 +82,7 @@ export function buildDiscoveryFallbackQueries(target: SearchTarget): DiscoveryVa
   ]
   const seen = new Set<string>()
   return definitions.flatMap(([level, term]) => {
-    const query = [term, level === 'fallback' ? '' : suffix].filter(Boolean).join(' ').trim()
+    const query = [term, suffix].filter(Boolean).join(' ').trim()
     const normalized = normalizeTargetText(query)
     if (!normalized || seen.has(normalized)) return []
     seen.add(normalized)

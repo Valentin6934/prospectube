@@ -82,9 +82,6 @@ const {
 const {
   MAX_YOUTUBE_SEARCH_QUERIES,
   MAX_SEARCH_LIST_CALLS,
-  MIN_YOUTUBE_RESULTS_BEFORE_STOP,
-  TARGET_VALID_RESULTS,
-  THIRD_CALL_TRIGGER,
   analyzeYouTubeChannelRange,
   buildYouTubeQueryVariants,
   buildYouTubeSearchParams,
@@ -1174,17 +1171,13 @@ test('subniche discovery produces useful deterministic French queries', () => {
   assert.ok(getSubnicheVocabulary('Mode homme').includes('style masculin'))
 })
 
-test('adaptive YouTube search uses the 20/10/3 policy', () => {
+test('YouTube discovery always uses all three complementary queries', () => {
   assert.equal(MAX_SEARCH_LIST_CALLS, 3)
   assert.equal(MAX_YOUTUBE_SEARCH_QUERIES, 3)
-  assert.equal(MIN_YOUTUBE_RESULTS_BEFORE_STOP, 20)
-  assert.equal(TARGET_VALID_RESULTS, 20)
-  assert.equal(THIRD_CALL_TRIGGER, 10)
-  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 20, queriesUsed: 1, totalVariants: 3 }), false)
-  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 19, queriesUsed: 1, totalVariants: 3 }), true)
-  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 10, queriesUsed: 2, totalVariants: 3 }), false)
-  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 9, queriesUsed: 2, totalVariants: 3 }), true)
-  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 0, queriesUsed: 3, totalVariants: 3 }), false)
+  assert.equal(shouldRunNextYouTubeQuery({ queriesUsed: 1, totalVariants: 3 }), true)
+  assert.equal(shouldRunNextYouTubeQuery({ queriesUsed: 2, totalVariants: 3 }), true)
+  assert.equal(shouldRunNextYouTubeQuery({ queriesUsed: 3, totalVariants: 3 }), false)
+  assert.equal(shouldRunNextYouTubeQuery({ queriesUsed: 2, totalVariants: 2 }), false)
 })
 
 test('adaptive YouTube IDs are deduplicated and only new channels are enriched', () => {
@@ -1202,6 +1195,18 @@ test('adaptive YouTube IDs are deduplicated and only new channels are enriched',
   assert.deepEqual(first, ['one', 'two'])
   assert.deepEqual(second, ['three'])
   assert.equal(known.size, 3)
+})
+
+test('three complementary result sets can build a broad unique channel catalog', () => {
+  const known = new Set()
+  const batches = [
+    Array.from({ length: 50 }, (_, index) => ({ snippet: { channelId: `strict-${index}` } })),
+    Array.from({ length: 50 }, (_, index) => ({ snippet: { channelId: index < 10 ? `strict-${index}` : `format-${index}` } })),
+    Array.from({ length: 50 }, (_, index) => ({ snippet: { channelId: index < 10 ? `format-${index + 10}` : `broad-${index}` } })),
+  ]
+  const discovered = batches.flatMap(batch => collectNewYouTubeChannelIds(batch, known))
+  assert.equal(discovered.length, 130)
+  assert.equal(known.size, 130)
 })
 
 test('subscriber range analysis excludes hidden, low and oversized channels', () => {
@@ -1634,6 +1639,26 @@ test('prospect score uses recent content and contactability stays separate', () 
   assert.equal(getContactability({ email: 'x@example.com', instagram: 'https://instagram.com/x' }).level, 'Élevée')
 })
 
+test('prospect score strongly prioritizes recent commercial performance', () => {
+  const target = { niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' }
+  const videos = (viewCount) => Array.from({ length: 6 }, (_, index) => ({
+    title: `Fortnite gameplay astuces ${index}`,
+    description: 'Gameplay Fortnite en francais avec montage et best of',
+    viewCount,
+    durationSeconds: 900,
+    publishedAt: new Date(Date.now() - index * 7 * 86400000).toISOString(),
+    defaultLanguage: 'fr',
+  }))
+  const strong = calculateProspectScore({ videos: videos(9800), target, subscribers: 26000 })
+  const weak = calculateProspectScore({ videos: videos(500), target, subscribers: 15000 })
+  assert.ok(strong.score >= weak.score + 20)
+  assert.equal(strong.scoreBreakdown.recentViews, 16)
+  assert.equal(strong.scoreBreakdown.growthPotential, 15)
+  assert.equal(weak.scoreBreakdown.recentViews, 4)
+  assert.equal(weak.scoreBreakdown.growthPotential, 3)
+  assert.deepEqual(Object.keys(strong.scoreBreakdown), ['recentViews', 'growthPotential', 'publishingRhythm', 'recentActivity', 'editingNeed', 'targeting'])
+})
+
 test('targeting validates niches, sub-niches and bounded custom keywords', () => {
   assert.ok(Object.keys(NICHE_CONFIG).length >= 20)
   const target = validateSearchTarget({ niche: 'Gaming', lang: 'Français', subNiches: ['Minecraft', 'Speedrun'], customKeyword: 'survie' })
@@ -1870,8 +1895,8 @@ test('adaptive fallback hierarchy is strict, format then a distinct broad query'
   const fortnite = buildDiscoveryFallbackQueries({ niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' })
   assert.deepEqual(fortnite.slice(0, 3).map(item => item.level), ['strict', 'format', 'fallback'])
   assert.equal(fortnite[0].query, 'fortnite français')
-  assert.equal(fortnite[1].query, 'gameplay fortnite français')
-  assert.equal(fortnite[2].query, 'fortnite battle royale')
+  assert.equal(fortnite[1].query, 'fortnite gameplay astuces français')
+  assert.equal(fortnite[2].query, 'fortnite actualite challenge français')
   assert.equal(new Set(fortnite.map(item => item.query)).size, fortnite.length)
   assert.equal(classifyQueryBreadth('unknown'), 'strict')
 })

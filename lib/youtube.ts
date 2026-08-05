@@ -202,7 +202,6 @@ export async function discoverYouTubeCatalog(
   const videosByChannel = new Map<string, RecentVideo[]>()
   const catalogChannelsById = new Map<string, any>((existingCatalog?.channels || []).map(channel => [channel.id, channel]))
   const queryVariantsUsed = [...(existingCatalog?.queryVariantsUsed || [])]
-  const selectedVariants: DiscoveryVariant[] = []
   const orderedVariants: DiscoveryVariant[] = []
   while (orderedVariants.length < variants.length) {
     const next = selectNextDiscoveryVariant(variants, orderedVariants, existingCatalog?.variantPerformance)
@@ -231,7 +230,6 @@ export async function discoverYouTubeCatalog(
       metrics.searchQueriesUsed += 1
     }
     const searchData = await fetchYouTubeJson(searchUrl, 'search.list')
-    selectedVariants.push(variant)
     if (!queryVariantsUsed.includes(query)) queryVariantsUsed.push(query)
     const searchItems = Array.isArray(searchData.items) ? searchData.items : []
     const queryChannelIds = new Set<string>()
@@ -267,22 +265,7 @@ export async function discoverYouTubeCatalog(
       }
     }
 
-    const discoveredChannels = Array.from(channelsById.values())
-    const existingRangeChannels = Array.from(catalogChannelsById.values()).map(channel => ({
-      id: channel.id,
-      statistics: { subscriberCount: channel.subsNum, hiddenSubscriberCount: false },
-    }))
-    const currentRange = analyzeYouTubeChannelRange([...existingRangeChannels, ...discoveredChannels], subsMin, subsMax)
     const expectedLanguageCode = ({ Français: 'fr', Anglais: 'en', Espagnol: 'es', Allemand: 'de', Italien: 'it', Portugais: 'pt' } as Record<string, string>)[lang]
-    const validTargetedResults = target
-      ? currentRange.accepted.filter(channel => {
-          const samples = videosByChannel.get(channel.id) || []
-          const relevance = scoreChannelContentRelevance(samples, target)
-          const scoreData = calculateProspectScore({ videos: samples, target, subscribers: Number(channel.statistics?.subscriberCount || 0) })
-          const languageAllowed = scoreData.language.confidence !== 'Élevée' || !scoreData.language.language || scoreData.language.language === expectedLanguageCode
-          return relevance.subnicheScore >= 25 && languageAllowed
-        }).length
-      : currentRange.accepted.length
     const queryEnrichedChannels = Array.from(queryChannelIds).map(id => channelsById.get(id)).filter(Boolean)
     const queryRange = analyzeYouTubeChannelRange(queryEnrichedChannels, subsMin, subsMax)
     const queryLanguageChannels = queryEnrichedChannels.filter(channel => {
@@ -309,7 +292,6 @@ export async function discoverYouTubeCatalog(
       lastUsedAt: new Date().toISOString(),
     })
     if (!shouldRunNextYouTubeQuery({
-      acceptedResults: validTargetedResults,
       queriesUsed: metrics?.searchQueriesUsed || orderedVariants.indexOf(variant) + 1,
       totalVariants: orderedVariants.length,
     })) break
@@ -407,7 +389,7 @@ export async function discoverYouTubeCatalog(
         score: scoreData.score,
         scoreLabel: scoreData.label,
         scoreColor: getAdvancedScoreColor(scoreData.score),
-        scoreReason: `${scoreData.relevance.relevantCount}/${scoreData.relevance.sampleSize} videos correspondent au ciblage • ${scoreData.frequency}`,
+        scoreReason: `${formatCompactNumber(scoreData.medianViews)} vues medianes recentes • ${scoreData.frequency} • Potentiel montage ${scoreData.editingPotential.label.toLowerCase()}`,
         scoreBreakdown: scoreData.scoreBreakdown,
         contentRelevance: scoreData.relevance.score,
         subnicheMatch: scoreData.relevance.subnicheScore,
@@ -428,7 +410,7 @@ export async function discoverYouTubeCatalog(
   const expectedLanguage = ({ Français: 'fr', Anglais: 'en', Espagnol: 'es', Allemand: 'de', Italien: 'it', Portugais: 'pt' } as Record<string, string>)[lang]
   const candidates = scoredCandidates
     .filter((ch: any) => {
-      if (ch.contentRelevance < 10) {
+      if (ch.contentRelevance < 1) {
         if (metrics) metrics.rejectedNiche += 1
         return false
       }

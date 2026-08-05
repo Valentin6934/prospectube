@@ -33,9 +33,6 @@ const LANGUAGE_QUERY_SUFFIXES: Record<string, string> = {
 
 export const MAX_SEARCH_LIST_CALLS = 3
 export const MAX_YOUTUBE_SEARCH_QUERIES = MAX_SEARCH_LIST_CALLS
-export const TARGET_VALID_RESULTS = 20
-export const THIRD_CALL_TRIGGER = 10
-export const MIN_YOUTUBE_RESULTS_BEFORE_STOP = TARGET_VALID_RESULTS
 
 function normalizeLanguageLabel(value: unknown): string {
   return String(value || '')
@@ -81,14 +78,10 @@ export function buildYouTubeQueryVariants(niche: unknown, language: unknown, alt
 }
 
 export function shouldRunNextYouTubeQuery(input: {
-  acceptedResults: number
   queriesUsed: number
   totalVariants: number
 }): boolean {
-  if (input.queriesUsed >= Math.min(input.totalVariants, MAX_SEARCH_LIST_CALLS)) return false
-  if (input.queriesUsed === 1) return input.acceptedResults < TARGET_VALID_RESULTS
-  if (input.queriesUsed === 2) return input.acceptedResults < THIRD_CALL_TRIGGER
-  return false
+  return input.queriesUsed < Math.min(input.totalVariants, MAX_SEARCH_LIST_CALLS)
 }
 
 export function collectNewYouTubeChannelIds(items: any[], knownIds: Set<string>): string[] {

@@ -72,16 +72,15 @@ export function scoreChannelContentRelevance(videos: RecentVideo[], target: Sear
   return { score: Math.min(100, score), relevantCount, sampleSize: videos.length, subnicheScore, subnicheLabel }
 }
 
-export function calculateEditingPotential(videos: RecentVideo[], medianViews: number, frequency: string) {
+export function calculateEditingPotential(videos: RecentVideo[], medianViews: number) {
   const longForm = videos.filter(video => Number(video.durationSeconds || 0) >= 480).length
   const editingSignals = videos.filter(video => /gameplay|best of|vlog|interview|podcast|tutoriel|test|review|reaction|documentaire/i.test(`${video.title || ''} ${video.description || ''}`)).length
-  const points = Math.min(20,
-    (videos.length >= 8 ? 5 : videos.length >= 4 ? 3 : 1) +
-    (/tres active|très active/i.test(frequency) ? 5 : frequency === 'Active' ? 4 : 1) +
-    (medianViews >= 10000 ? 5 : medianViews >= 3000 ? 3 : medianViews > 0 ? 1 : 0) +
-    (longForm >= 3 || editingSignals >= 3 ? 5 : longForm || editingSignals ? 3 : 0)
-  )
-  const value = points * 5
+  const sampleSize = Math.max(1, videos.length)
+  const longFormPoints = longForm >= 3 || longForm / sampleSize >= 0.5 ? 7 : longForm > 0 ? 4 : 0
+  const editingSignalPoints = editingSignals >= 3 || editingSignals / sampleSize >= 0.5 ? 5 : editingSignals > 0 ? 3 : 0
+  const viableAudiencePoints = medianViews >= 10000 ? 3 : medianViews >= 3000 ? 2 : medianViews > 0 ? 1 : 0
+  const points = Math.min(15, longFormPoints + editingSignalPoints + viableAudiencePoints)
+  const value = Math.round((points / 15) * 100)
   return { points, value, label: value >= 75 ? 'Eleve' : value >= 45 ? 'Moyen' : 'Faible', longFormCount: longForm }
 }
 
@@ -111,21 +110,20 @@ export function getContactability(channel: any) {
 export function calculateProspectScore(input: { videos: RecentVideo[]; target: SearchTarget; subscribers: number }) {
   const relevance = scoreChannelContentRelevance(input.videos, input.target)
   const language = detectDominantContentLanguage(input.videos)
-  const expectedLanguage = ({ Français: 'fr', Anglais: 'en', Espagnol: 'es', Portugais: 'pt', Allemand: 'de', Italien: 'it' } as Record<string, string>)[input.target.language]
-  const languageFit = language.language === expectedLanguage ? 5 : language.confidence === 'Faible' ? 2 : 0
-  const targeting = Math.min(25, Math.round(relevance.score * 0.2) + languageFit)
   const frequency = classifyPublishingFrequency(input.videos)
   const latest = Math.max(0, ...input.videos.map(video => new Date(String(video.publishedAt || '')).getTime()).filter(Number.isFinite))
   const ageDays = latest ? (Date.now() - latest) / 86400000 : Infinity
-  const activity = Math.min(20, (ageDays <= 30 ? 10 : ageDays <= 90 ? 6 : 1) + (frequency === 'Très active' ? 10 : frequency === 'Active' ? 7 : frequency === 'Occasionnelle' ? 3 : 0))
   const medianViews = calculateMedian(input.videos.map(video => Number(video.viewCount || 0)))
-  const performance = Math.min(15, medianViews >= 100000 ? 15 : medianViews >= 30000 ? 12 : medianViews >= 10000 ? 9 : medianViews >= 3000 ? 5 : medianViews > 0 ? 2 : 0)
   const ratio = calculateRecentViewSubscriberRatio(input.videos, input.subscribers)
   const engagementRate = calculateRecentEngagementRate(input.videos)
-  const engagement = engagementRate === null ? 0 : Math.min(10, engagementRate >= 6 ? 10 : engagementRate >= 3 ? 8 : engagementRate >= 1.5 ? 5 : 2)
-  const commercial = Math.min(10, (input.subscribers >= 10000 && input.subscribers <= 500000 ? 6 : input.subscribers <= 1000000 ? 3 : 1) + (activity >= 13 ? 4 : activity >= 7 ? 2 : 0))
-  const editingPotential = calculateEditingPotential(input.videos, medianViews, frequency)
-  const scoreBreakdown = { targeting, activity, performance, editingNeed: editingPotential.points, engagement, commercial }
+  const editingPotential = calculateEditingPotential(input.videos, medianViews)
+
+  const recentViews = medianViews >= 100000 ? 30 : medianViews >= 50000 ? 27 : medianViews >= 20000 ? 24 : medianViews >= 10000 ? 21 : medianViews >= 5000 ? 16 : medianViews >= 2000 ? 10 : medianViews > 0 ? 4 : 0
+  const growthPotential = ratio >= 1 ? 20 : ratio >= 0.6 ? 18 : ratio >= 0.35 ? 15 : ratio >= 0.2 ? 11 : ratio >= 0.1 ? 7 : ratio > 0 ? 3 : 0
+  const publishingRhythm = frequency === 'Très active' ? 15 : frequency === 'Active' ? 12 : frequency === 'Occasionnelle' ? 7 : frequency === 'Peu active' ? 2 : 0
+  const recentActivity = ageDays <= 14 ? 15 : ageDays <= 30 ? 13 : ageDays <= 60 ? 9 : ageDays <= 90 ? 5 : Number.isFinite(ageDays) ? 1 : 0
+  const targeting = Math.min(5, Math.round(relevance.score * 0.05))
+  const scoreBreakdown = { recentViews, growthPotential, publishingRhythm, recentActivity, editingNeed: editingPotential.points, targeting }
   const score = Object.values(scoreBreakdown).reduce((sum, value) => sum + value, 0)
   const label = score >= 80 ? 'Excellent prospect' : score >= 65 ? 'Bon prospect' : score >= 50 ? 'Prospect moyen' : 'Données limitées'
   const confidence = input.videos.length >= 8 ? 'Elevee' : input.videos.length >= 3 ? 'Moyenne' : 'Faible'

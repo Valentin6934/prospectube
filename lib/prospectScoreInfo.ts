@@ -39,16 +39,16 @@ export const PROSPECT_SCORE_LEVELS = [
 ] as const
 
 export const PROSPECT_SCORE_SIGNALS = [
-  'adequation au ciblage et pertinence des metadonnees video recentes : 25 points',
-  'activite et regularite recentes : 20 points',
-  'vues medianes recentes : 15 points',
-  'besoin de montage estime a partir du volume, du rythme et des formats observables : 20 points',
-  'engagement recent lorsque disponible : 10 points',
-  'potentiel commercial lie a la taille et au rythme de publication : 10 points',
+  'vues medianes recentes, signal principal de budget et de traction : 30 points',
+  'ratio vues medianes / abonnes, indicateur de croissance potentielle : 20 points',
+  'frequence de publication : 15 points',
+  'activite recente mesuree depuis la derniere video observee : 15 points',
+  'potentiel de delegation du montage selon les formats et la viabilite de l audience : 15 points',
+  'adequation au ciblage recherche : 5 points',
 ] as const
 
 export const PROSPECT_SCORE_EXPLANATION =
-  "Le Prospect Score estime l'adequation commerciale pour un monteur video a partir de signaux publics issus d'un echantillon borne : pertinence, regularite, vues medianes, formats et volume de publication. La contactabilite est mesuree separement et n'augmente pas le score."
+  "Le Prospect Score estime le potentiel commercial pour un monteur video a partir de signaux publics recents : vues medianes, traction par rapport aux abonnes, regularite, activite et formats susceptibles d'etre delegues. La contactabilite est mesuree separement et n'augmente jamais le score."
 
 export const PROSPECT_SCORE_TRANSPARENCY_NOTE =
   'Le score mesure un potentiel de prospection, pas un besoin confirme, une reponse garantie ou une opportunite certaine.'
