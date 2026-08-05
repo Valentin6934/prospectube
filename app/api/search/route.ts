@@ -6,9 +6,9 @@ import { prisma } from '@/lib/prisma'
 import { PLAN_LIMITS } from '@/lib/data'
 import { discoverYouTubeCatalog, YouTubeCallMetrics } from '@/lib/youtube'
 import { filterYouTubeCatalog, YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
-import { getPlanName, isPro } from '@/lib/plan'
-import { selectDiverseProspectPreview } from '@/lib/freePreview'
+import { getPlanName } from '@/lib/plan'
 import { validateSearchTarget } from '@/lib/searchTargeting'
+import { buildExposureTargetKey, countGlobalChannelExposure, diversifyProspects, extractChannelIdsFromSearchResults } from '@/lib/resultDiversification'
 import { buildYouTubeErrorResponse, getSafeYouTubeLog } from '@/lib/youtubeQuota'
 import {
   buildSearchCacheKey,
@@ -53,6 +53,20 @@ function buildRangeKey(subsMin: number, subsMax: number): string {
   return `${subsMin}:${subsMax}`
 }
 
+function buildResultMeta(catalog: YouTubeDiscoveryCatalog, matched: any[], returned: any[]) {
+  const displayed = returned.slice(0, 20)
+  return {
+    rawVideos: Number(catalog.rawVideoResults || 0),
+    analyzed: catalog.channels.length,
+    matched: matched.length,
+    strict: matched.filter(item => item.matchMode !== 'nearby').length,
+    nearby: matched.filter(item => item.matchMode === 'nearby').length,
+    displayed: displayed.length,
+    newCount: displayed.filter(item => !item.previouslySeen).length,
+    seenCount: displayed.filter(item => item.previouslySeen).length,
+  }
+}
+
 function parseSearchBody(body: any) {
   const target = validateSearchTarget(body)
   const minIndex = Number.parseInt(String(body?.subsMin ?? ''), 10)
@@ -72,12 +86,6 @@ function parseSearchBody(body: any) {
     minVal: SUBS_VALUES[minIndex],
     maxVal: SUBS_VALUES[maxIndex],
     requestId,
-    filters: {
-      emailOnly: body?.emailOnly === true,
-      activeOnly: body?.activeOnly === true,
-      minMedianViews: Math.min(10000000, Math.max(0, Number(body?.minMedianViews) || 0)),
-      minContentRelevance: Math.min(100, Math.max(0, Number(body?.minContentRelevance) || 10)),
-    },
   }
 }
 
@@ -141,7 +149,6 @@ export async function POST(req: NextRequest) {
   if (!parsed) return NextResponse.json({ error: 'SEARCH_INVALID', message: 'Les criteres de recherche sont invalides.' }, { status: 400 })
 
   const plan = getPlanName(user.plan)
-  const proUser = isPro(user.plan)
   const limits = PLAN_LIMITS[plan]
   const cacheKey = buildSearchCacheKey({
     niche: parsed.niche,
@@ -163,36 +170,45 @@ export async function POST(req: NextRequest) {
     aboveMaximum: 0,
     acceptedResults: 0,
     videosList: 0,
+    rejectedLanguage: 0,
+    rejectedNiche: 0,
   }
   let reserved = false
   let lockAcquired = false
   let responseStatus = 500
   let errorCode: string | undefined
 
+  const selectVisibleResults = async (channels: any[]) => {
+    const [userSearches, globalSearches, campaignProspects] = await Promise.all([
+      prisma.search.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'desc' }, take: 100, select: { results: true } }),
+      prisma.search.findMany({ orderBy: { createdAt: 'desc' }, take: 200, select: { results: true } }),
+      prisma.campaignProspect.findMany({ where: { campaign: { userId: user.id } }, select: { channelId: true } }),
+    ])
+    return diversifyProspects({
+      channels,
+      seenChannelIds: extractChannelIdsFromSearchResults(userSearches),
+      campaignChannelIds: new Set(campaignProspects.map(item => item.channelId)),
+      globalExposure: countGlobalChannelExposure(globalSearches),
+      userSeed: user.id,
+      targetKey: buildExposureTargetKey(parsed.target, parsed.minVal, parsed.maxVal),
+      limit: Math.min(50, channels.length),
+    })
+  }
+
   const logSearch = (extra: Record<string, unknown>) => console.info('YouTube catalog event:', {
-    catalogHit: false,
-    catalogAge: null,
-    catalogCandidateCount: 0,
-    filteredResultCount: metrics.acceptedResults,
-    enrichmentTriggered: false,
     queryVariantCount: metrics.searchQueriesUsed,
     searchListCalls: metrics.searchList,
-    channelsListCalls: metrics.channelsList,
-    videosListCalls: metrics.videosList,
-    searchQueriesUsed: metrics.searchQueriesUsed,
     rawVideoResults: metrics.rawCandidates,
     uniqueChannelIds: metrics.uniqueCandidates,
-    enrichedChannels: metrics.uniqueCandidates,
-    rejectedByMissingSubscribers: metrics.hiddenSubscribers,
-    rejectedBelowSubscribers: metrics.belowMinimum,
-    rejectedAboveSubscribers: metrics.aboveMaximum,
-    rejectedByLanguage: 0,
-    rejectedByTopic: 0,
-    rejectedByActivity: 0,
-    rejectedByAdvancedFilters: 0,
-    acceptedResults: metrics.acceptedResults,
+    channelCatalogCandidates: 0,
+    rejectedBySubscribers: metrics.hiddenSubscribers + metrics.belowMinimum + metrics.aboveMaximum,
+    rejectedByLanguage: metrics.rejectedLanguage,
+    rejectedByNiche: metrics.rejectedNiche,
+    strictSubnicheMatches: 0,
+    nearbySubnicheMatches: 0,
     displayedResults: 0,
-    cacheVersion: SEARCH_CACHE_VERSION,
+    catalogHit: false,
+    durationMs: Date.now() - startedAt,
     ...extra,
   })
 
@@ -248,7 +264,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    let catalogResults = catalog ? filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, limits.results, parsed.filters, parsed.target) : []
+    let catalogResults = catalog ? filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, 150, parsed.target) : []
     const enrichmentTriggered = Boolean(catalog && shouldEnrichSearchCatalog({
       candidateCount: catalog.channels.length,
       filteredResultCount: catalogResults.length,
@@ -262,16 +278,15 @@ export async function POST(req: NextRequest) {
         reserved = false
         const emptyQuota = getReleasedSearchQuotaSnapshot(reservation.snapshot)
         responseStatus = 200
-        logSearch({ catalogHit: true, catalogAge, catalogCandidateCount: catalog.channels.length, filteredResultCount: 0 })
+        logSearch({ catalogHit: true, rawVideoResults: catalog.rawVideoResults || 0, uniqueChannelIds: catalog.channels.length, channelCatalogCandidates: catalog.channels.length })
         return NextResponse.json({
           results: [], source: 'catalog', cached: true, emptyResult: true,
           searchesRemaining: emptyQuota.remaining, quota: emptyQuota, plan,
           canGenerateEmail: limits.emailAI,
         })
       }
-      const visibleResults = proUser
-        ? catalogResults
-        : selectDiverseProspectPreview(catalogResults, limits.results)
+      const selection = await selectVisibleResults(catalogResults)
+      const visibleResults = selection.results
       metrics.acceptedResults = visibleResults.length
       await completeSearchQuota(prisma, parsed.requestId, true)
       reserved = false
@@ -284,10 +299,18 @@ export async function POST(req: NextRequest) {
         results: visibleResults,
       })
       responseStatus = 200
-      logSearch({ catalogHit: true, catalogAge, catalogCandidateCount: catalog.channels.length, filteredResultCount: visibleResults.length })
+      logSearch({
+        catalogHit: true,
+        rawVideoResults: catalog.rawVideoResults || 0,
+        uniqueChannelIds: catalog.channels.length,
+        channelCatalogCandidates: catalog.channels.length,
+        strictSubnicheMatches: catalogResults.filter(item => item.matchMode !== 'nearby').length,
+        nearbySubnicheMatches: catalogResults.filter(item => item.matchMode === 'nearby').length,
+        displayedResults: Math.min(20, visibleResults.length),
+      })
       return NextResponse.json({
         results: visibleResults,
-        resultMeta: { analyzed: catalog.channels.length, matched: catalogResults.length, displayed: visibleResults.length, limit: limits.results, nearby: visibleResults.some(item => item.matchMode === 'nearby') },
+        resultMeta: buildResultMeta(catalog, catalogResults, visibleResults),
         source: 'catalog',
         cached: true,
         searchesRemaining: reservation.snapshot.remaining,
@@ -314,8 +337,9 @@ export async function POST(req: NextRequest) {
     }
 
     catalog = discoveredCatalog
-    catalogResults = filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, limits.results, parsed.filters, parsed.target)
-    const visibleResults = proUser ? catalogResults : selectDiverseProspectPreview(catalogResults, limits.results)
+    catalogResults = filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, 150, parsed.target)
+    const selection = await selectVisibleResults(catalogResults)
+    const visibleResults = selection.results
 
     if (visibleResults.length === 0) {
       catalog.negativeRanges = {
@@ -340,10 +364,7 @@ export async function POST(req: NextRequest) {
       reserved = false
       const emptyQuota = getReleasedSearchQuotaSnapshot(reservation.snapshot)
       responseStatus = 200
-      logSearch({
-        catalogHit, catalogAge: Number.isFinite(catalogAge) ? catalogAge : null, catalogCandidateCount: catalog.channels.length,
-        filteredResultCount: 0, displayedResults: 0, enrichmentTriggered,
-      })
+      logSearch({ catalogHit, rawVideoResults: catalog.rawVideoResults || metrics.rawCandidates, uniqueChannelIds: catalog.channels.length, channelCatalogCandidates: catalog.channels.length })
       return NextResponse.json({
         results: [],
         source: catalogHit || negativeCatalogHit ? 'catalog' : 'youtube',
@@ -397,10 +418,18 @@ export async function POST(req: NextRequest) {
         results: visibleResults,
     })
     responseStatus = 200
-    logSearch({ catalogHit, catalogAge: Number.isFinite(catalogAge) ? catalogAge : null, catalogCandidateCount: catalog.channels.length, filteredResultCount: catalogResults.length, acceptedResults: catalogResults.length, displayedResults: visibleResults.length, enrichmentTriggered })
+    logSearch({
+      catalogHit,
+      rawVideoResults: catalog.rawVideoResults || metrics.rawCandidates,
+      uniqueChannelIds: catalog.channels.length,
+      channelCatalogCandidates: catalog.channels.length,
+      strictSubnicheMatches: catalogResults.filter(item => item.matchMode !== 'nearby').length,
+      nearbySubnicheMatches: catalogResults.filter(item => item.matchMode === 'nearby').length,
+      displayedResults: Math.min(20, visibleResults.length),
+    })
     return NextResponse.json({
       results: visibleResults,
-      resultMeta: { analyzed: catalog.channels.length, matched: catalogResults.length, displayed: visibleResults.length, limit: limits.results, nearby: visibleResults.some(item => item.matchMode === 'nearby') },
+      resultMeta: buildResultMeta(catalog, catalogResults, visibleResults),
       source: 'youtube',
       cached: false,
       searchesRemaining: reservation.snapshot.remaining,

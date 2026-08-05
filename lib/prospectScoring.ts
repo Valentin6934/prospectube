@@ -128,6 +128,6 @@ export function calculateProspectScore(input: { videos: RecentVideo[]; target: S
   const scoreBreakdown = { targeting, activity, performance, editingNeed: editingPotential.points, engagement, commercial }
   const score = Object.values(scoreBreakdown).reduce((sum, value) => sum + value, 0)
   const label = score >= 80 ? 'Excellent prospect' : score >= 65 ? 'Bon prospect' : score >= 50 ? 'Prospect moyen' : 'Données limitées'
-  const confidence = input.videos.length >= 8 && latest > Date.now() - 90 * 86400000 ? 'Elevee' : input.videos.length >= 4 ? 'Moyenne' : 'Faible'
+  const confidence = input.videos.length >= 8 ? 'Elevee' : input.videos.length >= 3 ? 'Moyenne' : 'Faible'
   return { score, label, scoreBreakdown, relevance, language, frequency, medianViews, recentViewSubscriberRatio: ratio, engagementRate, editingPotential, confidence, lastPublishedAt: latest ? new Date(latest).toISOString() : null }
 }

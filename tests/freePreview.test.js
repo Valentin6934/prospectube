@@ -81,7 +81,10 @@ const {
 } = require('../lib/youtubeQuota.ts')
 const {
   MAX_YOUTUBE_SEARCH_QUERIES,
+  MAX_SEARCH_LIST_CALLS,
   MIN_YOUTUBE_RESULTS_BEFORE_STOP,
+  TARGET_VALID_RESULTS,
+  THIRD_CALL_TRIGGER,
   analyzeYouTubeChannelRange,
   buildYouTubeQueryVariants,
   buildYouTubeSearchParams,
@@ -109,7 +112,8 @@ const {
 const { filterYouTubeCatalog, mergeCatalogChannels } = require('../lib/youtubeCatalog.ts')
 const { getReleasedSearchQuotaSnapshot, getSearchQuotaSnapshot, releaseSearchQuota, reserveSearchQuota } = require('../lib/searchQuota.ts')
 const { FREE_LIFETIME_CAMPAIGN_LIMIT, FREE_CAMPAIGN_PROSPECT_LIMIT, FREE_CAMPAIGN_MARKER_PERIOD, FREE_CAMPAIGN_COMPLETED_PERIOD } = require('../lib/campaignAccess.ts')
-const { NICHE_CONFIG, validateSearchTarget, buildTargetQuery, getSubnicheVocabulary, getPrimarySearchFocus, getSearchFocusVariant } = require('../lib/searchTargeting.ts')
+const { NICHE_CONFIG, validateSearchTarget, buildTargetQuery, getSubnicheVocabulary, getPrimarySearchFocus, getSearchFocusVariant, getSearchFocusVariants } = require('../lib/searchTargeting.ts')
+const { buildExposureTargetKey, countGlobalChannelExposure, diversifyProspects, extractChannelIdsFromSearchResults } = require('../lib/resultDiversification.ts')
 const { classifyRegistrationError, getSafePrismaMeta, normalizeAccountEmail, validateRegistrationInput } = require('../lib/registration.ts')
 const { calculateMedian, calculateTrimmedMean, scoreVideoTopicMatch, scoreChannelContentRelevance, detectDominantContentLanguage, calculateProspectScore, getContactability } = require('../lib/prospectScoring.ts')
 const {
@@ -1153,7 +1157,7 @@ test('youtube language labels normalize to ISO 639-1 codes', () => {
   assert.equal(normalizeYouTubeLanguage('langue-inconnue'), null)
 })
 
-test('youtube query variants are deterministic, unique and limited to two', () => {
+test('youtube query variants are deterministic, unique and limited to three', () => {
   assert.deepEqual(buildYouTubeQueryVariants(' Gaming ', 'Français'), ['Gaming français', 'Gaming video français'])
   assert.deepEqual(buildYouTubeQueryVariants('Gaming français', 'fr'), ['Gaming français'])
   assert.deepEqual(buildYouTubeQueryVariants('Immobilier', 'Klingon'), ['Immobilier'])
@@ -1164,15 +1168,21 @@ test('subniche discovery produces useful deterministic French queries', () => {
   const fortnite = { niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' }
   assert.equal(getPrimarySearchFocus(fortnite), 'Fortnite')
   assert.equal(getSearchFocusVariant(fortnite), 'gameplay fortnite')
-  assert.deepEqual(buildYouTubeQueryVariants(getPrimarySearchFocus(fortnite), fortnite.language, getSearchFocusVariant(fortnite)), ['Fortnite français', 'gameplay fortnite français'])
+  assert.deepEqual(buildYouTubeQueryVariants(getPrimarySearchFocus(fortnite), fortnite.language, getSearchFocusVariants(fortnite)), ['Fortnite français', 'gameplay fortnite français', 'chaine fortnite francaise'])
   assert.ok(getSubnicheVocabulary('Mode homme').includes('style masculin'))
 })
 
-test('adaptive YouTube search stops at ten results and permits one fallback below ten', () => {
-  assert.equal(MIN_YOUTUBE_RESULTS_BEFORE_STOP, 10)
-  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 10, queriesUsed: 1, totalVariants: 2 }), false)
-  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 9, queriesUsed: 1, totalVariants: 2 }), true)
-  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 0, queriesUsed: 2, totalVariants: 2 }), false)
+test('adaptive YouTube search uses the 20/10/3 policy', () => {
+  assert.equal(MAX_SEARCH_LIST_CALLS, 3)
+  assert.equal(MAX_YOUTUBE_SEARCH_QUERIES, 3)
+  assert.equal(MIN_YOUTUBE_RESULTS_BEFORE_STOP, 20)
+  assert.equal(TARGET_VALID_RESULTS, 20)
+  assert.equal(THIRD_CALL_TRIGGER, 10)
+  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 20, queriesUsed: 1, totalVariants: 3 }), false)
+  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 19, queriesUsed: 1, totalVariants: 3 }), true)
+  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 10, queriesUsed: 2, totalVariants: 3 }), false)
+  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 9, queriesUsed: 2, totalVariants: 3 }), true)
+  assert.equal(shouldRunNextYouTubeQuery({ acceptedResults: 0, queriesUsed: 3, totalVariants: 3 }), false)
 })
 
 test('adaptive YouTube IDs are deduplicated and only new channels are enriched', () => {
@@ -1284,7 +1294,7 @@ test('discovery catalog keys are shared across subscriber ranges and remain vers
   assert.equal(first, second)
   assert.equal(first, different)
   assert.match(first, new RegExp(`^${SEARCH_CACHE_VERSION}:`))
-  assert.equal(SEARCH_CACHE_VERSION, 'youtube-search-v7')
+  assert.equal(SEARCH_CACHE_VERSION, 'youtube-search-v8')
   assert.equal(normalizeSearchText('  Création   vidéo  '), 'creation-video')
 })
 
@@ -1480,7 +1490,7 @@ test('youtube diagnostic is minimal and never prints the API key or keyed URL', 
   assert.doesNotMatch(diagnostic, /console\.(?:log|error)\(url/)
 })
 
-test('youtube search uses at most two queries and batches only new channel ids', () => {
+test('youtube search uses at most three targeted queries and batches only new channel ids', () => {
   const youtubeLib = fs.readFileSync('lib/youtube.ts', 'utf8')
 
   assert.match(youtubeLib, /MAX_YOUTUBE_SEARCH_QUERIES/)
@@ -1502,7 +1512,7 @@ test('search route uses persistent cache, atomic quotas and cross-instance locks
 
   assert.match(searchRoute, /prisma\.searchCache\.findFirst/)
   assert.match(searchRoute, /filterYouTubeCatalog\(catalog, parsed\.minVal, parsed\.maxVal/)
-  assert.match(searchRoute, /selectDiverseProspectPreview\(catalogResults, limits\.results\)/)
+  assert.match(searchRoute, /diversifyProspects/)
   assert.match(searchRoute, /acquireSearchLock/)
   assert.match(searchRoute, /reserveSearchQuota/)
   assert.match(searchRoute, /completeSearchQuota/)
@@ -1531,11 +1541,12 @@ test('catalog cache is shared globally, locked by niche/language and emits safe 
   assert.match(youtube, /existingCatalog\?\.nextPageToken/)
   assert.match(youtube, /existingCatalog\?\.queryVariantsUsed/)
   assert.match(route, /catalogHit:/)
-  assert.match(route, /catalogCandidateCount:/)
-  assert.match(route, /filteredResultCount:/)
+  assert.match(route, /channelCatalogCandidates:/)
+  assert.match(route, /strictSubnicheMatches:/)
   assert.match(route, /searchListCalls:/)
-  const eventBody = route.slice(route.indexOf("console.info('YouTube catalog event:'"), route.indexOf("console.info('YouTube catalog event:'") + 700)
-  assert.doesNotMatch(eventBody, /userIdHash|niche|email|YOUTUBE_API_KEY|googleapis|query:/)
+  const eventStart = route.indexOf("console.info('YouTube catalog event:'")
+  const eventBody = route.slice(eventStart, route.indexOf('\n  })', eventStart) + 5)
+  assert.doesNotMatch(eventBody, /userIdHash|email|YOUTUBE_API_KEY|googleapis|query:/)
 })
 
 test('dashboard handles youtube 429 without double submission or raw Google errors', () => {
@@ -1645,21 +1656,21 @@ test('dominant language rejects confident Portuguese content for a French target
   assert.equal(language.confidence, 'Élevée')
 })
 
-test('catalog V7 is shared by subniches and local subscriber bounds', () => {
+test('catalog V8 is targeted by subniche but shared across local subscriber bounds', () => {
   const base = buildSearchCacheKey({ niche: 'Gaming', lang: 'Français', subNiches: ['Minecraft'], customKeyword: '' })
   const reordered = buildSearchCacheKey({ niche: 'Gaming', lang: 'Français', subNiches: ['Minecraft'], customKeyword: '' })
   const otherSubNiche = buildSearchCacheKey({ niche: 'Gaming', lang: 'Français', subNiches: ['Speedrun'], customKeyword: '' })
   assert.equal(base, reordered)
-  assert.equal(base, otherSubNiche)
+  assert.notEqual(base, otherSubNiche)
   assert.doesNotMatch(base, /10000|50000/)
 })
 
-test('advanced filters are local and do not require a new catalog', () => {
-  const catalog = { channels: [
-    { id: 'a', subsNum: 20000, score: 80, email: 'a@example.com', publishingFrequency: 'Active', recentMedianViews: 12000, contentRelevance: 90 },
-    { id: 'b', subsNum: 25000, score: 70, email: null, publishingFrequency: 'Peu active', recentMedianViews: 500, contentRelevance: 80 },
-  ] }
-  assert.deepEqual(filterYouTubeCatalog(catalog, 10000, 50000, 20, { emailOnly: true, activeOnly: true, minMedianViews: 10000 }).map(item => item.id), ['a'])
+test('advanced filters are fully removed from client and server', () => {
+  const route = fs.readFileSync('app/api/search/route.ts', 'utf8')
+  const dashboard = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
+  for (const removed of ['emailOnly', 'activeOnly', 'minMedianViews', 'minContentRelevance', 'Filtres avancés']) {
+    assert.doesNotMatch(`${route}\n${dashboard}`, new RegExp(removed))
+  }
 })
 
 test('free campaign discovery is limited and durable without enabling campaign AI', () => {
@@ -1682,10 +1693,62 @@ test('free campaign discovery is limited and durable without enabling campaign A
 
 test('subniche filtering relaxes only topic qualification when strict matches are empty', () => {
   const target = { niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' }
-  const nearby = filterYouTubeCatalog({ channels: [{ id: 'near', subsNum: 20000, score: 40, recentVideos: [{ title: 'Actualite gaming francaise' }] }] }, 10000, 100000, 20, {}, target)
+  const nearby = filterYouTubeCatalog({ channels: [{ id: 'near', subsNum: 20000, score: 40, recentVideos: [{ title: 'Actualite gaming generale' }] }] }, 10000, 100000, 20, target)
   assert.equal(nearby.length, 1)
   assert.equal(nearby[0].matchMode, 'nearby')
-  assert.deepEqual(filterYouTubeCatalog({ channels: [{ id: 'outside', subsNum: 200000, recentVideos: [{ title: 'Fortnite francais' }] }] }, 10000, 100000, 20, {}, target), [])
+  assert.deepEqual(filterYouTubeCatalog({ channels: [{ id: 'outside', subsNum: 200000, recentVideos: [{ title: 'Fortnite francais' }] }] }, 10000, 100000, 20, target), [])
+})
+
+test('Mode homme uses three targeted queries without a generic Mode query', () => {
+  const target = { niche: 'Mode', subNiches: ['Mode homme'], customKeyword: '', language: 'Français' }
+  const queries = buildYouTubeQueryVariants(getPrimarySearchFocus(target), target.language, getSearchFocusVariants(target))
+  assert.deepEqual(queries, ['Mode homme français', 'style masculin français', 'conseils vetements homme français'])
+  assert.equal(queries.some(query => query.toLowerCase() === 'mode français'), false)
+})
+
+test('diversification prioritizes unseen prospects but never sacrifices a large relevance gap', () => {
+  const channels = [
+    { id: 'best', score: 100, contentRelevance: 100, subnicheMatch: 100 },
+    { id: 'new', score: 70, contentRelevance: 70, subnicheMatch: 70 },
+    { id: 'weak', score: 20, contentRelevance: 20, subnicheMatch: 10 },
+  ]
+  const common = { channels, campaignChannelIds: new Set(), globalExposure: new Map(), userSeed: 'hashed-internally', targetKey: 'gaming:fortnite', now: new Date('2026-08-05T10:00:00Z'), limit: 3 }
+  const result = diversifyProspects({ ...common, seenChannelIds: new Set(['best']) })
+  assert.equal(result.results[0].id, 'best')
+  assert.ok(result.results.findIndex(item => item.id === 'new') < result.results.findIndex(item => item.id === 'weak'))
+  assert.equal(result.newCount, 2)
+  assert.equal(result.seenCount, 1)
+})
+
+test('diversification is deterministic per user/day and changes softly across users', () => {
+  const channels = Array.from({ length: 8 }, (_, index) => ({ id: `c${index}`, score: 70, contentRelevance: 70, subnicheMatch: 70 }))
+  const base = { channels, seenChannelIds: new Set(), campaignChannelIds: new Set(), globalExposure: new Map(), targetKey: 'mode:homme', now: new Date('2026-08-05T10:00:00Z'), limit: 8 }
+  const first = diversifyProspects({ ...base, userSeed: 'user-a' }).results.map(item => item.id)
+  const repeated = diversifyProspects({ ...base, userSeed: 'user-a' }).results.map(item => item.id)
+  const otherUser = diversifyProspects({ ...base, userSeed: 'user-b' }).results.map(item => item.id)
+  assert.deepEqual(first, repeated)
+  assert.notDeepEqual(first, otherUser)
+})
+
+test('history exposure parsing is safe and campaign prospects receive a stronger penalty', () => {
+  const rows = [{ results: JSON.stringify([{ id: 'seen' }, { channelId: 'other' }]) }, { results: 'invalid-json' }]
+  assert.deepEqual([...extractChannelIdsFromSearchResults(rows)].sort(), ['other', 'seen'])
+  assert.equal(countGlobalChannelExposure([rows[0], rows[0]]).get('seen'), 2)
+  const targetKey = buildExposureTargetKey({ niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' }, 10000, 100000)
+  assert.doesNotMatch(targetKey, /user|email/i)
+  const ranked = diversifyProspects({
+    channels: [{ id: 'campaign', score: 80, contentRelevance: 80, subnicheMatch: 80 }, { id: 'fresh', score: 80, contentRelevance: 80, subnicheMatch: 80 }],
+    seenChannelIds: new Set(), campaignChannelIds: new Set(['campaign']), globalExposure: new Map(), userSeed: 'user', targetKey, now: new Date('2026-08-05'), limit: 2,
+  })
+  assert.equal(ranked.results[0].id, 'fresh')
+})
+
+test('prospect score confidence follows the observed video sample size', () => {
+  const target = { niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' }
+  const video = { title: 'Fortnite gameplay français', publishedAt: new Date().toISOString(), viewCount: 5000, durationSeconds: 600 }
+  assert.equal(calculateProspectScore({ videos: [video], target, subscribers: 20000 }).confidence, 'Faible')
+  assert.equal(calculateProspectScore({ videos: Array.from({ length: 3 }, () => video), target, subscribers: 20000 }).confidence, 'Moyenne')
+  assert.equal(calculateProspectScore({ videos: Array.from({ length: 8 }, () => video), target, subscribers: 20000 }).confidence, 'Elevee')
 })
 
 test('registration validates and normalizes valid accounts for immediate credentials login', () => {

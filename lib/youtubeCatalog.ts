@@ -9,6 +9,8 @@ export type YouTubeDiscoveryCatalog = {
   nextPageToken: string | null
   nextPageQuery?: string | null
   negativeRanges?: Record<string, string>
+  rawVideoResults?: number
+  completeness?: 'poor' | 'partial' | 'complete'
 }
 
 export function mergeCatalogChannels(existing: any[], discovered: any[]): any[] {
@@ -24,7 +26,6 @@ export function filterYouTubeCatalog(
   subsMin: number,
   subsMax: number,
   maxResults: number,
-  filters: { emailOnly?: boolean; activeOnly?: boolean; minMedianViews?: number; minContentRelevance?: number } = {},
   target?: SearchTarget
 ) {
   const qualified = catalog.channels
@@ -45,16 +46,17 @@ export function filterYouTubeCatalog(
       }
     })
     .filter(channel => Number.isFinite(Number(channel?.subsNum)) && channel.subsNum >= subsMin && channel.subsNum <= subsMax)
-    .filter(channel => !filters.emailOnly || Boolean(channel.email))
-    .filter(channel => !filters.activeOnly || ['Très active', 'Active'].includes(channel.publishingFrequency))
-    .filter(channel => Number(channel.recentMedianViews || 0) >= Number(filters.minMedianViews || 0))
-    .filter(channel => Number(channel.contentRelevance || 0) >= Number(filters.minContentRelevance || 0))
+    .filter(channel => !target || Number(channel.contentRelevance || 0) >= 10)
   const hasSpecificTarget = Boolean(target && (target.subNiches.length || target.customKeyword))
   const strict = hasSpecificTarget ? qualified.filter(channel => Number(channel.subnicheMatch || 0) >= 25) : qualified
-  const selected = strict.length ? strict : qualified.map(channel => ({
+  const nearby = qualified.filter(channel => !strict.some(strictChannel => strictChannel.id === channel.id)).map(channel => ({
     ...channel,
     matchMode: 'nearby',
     matchNotice: 'Resultat proche : la sous-categorie exacte est peu documentee dans les videos recentes.',
   }))
-  return selected.sort((a, b) => Number(b.score || 0) - Number(a.score || 0)).slice(0, maxResults)
+  const selected = hasSpecificTarget ? [...strict, ...nearby] : strict
+  return selected.sort((a, b) => {
+    const matchDifference = Number(a.matchMode === 'nearby') - Number(b.matchMode === 'nearby')
+    return matchDifference || Number(b.score || 0) - Number(a.score || 0)
+  }).slice(0, maxResults)
 }

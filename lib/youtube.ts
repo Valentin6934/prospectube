@@ -1,8 +1,8 @@
 import { selectDiverseProspectPreview } from '@/lib/freePreview'
 import { PROSPECT_SCORE_THRESHOLDS } from '@/lib/prospectScoreInfo'
 import { SEARCH_CACHE_VERSION } from '@/lib/searchPolicy'
-import { calculateProspectScore, getContactability, type RecentVideo } from '@/lib/prospectScoring'
-import { getPrimarySearchFocus, getSearchFocusVariant, type SearchTarget } from '@/lib/searchTargeting'
+import { calculateProspectScore, getContactability, scoreChannelContentRelevance, type RecentVideo } from '@/lib/prospectScoring'
+import { getPrimarySearchFocus, getSearchFocusVariants, type SearchTarget } from '@/lib/searchTargeting'
 import { YouTubeApiError, classifyYouTubeError } from '@/lib/youtubeQuota'
 import { filterYouTubeCatalog, mergeCatalogChannels, YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
 import {
@@ -10,7 +10,6 @@ import {
   buildYouTubeQueryVariants,
   buildYouTubeSearchParams,
   collectNewYouTubeChannelIds,
-  getSafeYouTubeSearchParamsLog,
   MAX_YOUTUBE_SEARCH_QUERIES,
   shouldRunNextYouTubeQuery,
 } from '@/lib/youtubeSearchParams'
@@ -154,6 +153,8 @@ export type YouTubeCallMetrics = {
   aboveMaximum: number
   acceptedResults: number
   videosList: number
+  rejectedLanguage: number
+  rejectedNiche: number
 }
 
 export type { YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
@@ -194,7 +195,7 @@ export async function discoverYouTubeCatalog(
   const queries = buildYouTubeQueryVariants(
     target ? getPrimarySearchFocus(target) : niche,
     lang,
-    target ? getSearchFocusVariant(target) : null
+    target ? getSearchFocusVariants(target) : null
   ).slice(0, MAX_YOUTUBE_SEARCH_QUERIES)
   const knownChannelIds = new Set<string>((existingCatalog?.channels || []).map(channel => channel.id).filter(Boolean))
   const channelsById = new Map<string, any>()
@@ -225,7 +226,6 @@ export async function discoverYouTubeCatalog(
       type: 'video',
     })
     searchUrl.search = searchParams.toString()
-    console.info('YouTube search request prepared:', getSafeYouTubeSearchParamsLog(searchParams))
     searchUrl.searchParams.set('key', apiKey)
 
     if (metrics) {
@@ -272,8 +272,11 @@ export async function discoverYouTubeCatalog(
       statistics: { subscriberCount: channel.subsNum, hiddenSubscriberCount: false },
     }))
     const currentRange = analyzeYouTubeChannelRange([...existingRangeChannels, ...discoveredChannels], subsMin, subsMax)
+    const validTargetedResults = target
+      ? currentRange.accepted.filter(channel => scoreChannelContentRelevance(videosByChannel.get(channel.id) || [], target).subnicheScore >= 25).length
+      : currentRange.accepted.length
     if (!shouldRunNextYouTubeQuery({
-      acceptedResults: currentRange.accepted.length,
+      acceptedResults: validTargetedResults,
       queriesUsed: metrics?.searchQueriesUsed || queries.indexOf(query) + 1,
       totalVariants: queriesToRun.length,
     })) break
@@ -312,7 +315,7 @@ export async function discoverYouTubeCatalog(
     metrics.belowMinimum = range.belowMinimum
     metrics.aboveMaximum = range.aboveMaximum
   }
-  const candidates = Array.from(channelsById.values())
+  const scoredCandidates = Array.from(channelsById.values())
     .map((ch: any) => {
       const subsNum = Number(ch.statistics?.subscriberCount || 0)
       const viewCount = Number(ch.statistics?.viewCount || 0)
@@ -345,6 +348,8 @@ export async function discoverYouTubeCatalog(
         channelAge,
         viewsPerSubscriber,
         recentVideos,
+        discoverySource: 'targeted-video-search',
+        sourceVideoCount: recentVideos.length,
         niche,
         lang,
         freq: 'Inconnu',
@@ -387,7 +392,19 @@ export async function discoverYouTubeCatalog(
         scoreConfidence: scoreData.confidence,
       }
     })
-    .filter((ch: any) => ch.contentRelevance >= 10 && !(ch.languageConfidence === 'Élevée' && ch.detectedLanguage && ch.detectedLanguage !== ({ Français: 'fr', Anglais: 'en', Espagnol: 'es', Allemand: 'de', Italien: 'it', Portugais: 'pt' } as Record<string, string>)[lang]))
+  const expectedLanguage = ({ Français: 'fr', Anglais: 'en', Espagnol: 'es', Allemand: 'de', Italien: 'it', Portugais: 'pt' } as Record<string, string>)[lang]
+  const candidates = scoredCandidates
+    .filter((ch: any) => {
+      if (ch.contentRelevance < 10) {
+        if (metrics) metrics.rejectedNiche += 1
+        return false
+      }
+      if (ch.languageConfidence === 'Élevée' && ch.detectedLanguage && ch.detectedLanguage !== expectedLanguage) {
+        if (metrics) metrics.rejectedLanguage += 1
+        return false
+      }
+      return true
+    })
     .sort((a: any, b: any) => b.score - a.score)
     .slice(0, 150)
 
@@ -404,6 +421,8 @@ export async function discoverYouTubeCatalog(
     nextPageToken,
     nextPageQuery,
     negativeRanges: existingCatalog?.negativeRanges,
+    rawVideoResults: (existingCatalog?.rawVideoResults || 0) + (metrics?.rawCandidates || 0),
+    completeness: metrics && metrics.acceptedResults >= 20 ? 'complete' : metrics && metrics.acceptedResults >= 10 ? 'partial' : 'poor',
   } satisfies YouTubeDiscoveryCatalog
 }
 

@@ -32,8 +32,8 @@ export type SearchTarget = {
 }
 
 const SUBNICHE_ASSOCIATIONS: Record<string, string[]> = {
-  fortnite: ['fortnite', 'gameplay fortnite', 'battle royale', 'chapitre fortnite'],
-  'mode homme': ['mode homme', 'style masculin', 'conseils homme', 'tenue homme', 'look homme'],
+  fortnite: ['fortnite', 'gameplay fortnite', 'chaine fortnite francaise'],
+  'mode homme': ['mode homme', 'style masculin', 'conseils vetements homme'],
   streetwear: ['streetwear', 'mode urbaine', 'sneakers', 'look streetwear'],
   minecraft: ['minecraft', 'survie minecraft', 'construction minecraft'],
   roblox: ['roblox', 'gameplay roblox'],
@@ -82,4 +82,11 @@ export function getSearchFocusVariant(target: SearchTarget): string | null {
   const focus = getPrimarySearchFocus(target)
   const terms = getSubnicheVocabulary(focus)
   return terms.find(term => normalizeTargetText(term) !== normalizeTargetText(focus)) || null
+}
+
+export function getSearchFocusVariants(target: SearchTarget): string[] {
+  const focus = getPrimarySearchFocus(target)
+  return getSubnicheVocabulary(focus)
+    .filter(term => normalizeTargetText(term) !== normalizeTargetText(focus))
+    .slice(0, 2)
 }
