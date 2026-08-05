@@ -70,7 +70,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false)
   const [searchPausedUntil, setSearchPausedUntil] = useState(0)
   const [results, setResults] = useState<any[]>([])
-  const [resultMeta, setResultMeta] = useState<{ rawVideos: number; analyzed: number; matched: number; strict: number; nearby: number; displayed: number; newCount: number; seenCount: number; newlyDiscovered?: number } | null>(null)
+  const [resultMeta, setResultMeta] = useState<{ matched: number; strict: number; nearby: number; newCount: number; seenCount: number } | null>(null)
   const [visibleResults, setVisibleResults] = useState(20)
   const [searched, setSearched] = useState(false)
   const [canEmail, setCanEmail] = useState(false)
@@ -80,7 +80,6 @@ export default function Dashboard() {
   const [plan, setPlan] = useState('Gratuit')
   const [favoriteIds, setFavoriteIds] = useState<string[]>([])
   const [favoriteLoadingId, setFavoriteLoadingId] = useState<string | null>(null)
-  const [cacheNotice, setCacheNotice] = useState(false)
   const [expandedAnalysisIds, setExpandedAnalysisIds] = useState<string[]>([])
 
   const [emailModal, setEmailModal] = useState<any>(null)
@@ -189,7 +188,6 @@ export default function Dashboard() {
     if (!editorEmail) return showToast('Ajoutez votre email de contact avant de continuer.', 'info')
     setLoading(true)
     setSearched(false)
-    setCacheNotice(false)
     setSearchFeedback(null)
     setSelectedIds([])
     setResultMeta(null)
@@ -243,10 +241,6 @@ export default function Dashboard() {
       setSearchFeedback({ type: 'info', message: `Vous venez de trouver ${data.results.length} prospect${data.results.length > 1 ? 's' : ''}. Il vous reste ${data.searchesRemaining} recherche${data.searchesRemaining > 1 ? 's' : ''} gratuite${data.searchesRemaining > 1 ? 's' : ''}.` })
     }
 
-    if (data.cached) {
-      setCacheNotice(true)
-      window.setTimeout(() => setCacheNotice(false), 3500)
-    }
   }
 
   const generateEmail = async (channel: any) => {
@@ -603,17 +597,13 @@ export default function Dashboard() {
           </div>
         )}
 
-        {cacheNotice && (
-          <div style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', fontWeight: 600 }}>
-            ⚡ Résultats instantanés (cache)
-          </div>
-        )}
-
         {searched && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
               <h3 className="font-display" style={{ fontWeight: 600, fontSize: '1rem' }}>
-                {resultMeta ? `${resultMeta.rawVideos} vidéos ciblées · ${resultMeta.analyzed} chaînes uniques · ${resultMeta.strict} strictes · ${resultMeta.nearby} proches · ${Math.min(visibleResults, results.length)} affichées` : `${results.length} chaîne${results.length !== 1 ? 's' : ''} trouvée${results.length !== 1 ? 's' : ''}`}
+                {resultMeta?.nearby
+                  ? `${resultMeta.strict} correspondance${resultMeta.strict !== 1 ? 's' : ''} · ${resultMeta.nearby} résultat${resultMeta.nearby !== 1 ? 's' : ''} proche${resultMeta.nearby !== 1 ? 's' : ''}`
+                  : `${results.length} créateur${results.length !== 1 ? 's' : ''} correspond${results.length === 1 ? '' : 'ent'} à votre recherche`}
               </h3>
               <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 <ProspectScoreExplanation />
@@ -635,7 +625,6 @@ export default function Dashboard() {
             ) : (
               <>
               {resultMeta && <div style={{ marginBottom: '0.8rem', color: '#A89FCC', fontSize: '0.82rem' }}>{resultMeta.newCount} nouveaux prospects · {resultMeta.seenCount} déjà consultés{resultMeta.newCount === 0 ? ' · Vous avez déjà consulté la majorité des prospects disponibles pour cette recherche.' : ''}</div>}
-              {Boolean(resultMeta?.newlyDiscovered) && <div style={{ marginBottom: '0.8rem', color: '#86efac', fontSize: '0.78rem' }}>Catalogue enrichi : {resultMeta?.newlyDiscovered} nouvelles chaînes découvertes</div>}
               {results.slice(0, visibleResults).map((ch, index) => (
                 <div key={ch.id}>
                 {ch.matchMode === 'nearby' && (index === 0 || results[index - 1]?.matchMode !== 'nearby') && <div style={{ margin: '1.2rem 0 0.8rem', paddingTop: '1rem', borderTop: '1px solid rgba(234,179,8,0.25)', color: '#fde68a', fontSize: '0.85rem', fontWeight: 700 }}>Résultats proches ({resultMeta?.nearby || 0})</div>}
@@ -905,7 +894,6 @@ export default function Dashboard() {
                 </div>
               ))}
               {visibleResults < results.length && <button className="btn-secondary" onClick={() => setVisibleResults(value => value + 10)} style={{ width: '100%', marginTop: '0.4rem' }}>Afficher plus</button>}
-              {resultMeta && resultMeta.matched > resultMeta.displayed && <div style={{ marginTop: '0.65rem', textAlign: 'center', color: '#6B5F96', fontSize: '0.78rem' }}>{resultMeta.displayed} profils affichés sur {resultMeta.matched} correspondances, selon la limite de votre plan.</div>}
               </>
             )}
           </div>

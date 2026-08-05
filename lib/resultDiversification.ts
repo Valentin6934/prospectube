@@ -35,6 +35,32 @@ export function countGlobalChannelExposure(rows: Array<{ results: string }>): Ma
   return counts
 }
 
+function prospectQualityValue(channel: any, key: string): number {
+  const value = Number(channel?.[key] || 0)
+  return Number.isFinite(value) ? value : 0
+}
+
+export function sortProspectsByQuality(channels: any[]): any[] {
+  return channels.slice().sort((a, b) => {
+    const matchTier = Number(a.matchMode === 'nearby') - Number(b.matchMode === 'nearby')
+    if (matchTier) return matchTier
+
+    const qualityKeys = ['score', 'editingPotential', 'subnicheMatch']
+    for (const key of qualityKeys) {
+      const difference = prospectQualityValue(b, key) - prospectQualityValue(a, key)
+      if (difference) return difference
+    }
+
+    const noveltyDifference = Number(Boolean(a.previouslySeen)) - Number(Boolean(b.previouslySeen))
+    if (noveltyDifference) return noveltyDifference
+
+    const diversificationDifference = prospectQualityValue(b, 'diversificationRank') - prospectQualityValue(a, 'diversificationRank')
+    if (diversificationDifference) return diversificationDifference
+
+    return String(a.id || a.channelId || '').localeCompare(String(b.id || b.channelId || ''))
+  })
+}
+
 export function diversifyProspects(input: {
   channels: any[]
   seenChannelIds: Set<string>
@@ -47,7 +73,7 @@ export function diversifyProspects(input: {
 }) {
   const day = (input.now || new Date()).toISOString().slice(0, 10)
   const seed = createHash('sha256').update(`${input.userSeed}:${input.targetKey}:${day}:${SEARCH_CACHE_VERSION}`).digest('hex')
-  const ranked = input.channels.map(channel => {
+  const ranked = sortProspectsByQuality(input.channels.map(channel => {
     const id = String(channel.id || channel.channelId || '')
     const seen = input.seenChannelIds.has(id)
     const inCampaign = input.campaignChannelIds.has(id)
@@ -56,13 +82,7 @@ export function diversifyProspects(input: {
     const exposure = Math.max(0, 10 - Math.min(10, input.globalExposure.get(id) || 0))
     const jitter = (deterministicUnit(seed, id) - 0.5) * 4
     return { ...channel, previouslySeen: seen, diversificationRank: quality * 0.75 + novelty + exposure + jitter - (inCampaign ? 20 : 0) }
-  }).sort((a, b) => {
-    const matchTier = Number(a.matchMode === 'nearby') - Number(b.matchMode === 'nearby')
-    if (matchTier) return matchTier
-    const relevanceGap = Number(b.contentRelevance || 0) - Number(a.contentRelevance || 0)
-    if (Math.abs(relevanceGap) > 15) return relevanceGap
-    return b.diversificationRank - a.diversificationRank
-  })
+  }))
   const results = ranked.slice(0, input.limit)
   const newCount = results.filter(channel => !channel.previouslySeen).length
   return { results, newCount, seenCount: results.length - newCount }

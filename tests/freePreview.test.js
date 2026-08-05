@@ -113,7 +113,7 @@ const { filterYouTubeCatalog, mergeCatalogChannels } = require('../lib/youtubeCa
 const { getReleasedSearchQuotaSnapshot, getSearchQuotaSnapshot, releaseSearchQuota, reserveSearchQuota } = require('../lib/searchQuota.ts')
 const { FREE_LIFETIME_CAMPAIGN_LIMIT, FREE_CAMPAIGN_PROSPECT_LIMIT, FREE_CAMPAIGN_MARKER_PERIOD, FREE_CAMPAIGN_COMPLETED_PERIOD } = require('../lib/campaignAccess.ts')
 const { NICHE_CONFIG, validateSearchTarget, buildTargetQuery, getSubnicheVocabulary, getPrimarySearchFocus, getSearchFocusVariant, getSearchFocusVariants } = require('../lib/searchTargeting.ts')
-const { buildExposureTargetKey, countGlobalChannelExposure, diversifyProspects, extractChannelIdsFromSearchResults } = require('../lib/resultDiversification.ts')
+const { buildExposureTargetKey, countGlobalChannelExposure, diversifyProspects, extractChannelIdsFromSearchResults, sortProspectsByQuality } = require('../lib/resultDiversification.ts')
 const { buildDiscoveryFallbackQueries, calculateQueryVariantYield, classifyQueryBreadth, rankQueryVariants, selectComplementaryVariant, selectNextDiscoveryVariant, updateVariantPerformance } = require('../lib/discoveryVariants.ts')
 const { calculateCatalogCoverage, getUserCoverage } = require('../lib/catalogCoverage.ts')
 const { classifyRegistrationError, getSafePrismaMeta, normalizeAccountEmail, validateRegistrationInput } = require('../lib/registration.ts')
@@ -1720,6 +1720,44 @@ test('diversification prioritizes unseen prospects but never sacrifices a large 
   assert.ok(result.results.findIndex(item => item.id === 'new') < result.results.findIndex(item => item.id === 'weak'))
   assert.equal(result.newCount, 2)
   assert.equal(result.seenCount, 1)
+})
+
+test('search results prioritize strict matches and descending prospect quality', () => {
+  const ranked = sortProspectsByQuality([
+    { id: 'near-95', matchMode: 'nearby', score: 95, editingPotential: 90, subnicheMatch: 90 },
+    { id: 'strict-76', score: 76, editingPotential: 90, subnicheMatch: 90, previouslySeen: false },
+    { id: 'strict-91', score: 91, editingPotential: 20, subnicheMatch: 20, previouslySeen: true },
+    { id: 'strict-82-low-edit', score: 82, editingPotential: 30, subnicheMatch: 90 },
+    { id: 'strict-82-high-edit', score: 82, editingPotential: 80, subnicheMatch: 20 },
+  ])
+  assert.deepEqual(ranked.map(item => item.id), [
+    'strict-91',
+    'strict-82-high-edit',
+    'strict-82-low-edit',
+    'strict-76',
+    'near-95',
+  ])
+})
+
+test('diversification only breaks ties after quality and user novelty', () => {
+  const ranked = sortProspectsByQuality([
+    { id: 'seen', score: 80, editingPotential: 50, subnicheMatch: 50, previouslySeen: true, diversificationRank: 100 },
+    { id: 'new-low-rank', score: 80, editingPotential: 50, subnicheMatch: 50, previouslySeen: false, diversificationRank: 1 },
+    { id: 'new-high-rank', score: 80, editingPotential: 50, subnicheMatch: 50, previouslySeen: false, diversificationRank: 2 },
+  ])
+  assert.deepEqual(ranked.map(item => item.id), ['new-high-rank', 'new-low-rank', 'seen'])
+})
+
+test('dashboard exposes simple result counts and paginates twenty then ten', () => {
+  const dashboard = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
+  for (const internalLabel of ['vidéos ciblées', 'chaînes uniques', 'Catalogue enrichi', 'Résultats instantanés (cache)']) {
+    assert.doesNotMatch(dashboard, new RegExp(internalLabel))
+  }
+  assert.match(dashboard, /useState\(20\)/)
+  assert.match(dashboard, /results\.slice\(0, visibleResults\)/)
+  assert.match(dashboard, /setVisibleResults\(value => value \+ 10\)/)
+  assert.match(dashboard, /créateur.*correspond.*votre recherche/)
+  assert.doesNotMatch(dashboard, /results\.slice\(0, 5\)/)
 })
 
 test('diversification is deterministic per user/day and changes softly across users', () => {

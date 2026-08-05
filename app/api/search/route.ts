@@ -54,18 +54,15 @@ function buildRangeKey(subsMin: number, subsMax: number): string {
   return `${subsMin}:${subsMax}`
 }
 
-function buildResultMeta(catalog: YouTubeDiscoveryCatalog, matched: any[], returned: any[]) {
-  const displayed = returned.slice(0, 20)
+function buildResultMeta(returned: any[]) {
+  const strict = returned.filter(item => item.matchMode !== 'nearby')
+  const nearby = returned.filter(item => item.matchMode === 'nearby')
   return {
-    rawVideos: Number(catalog.rawVideoResults || 0),
-    analyzed: catalog.channels.length,
-    matched: matched.length,
-    strict: matched.filter(item => item.matchMode !== 'nearby').length,
-    nearby: matched.filter(item => item.matchMode === 'nearby').length,
-    displayed: displayed.length,
-    newCount: displayed.filter(item => !item.previouslySeen).length,
-    seenCount: displayed.filter(item => item.previouslySeen).length,
-    newlyDiscovered: catalog.newlyDiscoveredThisRun || 0,
+    matched: returned.length,
+    strict: strict.length,
+    nearby: nearby.length,
+    newCount: returned.filter(item => !item.previouslySeen).length,
+    seenCount: returned.filter(item => item.previouslySeen).length,
   }
 }
 
@@ -352,7 +349,7 @@ export async function POST(req: NextRequest) {
       })
       return NextResponse.json({
         results: visibleResults,
-        resultMeta: buildResultMeta(catalog, catalogResults, visibleResults),
+        resultMeta: buildResultMeta(visibleResults),
         source: 'catalog',
         cached: true,
         searchesRemaining: reservation.snapshot.remaining,
@@ -475,7 +472,7 @@ export async function POST(req: NextRequest) {
     })
     return NextResponse.json({
       results: visibleResults,
-      resultMeta: buildResultMeta(catalog, catalogResults, visibleResults),
+      resultMeta: buildResultMeta(visibleResults),
       source: 'youtube',
       cached: false,
       searchesRemaining: reservation.snapshot.remaining,
