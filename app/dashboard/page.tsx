@@ -9,13 +9,13 @@ import ProspectSkeleton from '@/components/ProspectSkeleton'
 import Toast, { useToast } from '@/components/Toast'
 import ProGate from '@/components/ProGate'
 import ProspectScoreExplanation from '@/components/ProspectScoreExplanation'
-import { YOUTUBE_NICHES } from '@/lib/niches'
+import { NICHE_CONFIG, SEARCH_LANGUAGES } from '@/lib/searchTargeting'
 import { getPlanName, isFree, isPro as isProPlan } from '@/lib/plan'
 import { buildCampaignProspectPayload, getCampaignIdFromCreateResponse } from '@/lib/campaignClient'
 import { FREE_LIFETIME_SEARCH_LIMIT, PRO_DAILY_SEARCH_LIMIT } from '@/lib/searchPolicy'
 
 const NICHES = ['Gaming', 'Finance & Business', 'Tech & Programmation', 'Fitness & Santé', 'Lifestyle & Vlog', 'Cuisine', 'Musique', 'Éducation', 'Voyage', 'Beauté & Mode']
-const LANGS = ['Français', 'Anglais', 'Espagnol', 'Portugais', 'Allemand']
+const LANGS = SEARCH_LANGUAGES
 const SUBS_LABELS = ['1K', '10K', '50K', '100K', '500K', '1M', '5M+']
 
 function formatCompactNumber(n: number): string {
@@ -62,6 +62,12 @@ export default function Dashboard() {
 
   const [niche, setNiche] = useState('')
   const [lang, setLang] = useState('Français')
+  const [subNiches, setSubNiches] = useState<string[]>([])
+  const [customKeyword, setCustomKeyword] = useState('')
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [emailOnly, setEmailOnly] = useState(false)
+  const [activeOnly, setActiveOnly] = useState(false)
+  const [minMedianViews, setMinMedianViews] = useState(0)
   const [subsMin, setSubsMin] = useState(1)
   const [subsMax, setSubsMax] = useState(4)
   const [editorEmail, setEditorEmail] = useState('')
@@ -93,6 +99,7 @@ export default function Dashboard() {
   const [bulkError, setBulkError] = useState('')
   const [campaignTargetIds, setCampaignTargetIds] = useState<string[]>([])
   const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [onboardingVisible, setOnboardingVisible] = useState(false)
   const { toast, showToast } = useToast()
 
   const isPro = isProPlan(plan)
@@ -105,6 +112,10 @@ export default function Dashboard() {
       setSearchesLeft(null)
     }
   }, [status, session, router])
+
+  useEffect(() => {
+    setOnboardingVisible(window.localStorage.getItem('prospectube-search-onboarding-v1') !== 'dismissed')
+  }, [])
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -190,7 +201,7 @@ export default function Dashboard() {
       res = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ niche, lang, subsMin: String(subsMin), subsMax: String(subsMax), requestId: crypto.randomUUID() }),
+        body: JSON.stringify({ niche, lang, subNiches, customKeyword, emailOnly, activeOnly, minMedianViews, minContentRelevance: 20, subsMin: String(subsMin), subsMax: String(subsMax), requestId: crypto.randomUUID() }),
       })
       data = await res.json().catch(() => ({}))
     } catch {
@@ -223,10 +234,13 @@ export default function Dashboard() {
     setQuotaMessage(data.plan === 'Pro'
       ? `${data.searchesRemaining} recherche(s) restante(s) aujourd'hui.`
       : data.searchesRemaining > 0
-        ? '1 recherche gratuite disponible sur votre compte.'
-        : 'Votre recherche gratuite a ete utilisee. Passez au Plan Pro pour continuer.')
+        ? `${data.searchesRemaining} recherche${data.searchesRemaining > 1 ? 's' : ''} gratuite${data.searchesRemaining > 1 ? 's' : ''} restante${data.searchesRemaining > 1 ? 's' : ''}.`
+        : 'Vous avez utilisé vos 3 recherches gratuites. Passez au Plan Pro pour obtenir 5 recherches par jour.')
     setPlan(data.plan)
     setSearched(true)
+    if (data.results?.length && data.plan !== 'Pro') {
+      setSearchFeedback({ type: 'info', message: `Vous venez de trouver ${data.results.length} prospect${data.results.length > 1 ? 's' : ''}. Il vous reste ${data.searchesRemaining} recherche${data.searchesRemaining > 1 ? 's' : ''} gratuite${data.searchesRemaining > 1 ? 's' : ''}.` })
+    }
 
     if (data.cached) {
       setCacheNotice(true)
@@ -308,11 +322,6 @@ export default function Dashboard() {
   }
 
   const openBulkModal = async (targetIds = selectedIds) => {
-    if (!isPro) {
-      setUpgradeOpen(true)
-      return
-    }
-
     setBulkModalOpen(true)
     setBulkCampaignId('new')
     setBulkCampaignName('')
@@ -492,6 +501,14 @@ export default function Dashboard() {
       </nav>
 
       <div style={{ maxWidth: '960px', margin: '0 auto', padding: '2rem 1.5rem 5rem' }}>
+        {onboardingVisible && (
+          <section className="card" style={{ padding: '1rem', marginBottom: '1rem', border: '1px solid rgba(167,139,250,.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+              <div><strong>Construisez votre première liste de prospects.</strong><p style={{ color: '#A89FCC', margin: '.35rem 0' }}>1. Définissez votre cible · 2. Analysez les prospects · 3. Créez votre campagne</p><span style={{ color: '#a78bfa', fontSize: '.82rem' }}>3 recherches gratuites + 1 campagne d’essai</span></div>
+              <button aria-label="Fermer l’onboarding" onClick={() => { window.localStorage.setItem('prospectube-search-onboarding-v1', 'dismissed'); setOnboardingVisible(false) }} style={{ background: 'none', border: 0, color: '#A89FCC', cursor: 'pointer' }}>×</button>
+            </div>
+          </section>
+        )}
         <section className="search-spotlight" aria-labelledby="search-spotlight-title" style={{ position: 'relative', overflow: 'hidden', marginBottom: '1.25rem', border: '1px solid rgba(139,92,246,0.32)', borderRadius: '18px', padding: '1.6rem', background: 'radial-gradient(circle at top left, rgba(123,99,211,0.32), transparent 34%), linear-gradient(135deg, rgba(18,15,30,0.98), rgba(10,8,18,0.94))', boxShadow: '0 24px 70px rgba(0,0,0,0.28)' }}>
           <div style={{ maxWidth: '680px' }}>
             <p style={{ margin: '0 0 0.45rem', color: '#a78bfa', fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Nouvelle prospection</p>
@@ -531,9 +548,9 @@ export default function Dashboard() {
           <div className="search-fields" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Niche *</label>
-              <select value={niche} onChange={e => setNiche(e.target.value)}>
+              <select value={niche} onChange={e => { setNiche(e.target.value); setSubNiches([]) }}>
                 <option value="">Choisir une niche...</option>
-                {YOUTUBE_NICHES.map(n => <option key={n}>{n}</option>)}
+                {Object.keys(NICHE_CONFIG).map(n => <option key={n}>{n}</option>)}
               </select>
             </div>
             <div>
@@ -543,6 +560,29 @@ export default function Dashboard() {
               </select>
             </div>
           </div>
+
+          {niche && (NICHE_CONFIG[niche as keyof typeof NICHE_CONFIG] || []).length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.45rem' }}>Sous-niches (5 maximum)</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                {(NICHE_CONFIG[niche as keyof typeof NICHE_CONFIG] || []).map(item => (
+                  <button type="button" key={item} onClick={() => setSubNiches(current => current.includes(item) ? current.filter(value => value !== item) : current.length < 5 ? [...current, item] : current)} style={{ border: '1px solid rgba(139,92,246,.3)', background: subNiches.includes(item) ? 'rgba(123,99,211,.35)' : 'rgba(255,255,255,.03)', color: '#C4BCDF', borderRadius: '999px', padding: '.35rem .65rem', cursor: 'pointer', fontSize: '.75rem' }}>{item}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Mot-clé personnalisé</label>
+            <input value={customKeyword} maxLength={80} onChange={event => setCustomKeyword(event.target.value)} placeholder="Optionnel" />
+          </div>
+          <button type="button" onClick={() => setAdvancedOpen(value => !value)} style={{ background: 'none', border: 0, color: '#a78bfa', cursor: 'pointer', marginBottom: '.8rem' }}>{advancedOpen ? 'Masquer les filtres avancés' : 'Afficher les filtres avancés'}</button>
+          {advancedOpen && (
+            <div style={{ display: 'grid', gap: '.7rem', padding: '.8rem', marginBottom: '1rem', border: '1px solid rgba(139,92,246,.2)', borderRadius: '10px', color: '#C4BCDF', fontSize: '.82rem' }}>
+              <label><input type="checkbox" checked={activeOnly} onChange={event => setActiveOnly(event.target.checked)} /> Chaînes actives uniquement</label>
+              <label><input type="checkbox" checked={emailOnly} onChange={event => setEmailOnly(event.target.checked)} /> Email public requis</label>
+              <label>Vues médianes minimales <input type="number" min={0} max={10000000} value={minMedianViews} onChange={event => setMinMedianViews(Number(event.target.value))} /></label>
+            </div>
+          )}
 
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.6rem' }}>
@@ -627,9 +667,10 @@ export default function Dashboard() {
                     ].filter(Boolean) as { label: string; href: string; color: string }[]
                     const statBadges = [
                       `👥 ${ch.subs || formatCompactNumber(ch.subsNum || 0)}`,
-                      `👁 ${ch.totalViewsFormatted || formatCompactNumber(ch.totalViews || ch.viewCount || 0)}`,
-                      `🎬 ${ch.videoCountFormatted || formatCompactNumber(ch.videoCount || 0)}`,
-                      getCreatedYear(ch.createdAt || ch.publishedAt) ? `📅 ${getCreatedYear(ch.createdAt || ch.publishedAt)}` : null,
+                      ch.recentMedianViews ? `👁 ${formatCompactNumber(ch.recentMedianViews)} vues médianes` : 'Données limitées',
+                      ch.publishingFrequency || null,
+                      ch.contentRelevance !== undefined ? `Pertinence ${ch.contentRelevance}%` : null,
+                      ch.contactability ? `Contactabilité ${ch.contactability}` : null,
                     ].filter(Boolean)
 
                     return (

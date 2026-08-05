@@ -1,6 +1,8 @@
 import { selectDiverseProspectPreview } from '@/lib/freePreview'
 import { PROSPECT_SCORE_THRESHOLDS } from '@/lib/prospectScoreInfo'
 import { SEARCH_CACHE_VERSION } from '@/lib/searchPolicy'
+import { calculateProspectScore, getContactability, type RecentVideo } from '@/lib/prospectScoring'
+import { buildTargetQuery, type SearchTarget } from '@/lib/searchTargeting'
 import { YouTubeApiError, classifyYouTubeError } from '@/lib/youtubeQuota'
 import { filterYouTubeCatalog, mergeCatalogChannels, YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
 import {
@@ -14,10 +16,11 @@ import {
 } from '@/lib/youtubeSearchParams'
 
 const YOUTUBE_REQUEST_TIMEOUT_MS = 12_000
-const YOUTUBE_SEARCH_FIELDS = 'items(snippet(channelId,title,description,thumbnails/default/url)),nextPageToken'
+const YOUTUBE_SEARCH_FIELDS = 'items(id/videoId,snippet(channelId,title,description,publishedAt,thumbnails/default/url)),nextPageToken'
 const YOUTUBE_CHANNEL_FIELDS = 'items(id,snippet(title,description,publishedAt,thumbnails/default/url),statistics(hiddenSubscriberCount,subscriberCount,viewCount,videoCount),brandingSettings/channel/description)'
+const YOUTUBE_VIDEO_FIELDS = 'items(id,snippet(channelId,title,description,publishedAt,categoryId,defaultLanguage),statistics(viewCount,likeCount,commentCount))'
 
-async function fetchYouTubeJson(url: URL, endpoint: 'search.list' | 'channels.list', idCount = 0) {
+async function fetchYouTubeJson(url: URL, endpoint: 'search.list' | 'channels.list' | 'videos.list', idCount = 0) {
   const startedAt = Date.now()
   let status = 0
   const controller = new AbortController()
@@ -139,54 +142,6 @@ function extractSocialLinks(text: string) {
   }
 }
 
-function looksLikeLanguage(text: string, lang: string): boolean {
-  const t = ` ${text.toLowerCase()} `
-
-  if (lang === 'Français') {
-    return /[àâçéèêëîïôûùüÿœ]/i.test(text) ||
-      [' le ', ' la ', ' les ', ' des ', ' une ', ' un ', ' avec ', ' chaîne ', ' français ', ' vidéo ', ' abonne '].some(w => t.includes(w))
-  }
-
-  if (lang === 'Espagnol') {
-    return /[áéíóúñ¿¡]/i.test(text) ||
-      [' el ', ' la ', ' los ', ' las ', ' una ', ' con ', ' español ', ' canal ', ' vídeos '].some(w => t.includes(w))
-  }
-
-  if (lang === 'Portugais') {
-    return /[áàâãçéêíóôõú]/i.test(text) ||
-      [' de ', ' com ', ' para ', ' você ', ' canal ', ' português ', ' brasil ', ' vídeos '].some(w => t.includes(w))
-  }
-
-  if (lang === 'Allemand') {
-    return /[äöüß]/i.test(text) ||
-      [' der ', ' die ', ' das ', ' und ', ' deutsch ', ' kanal ', ' videos '].some(w => t.includes(w))
-  }
-
-  return true
-}
-
-async function fetchAboutText(channelId: string): Promise<string> {
-  try {
-    const aboutUrl = `https://www.youtube.com/channel/${channelId}/about`
-
-    const res = await fetch(aboutUrl, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36',
-        'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
-      },
-      cache: 'no-store',
-    })
-
-    if (!res.ok) return ''
-
-    const html = await res.text()
-    return decodeHtml(html)
-  } catch {
-    return ''
-  }
-}
-
 export type YouTubeCallMetrics = {
   searchList: number
   channelsList: number
@@ -198,73 +153,17 @@ export type YouTubeCallMetrics = {
   belowMinimum: number
   aboveMaximum: number
   acceptedResults: number
+  videosList: number
 }
 
 export type { YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
 export { filterYouTubeCatalog } from '@/lib/youtubeCatalog'
-
-function getProspectScore(channel: any): number {
-  let score = 20
-
-  if (channel.email) score += 20
-  if (channel.instagram) score += 8
-  if (channel.tiktok) score += 8
-  if (channel.twitch) score += 6
-  if (channel.website) score += 8
-
-  if (channel.subsNum >= 10000 && channel.subsNum <= 300000) score += 20
-  else if (channel.subsNum > 300000 && channel.subsNum <= 1000000) score += 12
-  else if (channel.subsNum > 1000000 && channel.subsNum <= 2000000) score += 6
-
-  if (channel.videoCount >= 200) score += 12
-  else if (channel.videoCount >= 50) score += 8
-
-  if (channel.totalViews >= 10000000) score += 10
-  else if (channel.totalViews >= 1000000) score += 6
-
-  if (channel.desc && channel.desc.length > 80) score += 5
-
-  return Math.min(score, 100)
-}
-
-function getScoreLabel(score: number): string {
-  if (score >= 80) return 'Excellent prospect'
-  if (score >= 60) return 'Bon prospect'
-  return 'Potentiel faible'
-}
-
-function getScoreColor(score: number): string {
-  if (score >= PROSPECT_SCORE_THRESHOLDS.excellent) return 'green'
-  if (score >= 60) return 'yellow'
-  return 'red'
-}
-
-function getScoreReason(channel: any): string {
-  const hasDirectContact = Boolean(channel.email || channel.website)
-  const hasPublicContact = Boolean(
-    channel.email || channel.instagram || channel.tiktok || channel.twitch || channel.website
-  )
-  const isActive = Number(channel.videoCount || 0) >= 50
-  const hasGoodVolume = Number(channel.totalViews || 0) >= 1000000 || Number(channel.subsNum || 0) >= 10000
-
-  if (hasDirectContact && isActive) return 'Contact direct disponible et chaîne active'
-  if (hasGoodVolume && !hasPublicContact) return 'Bon volume, mais peu de contacts publics'
-  return "Faible potentiel ou peu d'informations disponibles"
-}
 
 function getChannelAge(publishedAt: string | null): number | null {
   if (!publishedAt) return null
   const created = new Date(publishedAt)
   if (Number.isNaN(created.getTime())) return null
   return Math.max(0, (Date.now() - created.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-}
-
-function getAdvancedScoreLabel(score: number): string {
-  if (score >= PROSPECT_SCORE_THRESHOLDS.exceptional) return '🔥 Prospect exceptionnel'
-  if (score >= PROSPECT_SCORE_THRESHOLDS.excellent) return '🟢 Excellent prospect'
-  if (score >= PROSPECT_SCORE_THRESHOLDS.good) return '🟡 Bon prospect'
-  if (score >= PROSPECT_SCORE_THRESHOLDS.medium) return '🟠 Prospect moyen'
-  return '🔴 Faible potentiel'
 }
 
 function getAdvancedScoreColor(score: number): string {
@@ -274,80 +173,14 @@ function getAdvancedScoreColor(score: number): string {
   return 'red'
 }
 
-function getAdvancedProspectScore(channel: any) {
-  let score = 0
-  const reasons: string[] = []
-
-  if (channel.email) {
-    score += 20
-    reasons.push('Email professionnel trouvé')
-  }
-  if (channel.instagram) {
-    score += 8
-    reasons.push('Instagram présent')
-  }
-  if (channel.tiktok) {
-    score += 8
-    reasons.push('TikTok présent')
-  }
-  if (channel.twitch) {
-    score += 5
-    reasons.push('Twitch présent')
-  }
-  if (channel.website) {
-    score += 5
-    reasons.push('Site web présent')
-  }
-
-  if (channel.subsNum >= 10000 && channel.subsNum <= 300000) {
-    score += 20
-    reasons.push('Taille de chaîne idéale')
-  } else if (channel.subsNum > 300000 && channel.subsNum <= 1000000) {
-    score += 12
-    reasons.push('Audience solide')
-  }
-
-  if (channel.videoCount > 100) {
-    score += 10
-    reasons.push('Chaîne active')
-  }
-
-  if (channel.viewCount > 1000000) {
-    score += 10
-    reasons.push('Plus de 1M vues')
-  }
-
-  if (channel.viewsPerSubscriber > 20) {
-    score += 10
-    reasons.push('Très bon ratio vues/abonnés')
-  }
-
-  if (channel.channelAge !== null && channel.channelAge < 5) {
-    score += 5
-    reasons.push('Chaîne récente')
-  }
-
-  if (channel.desc && channel.desc.length > 100) {
-    score += 5
-    reasons.push('Description détaillée')
-  }
-
-  const finalScore = Math.min(score, 100)
-
-  return {
-    score: finalScore,
-    label: getAdvancedScoreLabel(finalScore),
-    reason: reasons.length > 0 ? reasons.join(' • ') : "Peu d'informations exploitables",
-  }
-}
-
 export async function discoverYouTubeCatalog(
   niche: string,
   lang: string,
   subsMin: number,
   subsMax: number,
   metrics?: YouTubeCallMetrics,
-  existingCatalog?: YouTubeDiscoveryCatalog | null
+  existingCatalog?: YouTubeDiscoveryCatalog | null,
+  target?: SearchTarget
 ) {
   const apiKey = process.env.YOUTUBE_API_KEY
   if (!apiKey || !/^AIza[0-9A-Za-z_-]{20,}$/.test(apiKey.trim())) {
@@ -358,9 +191,11 @@ export async function discoverYouTubeCatalog(
     )
   }
 
-  const queries = buildYouTubeQueryVariants(niche, lang).slice(0, MAX_YOUTUBE_SEARCH_QUERIES)
+  const queries = buildYouTubeQueryVariants(target ? buildTargetQuery(target) : niche, lang).slice(0, MAX_YOUTUBE_SEARCH_QUERIES)
   const knownChannelIds = new Set<string>((existingCatalog?.channels || []).map(channel => channel.id).filter(Boolean))
   const channelsById = new Map<string, any>()
+  const videoIds = new Set<string>()
+  const videosByChannel = new Map<string, RecentVideo[]>()
   const catalogChannelsById = new Map<string, any>((existingCatalog?.channels || []).map(channel => [channel.id, channel]))
   const queryVariantsUsed = [...(existingCatalog?.queryVariantsUsed || [])]
   const unusedVariant = queries.find(query => !existingCatalog?.queryVariantsUsed.includes(query))
@@ -383,6 +218,7 @@ export async function discoverYouTubeCatalog(
       maxResults: 50,
       fields: YOUTUBE_SEARCH_FIELDS,
       pageToken: queryInput.pageToken,
+      type: 'video',
     })
     searchUrl.search = searchParams.toString()
     console.info('YouTube search request prepared:', getSafeYouTubeSearchParamsLog(searchParams))
@@ -397,6 +233,16 @@ export async function discoverYouTubeCatalog(
     nextPageQuery = nextPageToken ? query : null
     if (!queryVariantsUsed.includes(query)) queryVariantsUsed.push(query)
     const searchItems = Array.isArray(searchData.items) ? searchData.items : []
+    for (const item of searchItems) {
+      const videoId = item?.id?.videoId
+      const channelId = item?.snippet?.channelId
+      if (typeof videoId === 'string') videoIds.add(videoId)
+      if (typeof channelId === 'string') {
+        const samples = videosByChannel.get(channelId) || []
+        samples.push({ title: item.snippet?.title, description: item.snippet?.description, publishedAt: item.snippet?.publishedAt })
+        videosByChannel.set(channelId, samples)
+      }
+    }
     if (metrics) metrics.rawCandidates += searchItems.length
     const newChannelIds = collectNewYouTubeChannelIds(searchItems, knownChannelIds)
     if (metrics) metrics.uniqueCandidates = knownChannelIds.size
@@ -429,6 +275,28 @@ export async function discoverYouTubeCatalog(
     })) break
   }
 
+  const allVideoIds = Array.from(videoIds)
+  for (let i = 0; i < allVideoIds.length; i += 50) {
+    const batchIds = allVideoIds.slice(i, i + 50)
+    const videosUrl = new URL('https://www.googleapis.com/youtube/v3/videos')
+    videosUrl.searchParams.set('part', 'snippet,statistics')
+    videosUrl.searchParams.set('id', batchIds.join(','))
+    videosUrl.searchParams.set('fields', YOUTUBE_VIDEO_FIELDS)
+    videosUrl.searchParams.set('key', apiKey)
+    if (metrics) metrics.videosList += 1
+    const data = await fetchYouTubeJson(videosUrl, 'videos.list', batchIds.length)
+    for (const video of data.items || []) {
+      const channelId = video?.snippet?.channelId
+      if (!channelId) continue
+      const sample = videosByChannel.get(channelId) || []
+      const existingIndex = sample.findIndex(item => item.title === video.snippet?.title)
+      const normalized = { ...video.snippet, viewCount: Number(video.statistics?.viewCount || 0), likeCount: video.statistics?.likeCount === undefined ? undefined : Number(video.statistics.likeCount), commentCount: video.statistics?.commentCount === undefined ? undefined : Number(video.statistics.commentCount) }
+      if (existingIndex >= 0) sample[existingIndex] = normalized
+      else sample.push(normalized)
+      videosByChannel.set(channelId, sample)
+    }
+  }
+
   const range = analyzeYouTubeChannelRange(Array.from(channelsById.values()), subsMin, subsMax)
   if (metrics) {
     metrics.hiddenSubscribers = range.hiddenSubscribers
@@ -445,6 +313,7 @@ export async function discoverYouTubeCatalog(
       const createdAt = publishedAt
       const channelAge = getChannelAge(publishedAt)
       const viewsPerSubscriber = subsNum > 0 ? viewCount / subsNum : 0
+      const recentVideos = videosByChannel.get(ch.id) || []
       const snippetDesc = ch.snippet?.description || ''
       const brandingDesc = ch.brandingSettings?.channel?.description || ''
       const fullDesc = `${snippetDesc}\n${brandingDesc}`
@@ -466,6 +335,7 @@ export async function discoverYouTubeCatalog(
         createdAt,
         channelAge,
         viewsPerSubscriber,
+        recentVideos,
         niche,
         lang,
         freq: 'Inconnu',
@@ -482,69 +352,32 @@ export async function discoverYouTubeCatalog(
         thumbnail: ch.snippet?.thumbnails?.default?.url || null,
       }
 
-      const advancedScore = getAdvancedProspectScore(channel)
+      const scoreData = calculateProspectScore({ videos: recentVideos, target: target || { niche, subNiches: [], customKeyword: '', language: lang }, subscribers: subsNum })
+      const contactability = getContactability(channel)
 
       return {
         ...channel,
-        score: advancedScore.score,
-        scoreLabel: advancedScore.label,
-        scoreColor: getAdvancedScoreColor(advancedScore.score),
-        scoreReason: advancedScore.reason,
+        score: scoreData.score,
+        scoreLabel: scoreData.label,
+        scoreColor: getAdvancedScoreColor(scoreData.score),
+        scoreReason: `${scoreData.relevance.relevantCount}/${scoreData.relevance.sampleSize} videos correspondent au ciblage • ${scoreData.frequency}`,
+        scoreBreakdown: scoreData.scoreBreakdown,
+        contentRelevance: scoreData.relevance.score,
+        detectedLanguage: scoreData.language.language,
+        languageConfidence: scoreData.language.confidence,
+        recentMedianViews: scoreData.medianViews,
+        recentViewSubscriberRatio: scoreData.recentViewSubscriberRatio,
+        recentEngagementRate: scoreData.engagementRate,
+        publishingFrequency: scoreData.frequency,
+        lastPublishedAt: scoreData.lastPublishedAt,
+        contactability: contactability.level,
       }
     })
-    .filter((ch: any) => {
-      const text = `${ch.name} ${ch.desc}`
-      if (!looksLikeLanguage(text, lang)) {
-        return ch.email || ch.instagram || ch.tiktok || ch.twitch || ch.website
-      }
-      return true
-    })
+    .filter((ch: any) => ch.contentRelevance >= 20 && !(ch.languageConfidence !== 'Faible' && ch.detectedLanguage && ch.detectedLanguage !== ({ Français: 'fr', Anglais: 'en', Espagnol: 'es', Allemand: 'de', Italien: 'it', Portugais: 'pt' } as Record<string, string>)[lang]))
     .sort((a: any, b: any) => b.score - a.score)
     .slice(0, 150)
 
-  const enriched = await Promise.all(
-    candidates.map(async (channel: any) => {
-      const needsEnrichment =
-        !channel.email || !channel.instagram || !channel.tiktok || !channel.twitch || !channel.website
-
-      if (!needsEnrichment) return channel
-
-      if (metrics) metrics.aboutPages += 1
-      const aboutText = await fetchAboutText(channel.id)
-      if (!aboutText) return channel
-
-      const aboutEmail = extractEmail(aboutText)
-      const aboutSocials = extractSocialLinks(aboutText)
-
-      const enrichedChannel = {
-        ...channel,
-        email: channel.email || aboutEmail,
-        instagram: channel.instagram || aboutSocials.instagram,
-        tiktok: channel.tiktok || aboutSocials.tiktok,
-        twitch: channel.twitch || aboutSocials.twitch,
-        website: channel.website || aboutSocials.website,
-      }
-
-      const advancedScore = getAdvancedProspectScore(enrichedChannel)
-
-      return {
-        ...enrichedChannel,
-        score: advancedScore.score,
-        scoreLabel: advancedScore.label,
-        scoreColor: getAdvancedScoreColor(advancedScore.score),
-        scoreReason: advancedScore.reason,
-      }
-    })
-  )
-
-  const finalResults = enriched
-    .filter((ch: any) => {
-      const text = `${ch.name} ${ch.desc}`
-      if (!looksLikeLanguage(text, lang)) {
-        return ch.email || ch.instagram || ch.tiktok || ch.twitch || ch.website
-      }
-      return true
-    })
+  const finalResults = candidates
     .sort((a: any, b: any) => b.score - a.score)
 
   const channels = mergeCatalogChannels(Array.from(catalogChannelsById.values()), finalResults)

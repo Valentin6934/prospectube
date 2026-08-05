@@ -126,6 +126,7 @@ export function buildYouTubeSearchParams(input: {
   maxResults?: number
   pageToken?: string | null
   fields: string
+  type?: 'channel' | 'video'
 }): URLSearchParams {
   const query = String(input.query || '').trim()
   const maxResults = input.maxResults ?? 50
@@ -137,7 +138,7 @@ export function buildYouTubeSearchParams(input: {
 
   const params = new URLSearchParams()
   params.set('part', 'snippet')
-  params.set('type', 'channel')
+  params.set('type', input.type || 'channel')
   params.set('q', query)
   params.set('maxResults', String(maxResults))
   params.set('order', 'relevance')

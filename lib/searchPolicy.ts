@@ -1,6 +1,6 @@
-export const FREE_LIFETIME_SEARCH_LIMIT = 1
+export const FREE_LIFETIME_SEARCH_LIMIT = 3
 export const PRO_DAILY_SEARCH_LIMIT = 5
-export const SEARCH_CACHE_VERSION = 'youtube-search-v5'
+export const SEARCH_CACHE_VERSION = 'youtube-search-v6'
 export const SEARCH_CACHE_TTL_HOURS = 48
 export const SEARCH_CATALOG_POOR_REFRESH_HOURS = 12
 export const SEARCH_NEGATIVE_CACHE_TTL_HOURS = 1
@@ -21,11 +21,15 @@ export function normalizeSearchText(value: unknown): string {
 export function buildSearchCacheKey(input: {
   niche: string
   lang: string
+  subNiches?: string[]
+  customKeyword?: string
 }): string {
   return [
     SEARCH_CACHE_VERSION,
     normalizeSearchText(input.niche),
     normalizeSearchText(input.lang),
+    normalizeSearchText((input.subNiches || []).slice().sort().join('-')),
+    normalizeSearchText(input.customKeyword || ''),
   ].join(':')
 }
 
@@ -63,6 +67,6 @@ export function getSearchQuotaMessage(plan: SearchPlan, remaining: number): stri
     return `${remaining} recherche(s) restante(s) aujourd'hui.`
   }
   return remaining > 0
-    ? '1 recherche gratuite disponible sur votre compte.'
-    : 'Votre recherche gratuite a ete utilisee. Passez au Plan Pro pour continuer.'
+    ? remaining === 1 ? '1 recherche gratuite restante.' : `${remaining} recherches gratuites restantes.`
+    : 'Vous avez utilise vos 3 recherches gratuites. Passez au Plan Pro pour continuer.'
 }

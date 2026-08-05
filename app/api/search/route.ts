@@ -8,6 +8,7 @@ import { discoverYouTubeCatalog, YouTubeCallMetrics } from '@/lib/youtube'
 import { filterYouTubeCatalog, YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
 import { getPlanName, isPro } from '@/lib/plan'
 import { selectDiverseProspectPreview } from '@/lib/freePreview'
+import { validateSearchTarget } from '@/lib/searchTargeting'
 import { buildYouTubeErrorResponse, getSafeYouTubeLog } from '@/lib/youtubeQuota'
 import {
   buildSearchCacheKey,
@@ -53,24 +54,30 @@ function buildRangeKey(subsMin: number, subsMax: number): string {
 }
 
 function parseSearchBody(body: any) {
-  const niche = typeof body?.niche === 'string' ? body.niche.trim() : ''
-  const lang = typeof body?.lang === 'string' ? body.lang.trim() : ''
+  const target = validateSearchTarget(body)
   const minIndex = Number.parseInt(String(body?.subsMin ?? ''), 10)
   const maxIndex = Number.parseInt(String(body?.subsMax ?? ''), 10)
   const requestId = typeof body?.requestId === 'string' ? body.requestId.trim() : ''
 
-  if (!niche || !lang || !Number.isInteger(minIndex) || !Number.isInteger(maxIndex) ||
+  if (!target || !Number.isInteger(minIndex) || !Number.isInteger(maxIndex) ||
       minIndex < 0 || maxIndex >= SUBS_VALUES.length || minIndex > maxIndex ||
       !/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) {
     return null
   }
 
   return {
-    niche,
-    lang,
+    niche: target.niche,
+    lang: target.language,
+    target,
     minVal: SUBS_VALUES[minIndex],
     maxVal: SUBS_VALUES[maxIndex],
     requestId,
+    filters: {
+      emailOnly: body?.emailOnly === true,
+      activeOnly: body?.activeOnly === true,
+      minMedianViews: Math.min(10000000, Math.max(0, Number(body?.minMedianViews) || 0)),
+      minContentRelevance: Math.min(100, Math.max(0, Number(body?.minContentRelevance) || 20)),
+    },
   }
 }
 
@@ -139,6 +146,8 @@ export async function POST(req: NextRequest) {
   const cacheKey = buildSearchCacheKey({
     niche: parsed.niche,
     lang: parsed.lang,
+    subNiches: parsed.target.subNiches,
+    customKeyword: parsed.target.customKeyword,
   })
   const cacheKeyHash = hashLogValue(cacheKey)
   const userIdHash = hashLogValue(user.id)
@@ -153,6 +162,7 @@ export async function POST(req: NextRequest) {
     belowMinimum: 0,
     aboveMaximum: 0,
     acceptedResults: 0,
+    videosList: 0,
   }
   let reserved = false
   let lockAcquired = false
@@ -224,7 +234,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    let catalogResults = catalog ? filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, limits.results) : []
+    let catalogResults = catalog ? filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, limits.results, parsed.filters) : []
     const enrichmentTriggered = Boolean(catalog && shouldEnrichSearchCatalog({
       candidateCount: catalog.channels.length,
       filteredResultCount: catalogResults.length,
@@ -276,7 +286,8 @@ export async function POST(req: NextRequest) {
     try {
       discoveredCatalog = await discoverYouTubeCatalog(
         parsed.niche, parsed.lang, parsed.minVal, parsed.maxVal, metrics,
-        enrichmentTriggered ? catalog : null
+        enrichmentTriggered ? catalog : null,
+        parsed.target
       )
     } catch (error) {
       const safeError = getSafeYouTubeLog(error)
@@ -288,7 +299,7 @@ export async function POST(req: NextRequest) {
     }
 
     catalog = discoveredCatalog
-    catalogResults = filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, limits.results)
+    catalogResults = filterYouTubeCatalog(catalog, parsed.minVal, parsed.maxVal, limits.results, parsed.filters)
     const visibleResults = proUser ? catalogResults : selectDiverseProspectPreview(catalogResults, limits.results)
 
     if (visibleResults.length === 0) {

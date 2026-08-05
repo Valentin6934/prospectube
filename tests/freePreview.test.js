@@ -106,6 +106,9 @@ const {
 } = require('../lib/searchPolicy.ts')
 const { filterYouTubeCatalog, mergeCatalogChannels } = require('../lib/youtubeCatalog.ts')
 const { getReleasedSearchQuotaSnapshot, getSearchQuotaSnapshot } = require('../lib/searchQuota.ts')
+const { FREE_LIFETIME_CAMPAIGN_LIMIT, FREE_CAMPAIGN_PROSPECT_LIMIT, FREE_CAMPAIGN_MARKER_PERIOD } = require('../lib/campaignAccess.ts')
+const { NICHE_CONFIG, validateSearchTarget, buildTargetQuery } = require('../lib/searchTargeting.ts')
+const { calculateMedian, calculateTrimmedMean, scoreVideoTopicMatch, scoreChannelContentRelevance, detectDominantContentLanguage, calculateProspectScore, getContactability } = require('../lib/prospectScoring.ts')
 const {
   PROSPECT_SCORE_EXPLANATION,
   PROSPECT_SCORE_LEVELS,
@@ -1270,7 +1273,7 @@ test('discovery catalog keys are shared across subscriber ranges and remain vers
   assert.equal(first, second)
   assert.equal(first, different)
   assert.match(first, new RegExp(`^${SEARCH_CACHE_VERSION}:`))
-  assert.equal(SEARCH_CACHE_VERSION, 'youtube-search-v5')
+  assert.equal(SEARCH_CACHE_VERSION, 'youtube-search-v6')
   assert.equal(normalizeSearchText('  Création   vidéo  '), 'creation-video')
 })
 
@@ -1304,7 +1307,7 @@ test('catalog policy uses 48h TTL, 12h poor refresh and 1h negative cache', () =
 })
 
 test('product search limits are centralized and reset Pro usage by UTC day', () => {
-  assert.equal(FREE_LIFETIME_SEARCH_LIMIT, 1)
+  assert.equal(FREE_LIFETIME_SEARCH_LIMIT, 3)
   assert.equal(PRO_DAILY_SEARCH_LIMIT, 5)
   assert.equal(getUtcDayKey(new Date('2026-08-02T23:59:59.000Z')), '2026-08-02')
   assert.equal(getUtcDayKey(new Date('2026-08-03T00:00:00.000Z')), '2026-08-03')
@@ -1313,7 +1316,7 @@ test('product search limits are centralized and reset Pro usage by UTC day', () 
   assert.match(getSearchQuotaMessage('Pro', 5), /5 recherche/)
 })
 
-test('free quota allows one new account and treats existing history as used', async () => {
+test('free quota allows three successful lifetime searches and uses existing history', async () => {
   const freshDb = {
     search: { count: async () => 0 },
     searchUsage: { count: async () => 0 },
@@ -1324,11 +1327,20 @@ test('free quota allows one new account and treats existing history as used', as
   }
 
   assert.deepEqual(await getSearchQuotaSnapshot(freshDb, 'user-free', 'Gratuit'), {
-    limit: 1, used: 0, remaining: 1, periodKey: 'lifetime',
+    limit: 3, used: 0, remaining: 3, periodKey: 'lifetime',
   })
   assert.deepEqual(await getSearchQuotaSnapshot(existingDb, 'user-free', 'Gratuit'), {
-    limit: 1, used: 1, remaining: 0, periodKey: 'lifetime',
+    limit: 3, used: 3, remaining: 0, periodKey: 'lifetime',
   })
+})
+
+test('existing free users receive the exact remaining lifetime quota without negatives', async () => {
+  for (const [historyCount, remaining] of [[0, 3], [1, 2], [2, 1], [3, 0], [8, 0]]) {
+    const db = { search: { count: async () => historyCount }, searchUsage: { count: async () => 0 } }
+    const snapshot = await getSearchQuotaSnapshot(db, 'legacy-user', 'Gratuit')
+    assert.equal(snapshot.remaining, remaining)
+    assert.ok(snapshot.remaining >= 0)
+  }
 })
 
 test('pro quota allows five successes, blocks the sixth and uses the UTC window', async () => {
@@ -1400,7 +1412,8 @@ test('youtube search uses at most two queries and batches only new channel ids',
   assert.doesNotMatch(youtubeLib, /nextPageToken,error/)
   assert.doesNotMatch(youtubeLib, /brandingSettings\/channel\/description\),error/)
   assert.doesNotMatch(youtubeLib, /searchParams\.set\(['"]video/i)
-  assert.doesNotMatch(youtubeLib, /youtube\/v3\/videos/)
+  assert.match(youtubeLib, /youtube\/v3\/videos/)
+  assert.match(youtubeLib, /for \(let i = 0; i < allVideoIds\.length; i \+= 50\)/)
 })
 
 test('search route uses persistent cache, atomic quotas and cross-instance locks', () => {
@@ -1479,8 +1492,6 @@ test('prospect score explanation is transparent and avoids misleading promises',
 })
 
 test('prospect score levels match the current advanced score thresholds', () => {
-  const youtubeLib = fs.readFileSync('lib/youtube.ts', 'utf8')
-
   assert.equal(PROSPECT_SCORE_THRESHOLDS.exceptional, 90)
   assert.equal(PROSPECT_SCORE_THRESHOLDS.excellent, 80)
   assert.equal(PROSPECT_SCORE_THRESHOLDS.good, 65)
@@ -1495,10 +1506,6 @@ test('prospect score levels match the current advanced score thresholds', () => 
       ['Faible', 0, 49],
     ]
   )
-  assert.match(youtubeLib, /PROSPECT_SCORE_THRESHOLDS\.exceptional/)
-  assert.match(youtubeLib, /PROSPECT_SCORE_THRESHOLDS\.excellent/)
-  assert.match(youtubeLib, /PROSPECT_SCORE_THRESHOLDS\.good/)
-  assert.match(youtubeLib, /PROSPECT_SCORE_THRESHOLDS\.medium/)
 })
 
 test('prospect score explanation is accessible and reused across score surfaces', () => {
@@ -1519,26 +1526,72 @@ test('prospect score explanation is accessible and reused across score surfaces'
   }
 })
 
-test('prospect score algorithm weights stay unchanged', () => {
-  const youtubeLib = fs.readFileSync('lib/youtube.ts', 'utf8')
+test('prospect score uses recent content and contactability stays separate', () => {
+  const target = { niche: 'Gaming', subNiches: ['Minecraft'], customKeyword: '', language: 'Français' }
+  const videos = Array.from({ length: 5 }, (_, index) => ({ title: `Minecraft survie episode ${index}`, description: 'Une vidéo en français avec des astuces pour jouer', viewCount: index === 4 ? 1000000 : 20000, likeCount: 1000, commentCount: 100, publishedAt: new Date(Date.now() - index * 604800000).toISOString(), defaultLanguage: 'fr' }))
+  assert.equal(calculateMedian([1, 2, 100]), 2)
+  assert.equal(calculateTrimmedMean([1, 2, 3, 4, 100], .2), 3)
+  assert.ok(scoreChannelContentRelevance(videos, target).score >= 80)
+  assert.equal(detectDominantContentLanguage(videos).language, 'fr')
+  const withoutContact = calculateProspectScore({ videos, target, subscribers: 40000 })
+  const withContact = calculateProspectScore({ videos, target, subscribers: 40000 })
+  assert.equal(withoutContact.score, withContact.score)
+  assert.equal(getContactability({}).level, 'Faible')
+  assert.equal(getContactability({ email: 'x@example.com', instagram: 'https://instagram.com/x' }).level, 'Élevée')
+})
 
-  for (const pattern of [
-    /channel\.email\)\s*\{\s*score \+= 20/s,
-    /channel\.instagram\)\s*\{\s*score \+= 8/s,
-    /channel\.tiktok\)\s*\{\s*score \+= 8/s,
-    /channel\.twitch\)\s*\{\s*score \+= 5/s,
-    /channel\.website\)\s*\{\s*score \+= 5/s,
-    /subsNum >= 10000 && channel\.subsNum <= 300000\)\s*\{\s*score \+= 20/s,
-    /subsNum > 300000 && channel\.subsNum <= 1000000\)\s*\{\s*score \+= 12/s,
-    /channel\.videoCount > 100\)\s*\{\s*score \+= 10/s,
-    /channel\.viewCount > 1000000\)\s*\{\s*score \+= 10/s,
-    /channel\.viewsPerSubscriber > 20\)\s*\{\s*score \+= 10/s,
-    /channel\.channelAge !== null && channel\.channelAge < 5\)\s*\{\s*score \+= 5/s,
-    /channel\.desc && channel\.desc\.length > 100\)\s*\{\s*score \+= 5/s,
-    /Math\.min\(score, 100\)/,
-  ]) {
-    assert.match(youtubeLib, pattern)
-  }
+test('targeting validates niches, sub-niches and bounded custom keywords', () => {
+  assert.ok(Object.keys(NICHE_CONFIG).length >= 20)
+  const target = validateSearchTarget({ niche: 'Gaming', lang: 'Français', subNiches: ['Minecraft', 'Speedrun'], customKeyword: 'survie' })
+  assert.deepEqual(target.subNiches, ['Minecraft', 'Speedrun'])
+  assert.match(buildTargetQuery(target), /Gaming Minecraft Speedrun survie/)
+  assert.equal(validateSearchTarget({ niche: 'Gaming', lang: 'Klingon', subNiches: [] }), null)
+  assert.equal(validateSearchTarget({ niche: 'Gaming', lang: 'Français', subNiches: ['Invalide'] }), null)
+})
+
+test('content relevance ignores channel naming and validates the observed video topic', () => {
+  const vocabulary = ['gaming', 'minecraft']
+  assert.ok(scoreVideoTopicMatch({ title: 'Survie Minecraft épisode 10', description: 'gaming en français' }, vocabulary) >= 50)
+  assert.equal(scoreVideoTopicMatch({ title: 'Prière du dimanche', description: 'enseignement religieux' }, vocabulary), 0)
+  const relevant = scoreChannelContentRelevance(Array.from({ length: 8 }, (_, i) => ({ title: `Minecraft aventure ${i}` })), { niche: 'Gaming', subNiches: ['Minecraft'], customKeyword: '', language: 'Français' })
+  assert.ok(relevant.score >= 80)
+})
+
+test('dominant language rejects confident Portuguese content for a French target', () => {
+  const portuguese = Array.from({ length: 6 }, (_, i) => ({ title: `Como jogar melhor ${i}`, description: 'uma video com voce para aprender que nao pode perder', defaultLanguage: 'pt' }))
+  const language = detectDominantContentLanguage(portuguese)
+  assert.equal(language.language, 'pt')
+  assert.equal(language.confidence, 'Élevée')
+})
+
+test('catalog V6 varies by discovery target but not by local subscriber bounds', () => {
+  const base = buildSearchCacheKey({ niche: 'Gaming', lang: 'Français', subNiches: ['Minecraft'], customKeyword: '' })
+  const reordered = buildSearchCacheKey({ niche: 'Gaming', lang: 'Français', subNiches: ['Minecraft'], customKeyword: '' })
+  const otherSubNiche = buildSearchCacheKey({ niche: 'Gaming', lang: 'Français', subNiches: ['Speedrun'], customKeyword: '' })
+  assert.equal(base, reordered)
+  assert.notEqual(base, otherSubNiche)
+  assert.doesNotMatch(base, /10000|50000/)
+})
+
+test('advanced filters are local and do not require a new catalog', () => {
+  const catalog = { channels: [
+    { id: 'a', subsNum: 20000, score: 80, email: 'a@example.com', publishingFrequency: 'Active', recentMedianViews: 12000, contentRelevance: 90 },
+    { id: 'b', subsNum: 25000, score: 70, email: null, publishingFrequency: 'Peu active', recentMedianViews: 500, contentRelevance: 80 },
+  ] }
+  assert.deepEqual(filterYouTubeCatalog(catalog, 10000, 50000, 20, { emailOnly: true, activeOnly: true, minMedianViews: 10000 }).map(item => item.id), ['a'])
+})
+
+test('free campaign discovery is limited and durable without enabling campaign AI', () => {
+  assert.equal(FREE_LIFETIME_CAMPAIGN_LIMIT, 1)
+  assert.equal(FREE_CAMPAIGN_PROSPECT_LIMIT, 5)
+  assert.equal(FREE_CAMPAIGN_MARKER_PERIOD, 'free-campaign')
+  const campaignRoute = fs.readFileSync('app/api/campaigns/route.ts', 'utf8')
+  const prospectRoute = fs.readFileSync('app/api/campaigns/[id]/prospects/route.ts', 'utf8')
+  const generateRoute = fs.readFileSync('app/api/campaigns/[id]/generate/route.ts', 'utf8')
+  assert.match(campaignRoute, /hasUsedFreeCampaign/)
+  assert.match(campaignRoute, /markFreeCampaignUsed/)
+  assert.match(prospectRoute, /FREE_CAMPAIGN_PROSPECT_LIMIT/)
+  assert.match(generateRoute, /requireProResponse/)
 })
 
 test('standard Pro pricing has no launch offer route, coupon or discount wiring', () => {

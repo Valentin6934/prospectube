@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isPro, requireProResponse } from '@/lib/plan'
+import { hasUsedFreeCampaign, markFreeCampaignUsed } from '@/lib/campaignAccess'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,7 +70,6 @@ async function findCampaign(params: { id: string; userId: string }, includeMedia
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
-  if (!isPro(user.plan)) return requireProResponse()
 
   try {
     let campaign
@@ -103,7 +103,6 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 export async function DELETE(_: Request, { params }: { params: { id: string } }) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
-  if (!isPro(user.plan)) return requireProResponse()
 
   const campaign = await prisma.campaign.findFirst({
     where: {
@@ -115,6 +114,13 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
 
   if (!campaign) {
     return NextResponse.json({ error: 'Campagne introuvable' }, { status: 404 })
+  }
+
+  if (!isPro(user.plan) && !(await hasUsedFreeCampaign(prisma, user.id))) {
+    await markFreeCampaignUsed(prisma, user.id, campaign.id)
+  } else if (!isPro(user.plan)) {
+    const markerExists = await prisma.searchUsage.count({ where: { userId: user.id, periodKey: 'free-campaign' } })
+    if (!markerExists) await markFreeCampaignUsed(prisma, user.id, campaign.id)
   }
 
   await prisma.campaign.delete({ where: { id: campaign.id } })

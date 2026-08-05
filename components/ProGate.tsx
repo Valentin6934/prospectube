@@ -20,9 +20,9 @@ const contextCopy: Record<ProGateContext, { title: string; intro: string }> = {
       'ProspectTube Pro centralise la recherche, l’organisation et la préparation de vos prises de contact pour transformer YouTube en vrai canal de prospection.',
   },
   campaigns: {
-    title: 'Prospectez plus vite avec les campagnes Pro',
+    title: 'Passez à des campagnes régulières avec Pro',
     intro:
-      'Créez des campagnes, regroupez vos prospects, connectez Gmail et gardez le suivi de vos messages dans le même espace.',
+      'Après votre campagne d’essai, créez de nouvelles campagnes et ajoutez davantage de prospects avec le Plan Pro.',
   },
   ai: {
     title: 'Générez des emails personnalisés avec ProspectTube Pro',
@@ -52,11 +52,11 @@ const benefits = [
   },
   {
     title: 'Campagnes',
-    text: 'Créez des campagnes, ajoutez des prospects, suivez les statuts et organisez la prospection.',
+    text: 'Dépassez la campagne d’essai limitée à cinq prospects et organisez votre prospection régulière.',
   },
   {
     title: 'Gmail',
-    text: 'Connectez votre compte Gmail pour créer des brouillons ou envoyer directement les emails.',
+    text: 'Créez des lots de brouillons plus importants tout en conservant la protection anti-doublon.',
   },
   {
     title: 'Export CSV',

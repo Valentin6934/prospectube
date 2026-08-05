@@ -38,7 +38,7 @@ export default function SettingsPage() {
   const userEmail = session?.user?.email || ''
   const userName = session?.user?.name || userEmail.split('@')[0] || 'Utilisateur'
   const gmailNeedsReconnect = shouldDisableGmailDrafts(gmail) && gmail?.state === 'expired'
-  const gmailStatusLabel = !proUser ? 'Disponible en Pro' : gmailNeedsReconnect ? 'Connexion expirée' : gmail?.connected ? 'Connecté' : 'Non connecté'
+  const gmailStatusLabel = gmailNeedsReconnect ? 'Connexion expirée' : gmail?.connected ? 'Connecté' : 'Non connecté'
   const gmailStatusColor = gmailNeedsReconnect ? '#f59e0b' : gmail?.connected ? '#22c55e' : '#A89FCC'
   const gmailStatusBg = gmailNeedsReconnect ? 'rgba(245,158,11,0.12)' : gmail?.connected ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.04)'
 
@@ -60,11 +60,6 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
-    if (!proUser) {
-      setLoading(false)
-      return
-    }
-
     loadGmailStatus()
   }, [status, proUser])
 
@@ -163,26 +158,25 @@ export default function SettingsPage() {
               </span>
             </div>
 
-            {proUser && gmail?.email && (
+            {gmail?.email && (
               <div style={{ color: '#80769f', fontSize: '0.78rem', marginTop: '0.75rem' }}>
                 Compte Gmail : {gmail.email}
               </div>
             )}
 
-            {proUser && gmailNeedsReconnect && (
+            {gmailNeedsReconnect && (
               <div style={{ marginTop: '1rem', border: '1px solid rgba(245,158,11,0.24)', background: 'rgba(245,158,11,0.08)', borderRadius: '10px', padding: '0.85rem', color: '#fbbf24', fontSize: '0.84rem', lineHeight: 1.55 }}>
                 {gmail?.message || 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.'}
               </div>
             )}
 
-            {proUser && !gmail?.connected && !gmailNeedsReconnect && (
+            {!gmail?.connected && !gmailNeedsReconnect && (
               <p style={{ margin: '1rem 0 0', color: '#A89FCC', fontSize: '0.84rem', lineHeight: 1.55 }}>
                 Connectez Gmail pour créer des brouillons depuis vos campagnes, sans quitter ProspectTube.
               </p>
             )}
 
-            {proUser ? (
-              <div style={{ marginTop: '1rem', display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
+            <div style={{ marginTop: '1rem', display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
                 <button onClick={() => window.location.assign('/api/gmail/connect?returnTo=/settings')} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem' }}>
                   {gmail?.connected ? 'Reconnecter Gmail' : gmailNeedsReconnect ? 'Reconnecter Gmail' : 'Connecter Gmail'}
                 </button>
@@ -191,12 +185,7 @@ export default function SettingsPage() {
                     {disconnecting ? 'Déconnexion...' : 'Déconnecter Gmail'}
                   </button>
                 )}
-              </div>
-            ) : (
-              <div style={{ marginTop: '1rem' }}>
-                <SubscriptionButton plan="Gratuit" />
-              </div>
-            )}
+            </div>
           </section>
         </div>
       </div>

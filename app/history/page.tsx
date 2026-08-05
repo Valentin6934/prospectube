@@ -264,7 +264,7 @@ export default function HistoryPage() {
                     showFavoriteButton
                     isFavorite={Boolean(channelId && favoriteIds.includes(channelId))}
                     favoriteLoading={favoriteLoadingId === channelId}
-                    canUseCampaigns={isPro(plan)}
+                    canUseCampaigns
                     onAddFavorite={addFavorite}
                   />
                 )

@@ -39,16 +39,16 @@ export const PROSPECT_SCORE_LEVELS = [
 ] as const
 
 export const PROSPECT_SCORE_SIGNALS = [
-  'coordonnees publiques : email, Instagram, TikTok, Twitch ou site web',
-  'taille de chaine, notamment les audiences entre 10k et 1M abonnes',
-  'activite : plus de 100 videos publiees',
-  'performances : plus de 1M vues et ratio vues/abonnes superieur a 20',
-  'anciennete : chaine de moins de 5 ans',
-  'description suffisamment detaillee',
+  'adequation au ciblage et pertinence des metadonnees video recentes : 25 points',
+  'activite et regularite recentes : 20 points',
+  'vues medianes recentes : 20 points',
+  'ratio vues medianes recentes / abonnes : 15 points',
+  'engagement recent lorsque disponible : 10 points',
+  'potentiel commercial lie a la taille et au rythme de publication : 10 points',
 ] as const
 
 export const PROSPECT_SCORE_EXPLANATION =
-  "Le Prospect Score estime le potentiel commercial d'une chaine a partir de signaux publics comme son activite, sa taille, ses performances et la presence de coordonnees. Il ne signifie pas que le createur recherche actuellement un prestataire : il aide simplement a identifier les profils les plus interessants a contacter."
+  "Le Prospect Score estime l'adequation commerciale a partir de signaux publics issus d'un echantillon borne de metadonnees video recentes : pertinence thematique, regularite, vues medianes, ratio recent et engagement disponible. La contactabilite est mesuree separement et n'augmente pas le score."
 
 export const PROSPECT_SCORE_TRANSPARENCY_NOTE =
   'Le score mesure un potentiel de prospection, pas un besoin confirme, une reponse garantie ou une opportunite certaine.'

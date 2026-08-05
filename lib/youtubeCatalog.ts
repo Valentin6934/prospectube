@@ -20,10 +20,15 @@ export function filterYouTubeCatalog(
   catalog: Pick<YouTubeDiscoveryCatalog, 'channels'>,
   subsMin: number,
   subsMax: number,
-  maxResults: number
+  maxResults: number,
+  filters: { emailOnly?: boolean; activeOnly?: boolean; minMedianViews?: number; minContentRelevance?: number } = {}
 ) {
   return catalog.channels
     .filter(channel => Number.isFinite(Number(channel?.subsNum)) && channel.subsNum >= subsMin && channel.subsNum <= subsMax)
+    .filter(channel => !filters.emailOnly || Boolean(channel.email))
+    .filter(channel => !filters.activeOnly || ['Très active', 'Active'].includes(channel.publishingFrequency))
+    .filter(channel => Number(channel.recentMedianViews || 0) >= Number(filters.minMedianViews || 0))
+    .filter(channel => Number(channel.contentRelevance || 0) >= Number(filters.minContentRelevance || 0))
     .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
     .slice(0, maxResults)
 }

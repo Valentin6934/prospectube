@@ -31,10 +31,10 @@ export async function getSearchQuotaSnapshot(
     const [historyCount, usageCount] = await Promise.all([
       db.search.count({ where: { userId } }),
       db.searchUsage.count({
-        where: { userId, status: { in: ['pending', 'succeeded'] } },
+        where: { userId, periodKey: 'lifetime', status: { in: ['pending', 'succeeded'] } },
       }),
     ])
-    const used = historyCount > 0 || usageCount > 0 ? 1 : 0
+    const used = Math.min(limit, Math.max(historyCount, usageCount))
     return { limit, used, remaining: Math.max(0, limit - used), periodKey }
   }
 

@@ -22,12 +22,11 @@ to YouTube Data API v3. IP restrictions are generally unsuitable for dynamic Ver
 
 For one uncached product search, ProspectTube performs:
 
-- one `search.list` request, followed by at most one deterministic variant when fewer than 10
-  subscriber-range matches are available (100 units per request / one Search Query metric each);
-- one `channels.list` request per batch of up to 50 unique channel IDs (1 unit each);
-- no `videos.list` request in the product flow;
-- up to one public `/about` HTML fetch per candidate needing contact enrichment. These HTML requests
-  do not consume YouTube Data API units but remain network requests.
+- one `search.list` request of type `video`, followed by at most one deterministic variant when
+  fewer than 10 subscriber-range candidates are available (100 units per request);
+- one `channels.list` request per batch of up to 50 unique channel IDs;
+- one `videos.list` request per batch of up to 50 discovered video IDs;
+- no per-channel network request, transcription, comment crawl or unbounded pagination.
 
 There is no automatic retry or pagination. A zero-result search stops after the second bounded
 variant at the latest and releases the product quota reservation. Client reloads do not automatically
@@ -35,15 +34,16 @@ trigger searches.
 
 ## Shared cache and product limits
 
-Search results are cached in PostgreSQL/Neon for 48 hours. The canonical key includes the algorithm
-version, normalized niche and language, and normalized subscriber bounds. Cache entries contain only
-public channel result data and are shared between users.
+Discovery catalogs V6 are cached in PostgreSQL/Neon for 48 hours. The canonical key includes the
+algorithm version, normalized niche, language, selected sub-niches and custom keyword. Subscriber
+bounds and advanced filters are applied locally and do not change the discovery key.
 
-- Free: one successful product search for the lifetime of the account.
+- Free: three successful product searches for the lifetime of the account.
 - Pro: five successful product searches per UTC day.
 - A cache hit consumes one product search but no Google API quota.
 - A Google/configuration failure releases the pending product quota reservation.
-- Existing free accounts with at least one Search history row are considered to have used their free search.
+- Existing free accounts use the greater successful count represented by Search history or SearchUsage,
+  capped at three, so failed and empty attempts do not consume quota.
 
 `SearchUsage` reserves quota atomically and `SearchLock` prevents concurrent searches for one user or
 one cache key across Vercel instances. Expired locks are cleaned before acquisition.
