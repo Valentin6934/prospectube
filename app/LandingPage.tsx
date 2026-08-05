@@ -66,7 +66,7 @@ const steps = [
 const faqs = [
   ['Puis-je annuler ?', 'Oui. L’abonnement Pro est sans engagement et peut être annulé à tout moment depuis le portail Stripe.'],
   ['Comment fonctionne Gmail ?', 'Vous autorisez ProspectTube via Google OAuth. L’intégration sert uniquement à créer des brouillons ou envoyer les messages que vous validez.'],
-  ['Pourquoi seulement 9,90 € ?', 'Nous avons conçu une offre simple et accessible, centrée sur les fonctions réellement utiles à la prospection YouTube.'],
+  ['Pourquoi seulement 4,90 € ?', 'Nous avons conçu une offre simple et accessible, centrée sur les fonctions réellement utiles à la prospection YouTube.'],
   ['Les recherches sont-elles limitées ?', 'Le plan Gratuit comprend 3 recherches réussies au total. Le plan Pro comprend 5 recherches par jour.'],
 ]
 
@@ -242,7 +242,7 @@ export default function LandingPage() {
             <article className={`${styles.priceCard} ${styles.priceFeatured}`}>
               <div className={styles.popularBadge}>⭐ Le plus populaire</div>
               <div className={styles.priceName}>Pro</div>
-              <div className={styles.price}><strong>9,90 €</strong><span>/mois</span></div>
+              <div className={styles.price}><strong>4,90 €</strong><span>/mois</span></div>
               <p>Pour transformer vos recherches en opportunités.</p>
               <ul>
                 <li>✓ 5 recherches par jour</li>

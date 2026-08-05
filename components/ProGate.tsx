@@ -119,7 +119,7 @@ export default function ProGate({
         <aside style={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: '16px', background: 'rgba(255,255,255,0.04)', padding: '1rem' }}>
           <div style={{ color: '#8F86AA', fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '0.35rem' }}>Plan Pro</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.45rem' }}>
-            <strong style={{ color: '#F0EDF8', fontSize: compact ? '1.65rem' : '2rem', lineHeight: 1 }}>9,90 €</strong>
+            <strong style={{ color: '#F0EDF8', fontSize: compact ? '1.65rem' : '2rem', lineHeight: 1 }}>4,90 €</strong>
             <span style={{ color: '#A89FCC', fontSize: '0.86rem' }}>/ mois</span>
           </div>
           <p style={{ color: '#8F86AA', fontSize: '0.78rem', lineHeight: 1.55, margin: '0.65rem 0 0.9rem' }}>
@@ -127,7 +127,7 @@ export default function ProGate({
           </p>
           <SubscriptionButton
             plan="Gratuit"
-            label="Passer à Pro pour 9,90 €/mois"
+            label="Passer à Pro pour 4,90 €/mois"
             fullWidth
             style={{ minHeight: '46px', marginTop: 0, fontSize: '0.86rem', fontWeight: 850 }}
           />

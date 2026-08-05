@@ -975,7 +975,7 @@ function mockStripePrice(overrides = {}) {
     active: true,
     recurring: { interval: 'month' },
     currency: 'eur',
-    unit_amount: 990,
+    unit_amount: 490,
     ...overrides,
   }
 }
@@ -2034,11 +2034,11 @@ test('standard Pro pricing has no launch offer route, coupon or discount wiring'
   assert.equal(fs.existsSync('app/api/launch-offer/route.ts'), false)
   assert.match(checkoutRoute, /getValidatedStripeConfig/)
   assert.match(stripeHelper, /STRIPE_PRICE_PRO/)
-  assert.match(sources, /9,90/)
+  assert.match(sources, /4,90/)
   assert.doesNotMatch(checkoutRoute, /discounts/)
   assert.doesNotMatch(checkoutRoute, /allow_promotion_codes/)
   assert.doesNotMatch(checkoutRoute, /promotion_code|coupon/)
   assert.doesNotMatch(sources, /STRIPE_LAUNCH_PROMOTION_ID/)
-  assert.doesNotMatch(sources, /4,95|4\.95|4,90|4\.90/)
+  assert.doesNotMatch(sources, /4,95|4\.95|9,90|9\.90/)
   assert.doesNotMatch(sources, /offre de lancement|Offre de lancement|5 places/)
 })

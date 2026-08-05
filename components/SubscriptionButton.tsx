@@ -55,7 +55,7 @@ export default function SubscriptionButton({
       >
         {loading
           ? <span className="button-loader"><span className="app-spinner" /> Ouverture...</span>
-          : isPro ? 'Gérer mon abonnement' : label || 'Passer Pro — 9,90 €/mois'}
+          : isPro ? 'Gérer mon abonnement' : label || 'Passer Pro — 4,90 €/mois'}
       </button>
       {error && (
         <div role="alert" style={{ maxWidth: fullWidth ? '100%' : '250px', marginTop: '0.45rem', color: '#f87171', fontSize: '0.7rem' }}>
