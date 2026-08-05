@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -10,25 +10,39 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const submittingRef = useRef(false)
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (submittingRef.current) return
+    submittingRef.current = true
     setLoading(true)
     setError('')
-    const res = await fetch('/api/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password }),
-    })
-    const data = await res.json()
-    if (!res.ok) {
-      setError(data.error || 'Erreur lors de l\'inscription')
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(data.error || "Une erreur est survenue pendant l'inscription. Reessayez.")
+        return
+      }
+      const login = await signIn('credentials', { email, password, redirect: false })
+      if (login?.error) {
+        setError('Le compte a ete cree, mais la connexion a echoue. Connectez-vous depuis la page de connexion.')
+        return
+      }
+      router.push('/dashboard/home')
+      router.refresh()
+    } catch {
+      setError("Une erreur est survenue pendant l'inscription. Reessayez.")
+    } finally {
       setLoading(false)
-      return
+      submittingRef.current = false
     }
-    await signIn('credentials', { email, password, redirect: false })
-    router.push('/dashboard/home')
   }
 
   return (

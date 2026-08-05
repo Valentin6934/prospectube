@@ -108,6 +108,7 @@ const { filterYouTubeCatalog, mergeCatalogChannels } = require('../lib/youtubeCa
 const { getReleasedSearchQuotaSnapshot, getSearchQuotaSnapshot } = require('../lib/searchQuota.ts')
 const { FREE_LIFETIME_CAMPAIGN_LIMIT, FREE_CAMPAIGN_PROSPECT_LIMIT, FREE_CAMPAIGN_MARKER_PERIOD } = require('../lib/campaignAccess.ts')
 const { NICHE_CONFIG, validateSearchTarget, buildTargetQuery } = require('../lib/searchTargeting.ts')
+const { classifyRegistrationError, getSafePrismaMeta, normalizeAccountEmail, validateRegistrationInput } = require('../lib/registration.ts')
 const { calculateMedian, calculateTrimmedMean, scoreVideoTopicMatch, scoreChannelContentRelevance, detectDominantContentLanguage, calculateProspectScore, getContactability } = require('../lib/prospectScoring.ts')
 const {
   PROSPECT_SCORE_EXPLANATION,
@@ -1592,6 +1593,69 @@ test('free campaign discovery is limited and durable without enabling campaign A
   assert.match(campaignRoute, /markFreeCampaignUsed/)
   assert.match(prospectRoute, /FREE_CAMPAIGN_PROSPECT_LIMIT/)
   assert.match(generateRoute, /requireProResponse/)
+})
+
+test('registration validates and normalizes valid accounts for immediate credentials login', () => {
+  const result = validateRegistrationInput({ name: ' Valentin ', email: ' USER@Example.COM ', password: 'secret12' })
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.data, { name: 'Valentin', email: 'user@example.com', password: 'secret12' })
+  assert.equal(normalizeAccountEmail(' USER@Example.COM '), 'user@example.com')
+
+  const route = fs.readFileSync('app/api/register/route.ts', 'utf8')
+  const auth = fs.readFileSync('lib/auth.ts', 'utf8')
+  const page = fs.readFileSync('app/register/page.tsx', 'utf8')
+  assert.match(route, /plan: 'Gratuit'/)
+  assert.match(route, /searchesRemaining: FREE_LIFETIME_SEARCH_LIMIT/)
+  assert.match(route, /bcrypt\.hash\(password, 10\)/)
+  assert.match(auth, /normalizeAccountEmail\(credentials\.email\)/)
+  assert.match(auth, /bcrypt\.compare\(credentials\.password, user\.password\)/)
+  assert.match(page, /submittingRef\.current/)
+  assert.match(page, /disabled=\{loading\}/)
+  assert.match(page, /if \(login\?\.error\)/)
+  assert.match(page, /router\.push\('\/dashboard\/home'\)/)
+})
+
+test('registration rejects missing or malformed required fields', () => {
+  assert.equal(validateRegistrationInput(null).ok, false)
+  assert.equal(validateRegistrationInput({ name: '', email: 'x@example.com', password: 'secret12' }).ok, false)
+  assert.equal(validateRegistrationInput({ name: 'X', email: 'invalid', password: 'secret12' }).ok, false)
+  assert.equal(validateRegistrationInput({ name: 'X', email: 'x@example.com', password: 'short' }).ok, false)
+})
+
+test('registration classifies duplicate, schema and unavailable Prisma failures safely', () => {
+  const duplicate = classifyRegistrationError({ name: 'PrismaClientKnownRequestError', code: 'P2002', meta: { modelName: 'User', target: ['email'] } })
+  assert.equal(duplicate.code, 'REGISTRATION_EMAIL_ALREADY_EXISTS')
+  assert.equal(duplicate.status, 409)
+  assert.deepEqual(duplicate.safeMeta, { model: 'User', fields: ['email'] })
+
+  for (const code of ['P2021', 'P2022']) {
+    const schema = classifyRegistrationError({ name: 'PrismaClientKnownRequestError', code, meta: { table: 'public.User', column: 'public.searchesRemaining' } })
+    assert.equal(schema.code, 'REGISTRATION_DATABASE_SCHEMA_ERROR')
+    assert.equal(schema.status, 503)
+  }
+  for (const code of ['P1000', 'P1001', 'P1002', 'P1008', 'P1017']) {
+    const unavailable = classifyRegistrationError({ name: 'PrismaClientInitializationError', errorCode: code })
+    assert.equal(unavailable.code, 'REGISTRATION_DATABASE_UNAVAILABLE')
+    assert.equal(unavailable.status, 503)
+  }
+})
+
+test('registration diagnostics never expose raw messages or sensitive metadata', () => {
+  const raw = {
+    name: 'PrismaClientKnownRequestError',
+    code: 'P2022',
+    message: 'password=user@example.com DATABASE_URL=postgresql://secret',
+    stack: 'token and hash',
+    meta: { modelName: 'User', column: 'public.password', email: 'user@example.com', database_url: 'postgresql://secret' },
+  }
+  const classified = classifyRegistrationError(raw)
+  const serialized = JSON.stringify(classified)
+  assert.deepEqual(getSafePrismaMeta(raw), { model: 'User', column: 'password' })
+  assert.doesNotMatch(serialized, /user@example\.com|postgresql:\/\/|token and hash/)
+
+  const route = fs.readFileSync('app/api/register/route.ts', 'utf8')
+  assert.match(route, /event: 'registration_failed'/)
+  assert.doesNotMatch(route, /console\.error\([^)]*(email|password|hashed|DATABASE_URL)/s)
 })
 
 test('standard Pro pricing has no launch offer route, coupon or discount wiring', () => {

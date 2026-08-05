@@ -2,6 +2,7 @@ import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { prisma } from '@/lib/prisma'
 import { getPlanName } from '@/lib/plan'
+import { normalizeAccountEmail } from '@/lib/registration'
 import bcrypt from 'bcryptjs'
 
 export const authOptions: NextAuthOptions = {
@@ -18,18 +19,39 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        })
-        if (!user) return null
-        const valid = await bcrypt.compare(credentials.password, user.password)
-        if (!valid) return null
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          plan: getPlanName(user.plan),
-          searchesRemaining: user.searchesRemaining,
+        try {
+          const user = await prisma.user.findUnique({
+            where: { email: normalizeAccountEmail(credentials.email) },
+          })
+          if (!user) {
+            console.warn({ event: 'AUTH_USER_NOT_FOUND', environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown' })
+            return null
+          }
+          const valid = await bcrypt.compare(credentials.password, user.password)
+          if (!valid) {
+            console.warn({ event: 'AUTH_INVALID_PASSWORD', userId: user.id, environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown' })
+            return null
+          }
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            plan: getPlanName(user.plan),
+            searchesRemaining: user.searchesRemaining,
+          }
+        } catch (error) {
+          const details = error && typeof error === 'object'
+            ? error as { name?: unknown; code?: unknown; errorCode?: unknown }
+            : {}
+          console.error({
+            event: 'AUTH_DATABASE_ERROR',
+            errorName: typeof details.name === 'string' ? details.name : 'Error',
+            prismaCode: typeof details.code === 'string'
+              ? details.code
+              : typeof details.errorCode === 'string' ? details.errorCode : undefined,
+            environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
+          })
+          throw error
         }
       },
     }),
