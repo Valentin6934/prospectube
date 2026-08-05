@@ -113,7 +113,7 @@ const { filterYouTubeCatalog, mergeCatalogChannels } = require('../lib/youtubeCa
 const { getReleasedSearchQuotaSnapshot, getSearchQuotaSnapshot, releaseSearchQuota, reserveSearchQuota } = require('../lib/searchQuota.ts')
 const { FREE_LIFETIME_CAMPAIGN_LIMIT, FREE_CAMPAIGN_PROSPECT_LIMIT, FREE_CAMPAIGN_MARKER_PERIOD, FREE_CAMPAIGN_COMPLETED_PERIOD } = require('../lib/campaignAccess.ts')
 const { NICHE_CONFIG, validateSearchTarget, buildTargetQuery, getSubnicheVocabulary, getPrimarySearchFocus, getSearchFocusVariant, getSearchFocusVariants } = require('../lib/searchTargeting.ts')
-const { buildExposureTargetKey, countGlobalChannelExposure, diversifyProspects, extractChannelIdsFromSearchResults, sortProspectsByQuality } = require('../lib/resultDiversification.ts')
+const { buildExposureTargetKey, buildUserTargetKey, countGlobalChannelExposure, diversifyProspects, extractChannelIdsFromSearchResults, getUserTargetExposure, markSearchResultsForTarget, sortProspectsByQuality, sortProspectsForRotation } = require('../lib/resultDiversification.ts')
 const { buildDiscoveryFallbackQueries, calculateQueryVariantYield, classifyQueryBreadth, rankQueryVariants, selectComplementaryVariant, selectNextDiscoveryVariant, updateVariantPerformance } = require('../lib/discoveryVariants.ts')
 const { calculateCatalogCoverage, getUserCoverage } = require('../lib/catalogCoverage.ts')
 const { classifyRegistrationError, getSafePrismaMeta, normalizeAccountEmail, validateRegistrationInput } = require('../lib/registration.ts')
@@ -1708,16 +1708,15 @@ test('Mode homme uses three targeted queries without a generic Mode query', () =
   assert.equal(queries.some(query => query.toLowerCase() === 'mode français'), false)
 })
 
-test('diversification prioritizes unseen prospects but never sacrifices a large relevance gap', () => {
+test('rotation prioritizes unseen strict prospects without promoting weak nearby results', () => {
   const channels = [
     { id: 'best', score: 100, contentRelevance: 100, subnicheMatch: 100 },
     { id: 'new', score: 70, contentRelevance: 70, subnicheMatch: 70 },
-    { id: 'weak', score: 20, contentRelevance: 20, subnicheMatch: 10 },
+    { id: 'weak', score: 20, contentRelevance: 20, subnicheMatch: 10, matchMode: 'nearby' },
   ]
   const common = { channels, campaignChannelIds: new Set(), globalExposure: new Map(), userSeed: 'hashed-internally', targetKey: 'gaming:fortnite', now: new Date('2026-08-05T10:00:00Z'), limit: 3 }
   const result = diversifyProspects({ ...common, seenChannelIds: new Set(['best']) })
-  assert.equal(result.results[0].id, 'best')
-  assert.ok(result.results.findIndex(item => item.id === 'new') < result.results.findIndex(item => item.id === 'weak'))
+  assert.deepEqual(result.results.map(item => item.id), ['new', 'best', 'weak'])
   assert.equal(result.newCount, 2)
   assert.equal(result.seenCount, 1)
 })
@@ -1746,6 +1745,82 @@ test('diversification only breaks ties after quality and user novelty', () => {
     { id: 'new-high-rank', score: 80, editingPotential: 50, subnicheMatch: 50, previouslySeen: false, diversificationRank: 2 },
   ])
   assert.deepEqual(ranked.map(item => item.id), ['new-high-rank', 'new-low-rank', 'seen'])
+})
+
+test('user target keys are stable, normalized and contain no raw target data', () => {
+  const first = buildUserTargetKey({ niche: ' Gaming ', subNiches: ['Fortnite'], customKeyword: ' Battle Royale ', language: 'Français' }, 10000, 100000)
+  const second = buildUserTargetKey({ niche: 'gaming', subNiches: [' fortnite '], customKeyword: 'battle royale', language: 'francais' }, 10000, 100000)
+  assert.equal(first, second)
+  assert.match(first, /^[a-f0-9]{20}$/)
+  assert.doesNotMatch(first, /gaming|fortnite|francais/)
+  assert.notEqual(first, buildUserTargetKey({ niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' }, 50000, 100000))
+})
+
+test('target exposure includes only results actually returned for the same target', () => {
+  const targetKey = 'target-a'
+  const rows = [
+    { results: JSON.stringify(markSearchResultsForTarget([{ id: 'recent-a' }, { id: 'recent-b' }], targetKey)) },
+    { results: JSON.stringify(markSearchResultsForTarget([{ id: 'older' }], targetKey)) },
+    { results: JSON.stringify(markSearchResultsForTarget([{ id: 'other-target' }], 'target-b')) },
+    { results: JSON.stringify([{ id: 'catalog-only-without-marker' }]) },
+  ]
+  const exposure = getUserTargetExposure(rows, targetKey)
+  assert.deepEqual([...exposure.seenChannelIds].sort(), ['older', 'recent-a', 'recent-b'])
+  assert.deepEqual([...exposure.previousSearchChannelIds].sort(), ['recent-a', 'recent-b'])
+})
+
+test('repeated searches rotate through unseen batches then recycle quality results', () => {
+  const channels = Array.from({ length: 45 }, (_, index) => ({
+    id: `c${String(index).padStart(2, '0')}`,
+    score: 100 - index,
+    editingPotential: 80 - index,
+    subnicheMatch: 70 - index,
+  }))
+  const common = { channels, campaignChannelIds: new Set(), globalExposure: new Map(), userSeed: 'user-a', targetKey: 'target', now: new Date('2026-08-05'), limit: 20 }
+  const first = diversifyProspects({ ...common, seenChannelIds: new Set() })
+  const firstIds = new Set(first.results.map(item => item.id))
+  const second = diversifyProspects({ ...common, seenChannelIds: firstIds, previousSearchChannelIds: firstIds })
+  const firstTwoIds = new Set([...firstIds, ...second.results.map(item => item.id)])
+  const third = diversifyProspects({ ...common, seenChannelIds: firstTwoIds, previousSearchChannelIds: new Set(second.results.map(item => item.id)) })
+
+  assert.deepEqual(first.results.map(item => item.id), channels.slice(0, 20).map(item => item.id))
+  assert.equal(second.results.some(item => firstIds.has(item.id)), false)
+  assert.deepEqual(second.results.map(item => item.id), channels.slice(20, 40).map(item => item.id))
+  assert.deepEqual(third.results.slice(0, 5).map(item => item.id), channels.slice(40, 45).map(item => item.id))
+  assert.equal(third.newCount, 5)
+  assert.equal(third.seenCount, 15)
+
+  const exhausted = diversifyProspects({ ...common, seenChannelIds: new Set(channels.map(item => item.id)) })
+  assert.equal(exhausted.results.length, 20)
+  assert.deepEqual(exhausted.results.map(item => item.id), channels.slice(0, 20).map(item => item.id))
+})
+
+test('rotation keeps strict groups before nearby groups at the same exposure level', () => {
+  const ranked = sortProspectsForRotation([
+    { id: 'seen-strict', score: 99, previouslySeen: true },
+    { id: 'new-nearby', score: 95, matchMode: 'nearby' },
+    { id: 'new-strict-low', score: 70 },
+    { id: 'new-strict-high', score: 90 },
+    { id: 'seen-nearby', score: 100, matchMode: 'nearby', previouslySeen: true },
+  ])
+  assert.deepEqual(ranked.map(item => item.id), ['new-strict-high', 'new-strict-low', 'new-nearby', 'seen-strict', 'seen-nearby'])
+})
+
+test('campaign prospects are strongly deferred without becoming globally unavailable', () => {
+  const channels = Array.from({ length: 21 }, (_, index) => ({ id: `c${index}`, score: 100 - index, editingPotential: 50, subnicheMatch: 50 }))
+  const common = { channels, seenChannelIds: new Set(), globalExposure: new Map(), targetKey: 'target', now: new Date('2026-08-05'), limit: 20 }
+  const userA = diversifyProspects({ ...common, userSeed: 'user-a', campaignChannelIds: new Set(['c0']) })
+  const userB = diversifyProspects({ ...common, userSeed: 'user-b', campaignChannelIds: new Set() })
+  assert.equal(userA.results.some(item => item.id === 'c0'), false)
+  assert.equal(userB.results[0].id, 'c0')
+})
+
+test('search route persists and returns only the twenty selected rotation results', () => {
+  const route = fs.readFileSync('app/api/search/route.ts', 'utf8')
+  assert.match(route, /getUserTargetExposure\(userSearches, userTargetKey\)/)
+  assert.match(route, /limit: Math\.min\(20, channels\.length\)/)
+  assert.match(route, /JSON\.stringify\(markSearchResultsForTarget\(input\.results, input\.targetKey\)\)/)
+  assert.equal((route.match(/return NextResponse\.json\(\{\s*results: visibleResults,\s*resultMeta:/g) || []).length, 2)
 })
 
 test('dashboard exposes simple result counts and paginates twenty then ten', () => {

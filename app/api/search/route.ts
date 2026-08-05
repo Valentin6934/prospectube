@@ -8,7 +8,7 @@ import { discoverYouTubeCatalog, YouTubeCallMetrics } from '@/lib/youtube'
 import { filterYouTubeCatalog, YouTubeDiscoveryCatalog } from '@/lib/youtubeCatalog'
 import { getPlanName } from '@/lib/plan'
 import { validateSearchTarget } from '@/lib/searchTargeting'
-import { buildExposureTargetKey, countGlobalChannelExposure, diversifyProspects, extractChannelIdsFromSearchResults } from '@/lib/resultDiversification'
+import { buildUserTargetKey, countGlobalChannelExposure, diversifyProspects, extractChannelIdsFromSearchResults, getUserTargetExposure, markSearchResultsForTarget } from '@/lib/resultDiversification'
 import { calculateCatalogCoverage, getUserCoverage } from '@/lib/catalogCoverage'
 import { buildYouTubeErrorResponse, getSafeYouTubeLog } from '@/lib/youtubeQuota'
 import {
@@ -118,6 +118,7 @@ async function saveSearchHistory(input: {
   subsMin: number
   subsMax: number
   results: any[]
+  targetKey: string
 }) {
   try {
     await prisma.search.create({
@@ -127,7 +128,7 @@ async function saveSearchHistory(input: {
         language: input.lang,
         subsMin: String(input.subsMin),
         subsMax: String(input.subsMax),
-        results: JSON.stringify(input.results),
+        results: JSON.stringify(markSearchResultsForTarget(input.results, input.targetKey)),
       },
     })
   } catch (error) {
@@ -173,6 +174,7 @@ export async function POST(req: NextRequest) {
     customKeyword: parsed.target.customKeyword,
   })
   const cacheKeyHash = hashLogValue(cacheKey)
+  const userTargetKey = buildUserTargetKey(parsed.target, parsed.minVal, parsed.maxVal)
   const userIdHash = hashLogValue(user.id)
   const metrics: YouTubeCallMetrics = {
     searchList: 0,
@@ -200,18 +202,19 @@ export async function POST(req: NextRequest) {
       prisma.search.findMany({ orderBy: { createdAt: 'desc' }, take: 200, select: { results: true, userId: true } }),
       prisma.campaignProspect.findMany({ where: { campaign: { userId: user.id } }, select: { channelId: true } }),
     ])
-    const seenChannelIds = extractChannelIdsFromSearchResults(userSearches)
+    const { seenChannelIds, previousSearchChannelIds } = getUserTargetExposure(userSearches, userTargetKey)
     const globalExposure = countGlobalChannelExposure(globalSearches)
     const catalogIds = new Set(sourceCatalog.channels.map(channel => String(channel.id || channel.channelId || '')).filter(Boolean))
     const usersExposedCount = new Set(globalSearches.filter(row => Array.from(extractChannelIdsFromSearchResults([row])).some(id => catalogIds.has(id))).map(row => row.userId)).size
     const diversified = diversifyProspects({
       channels,
       seenChannelIds,
+      previousSearchChannelIds,
       campaignChannelIds: new Set(campaignProspects.map(item => item.channelId)),
       globalExposure,
       userSeed: user.id,
-      targetKey: buildExposureTargetKey(parsed.target, parsed.minVal, parsed.maxVal),
-      limit: Math.min(50, channels.length),
+      targetKey: userTargetKey,
+      limit: Math.min(20, channels.length),
     })
     const coverage = calculateCatalogCoverage({
       channels: sourceCatalog.channels,
@@ -333,6 +336,7 @@ export async function POST(req: NextRequest) {
         subsMin: parsed.minVal,
         subsMax: parsed.maxVal,
         results: visibleResults,
+        targetKey: userTargetKey,
       })
       responseStatus = 200
       logSearch({
@@ -455,7 +459,8 @@ export async function POST(req: NextRequest) {
       lang: parsed.lang,
       subsMin: parsed.minVal,
       subsMax: parsed.maxVal,
-        results: visibleResults,
+      results: visibleResults,
+      targetKey: userTargetKey,
     })
     responseStatus = 200
     logSearch({
