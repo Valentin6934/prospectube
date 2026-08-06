@@ -10,7 +10,7 @@ import {
   SEND_MODE,
 } from '@/lib/gmail'
 import { isPro, requireProResponse } from '@/lib/plan'
-import { FREE_CAMPAIGN_PROSPECT_LIMIT, canUseFreeCampaign, freeCampaignLimitResponse, markFreeCampaignCompleted } from '@/lib/campaignAccess'
+import { FREE_CAMPAIGN_PROSPECT_LIMIT, canUseFreeCampaign, freeCampaignLimitResponse, hasCompletedFreeCampaign, markFreeCampaignCompleted } from '@/lib/campaignAccess'
 import {
   CAMPAIGN_SEND_LIMIT,
   getCampaignSendSummary,
@@ -344,7 +344,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         : 'Aucun prospect eligible. Verifiez email, sujet et message.',
     })
   }
-  if (!isPro(user.plan) && !(await canUseFreeCampaign(prisma, user.id, campaign.id))) return freeCampaignLimitResponse()
+  if (!isPro(user.plan)) {
+    if (await hasCompletedFreeCampaign(prisma, user.id)) return freeCampaignLimitResponse()
+    if (!(await canUseFreeCampaign(prisma, user.id, campaign.id))) return freeCampaignLimitResponse()
+  }
 
   let accessToken: string
   try {

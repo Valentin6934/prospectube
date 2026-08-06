@@ -6,7 +6,8 @@ import {
   verifyGmailOAuthState,
   type GmailOAuthStatePayload,
 } from '@/lib/gmailOAuthUrl'
-import { isPro } from '@/lib/plan'
+import { canUseGmailIntegration } from '@/lib/campaignAccess'
+import { classifyGoogleOAuthError, isConnectedOAuthReplay, logSafeGmailOAuthFailure } from '@/lib/gmailOAuthErrors'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +30,7 @@ function clearOAuthCookies(response: NextResponse) {
 
 export async function GET(req: NextRequest) {
   const error = req.nextUrl.searchParams.get('error')
+  const errorDescription = req.nextUrl.searchParams.get('error_description')
   const code = req.nextUrl.searchParams.get('code')
   const state = req.nextUrl.searchParams.get('state')
   const payload = verifyGmailOAuthState(state)
@@ -36,7 +38,11 @@ export async function GET(req: NextRequest) {
   if (!payload) {
     return clearOAuthCookies(oauthRedirect('invalid_state'))
   }
-  if (error) return clearOAuthCookies(oauthRedirect('cancelled', payload))
+  if (error) {
+    const errorCode = classifyGoogleOAuthError(`${error} ${errorDescription || ''}`)
+    logSafeGmailOAuthFailure({ code: errorCode, step: 'authorization' })
+    return clearOAuthCookies(oauthRedirect(errorCode, payload))
+  }
   if (!code) {
     return clearOAuthCookies(oauthRedirect('invalid_state', payload))
   }
@@ -46,14 +52,22 @@ export async function GET(req: NextRequest) {
     select: { id: true, plan: true },
   })
   if (!currentUser) return clearOAuthCookies(oauthRedirect('user_error', payload))
+  if (!(await canUseGmailIntegration(prisma, currentUser))) {
+    return clearOAuthCookies(oauthRedirect('FREE_CAMPAIGN_COMPLETED', payload))
+  }
 
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
   if (!clientId || !clientSecret) {
-    return clearOAuthCookies(oauthRedirect('config_error', payload))
+    logSafeGmailOAuthFailure({ code: 'OAUTH_NOT_CONFIGURED', step: 'configuration' })
+    return clearOAuthCookies(oauthRedirect('OAUTH_NOT_CONFIGURED', payload))
   }
 
   try {
+    const existingAccount = await prisma.googleAccount.findUnique({
+      where: { userId: currentUser.id },
+      select: { refreshToken: true },
+    })
     const redirectUri = getStableGmailOAuthCallbackUrl()
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -70,7 +84,12 @@ export async function GET(req: NextRequest) {
     const tokens = await tokenResponse.json().catch(() => ({}))
 
     if (!tokenResponse.ok || typeof tokens.access_token !== 'string') {
-      return clearOAuthCookies(oauthRedirect('token_error', payload))
+      if (isConnectedOAuthReplay(typeof tokens.error === 'string' ? tokens.error : null, existingAccount?.refreshToken)) {
+        return clearOAuthCookies(oauthRedirect('connected', payload))
+      }
+      const errorCode = classifyGoogleOAuthError(typeof tokens.error === 'string' ? tokens.error : null)
+      logSafeGmailOAuthFailure({ code: errorCode, step: 'token_exchange' })
+      return clearOAuthCookies(oauthRedirect(errorCode, payload))
     }
 
     const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
@@ -82,16 +101,13 @@ export async function GET(req: NextRequest) {
       return clearOAuthCookies(oauthRedirect('profile_error', payload))
     }
 
-    const existingAccount = await prisma.googleAccount.findUnique({
-      where: { userId: currentUser.id },
-      select: { refreshToken: true },
-    })
     const refreshToken = typeof tokens.refresh_token === 'string'
       ? tokens.refresh_token
       : existingAccount?.refreshToken || null
 
     if (!refreshToken) {
-      return clearOAuthCookies(oauthRedirect('refresh_token_error', payload))
+      logSafeGmailOAuthFailure({ code: 'GMAIL_TOKEN_EXPIRED', step: 'refresh_token' })
+      return clearOAuthCookies(oauthRedirect('GMAIL_TOKEN_EXPIRED', payload))
     }
 
     await prisma.googleAccount.upsert({
@@ -117,7 +133,7 @@ export async function GET(req: NextRequest) {
 
     return clearOAuthCookies(oauthRedirect('connected', payload))
   } catch (error) {
-    console.error('Gmail OAuth callback failed:', error)
-    return clearOAuthCookies(oauthRedirect('oauth_error', payload))
+    logSafeGmailOAuthFailure({ code: 'GMAIL_INTERNAL_ERROR', step: 'callback', error })
+    return clearOAuthCookies(oauthRedirect('GMAIL_INTERNAL_ERROR', payload))
   }
 }

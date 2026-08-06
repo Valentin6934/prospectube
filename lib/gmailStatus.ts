@@ -14,6 +14,8 @@ export type GmailStatusResponse = {
   reconnectRequired?: boolean
   unavailable?: boolean
   setupRequired?: boolean
+  accessAllowed?: boolean
+  upgradeRequired?: boolean
 }
 
 type AccountStatusInput = {
@@ -25,6 +27,10 @@ type AccountStatusInput = {
 }
 
 export const REQUIRED_GMAIL_DRAFT_SCOPE = 'https://www.googleapis.com/auth/gmail.compose'
+
+export function isGmailIntegrationAllowed(plan?: string | null, freeCampaignCompleted = false): boolean {
+  return String(plan || '').trim().toLowerCase() === 'pro' || !freeCampaignCompleted
+}
 
 export function getSafeGmailErrorMessage(reason?: string | null): string {
   if (reason === 'missing_account') return 'Gmail n’est pas connecté.'
@@ -60,7 +66,7 @@ export function buildDisconnectedGmailStatus(sendMode: 'draft' | 'send'): GmailS
 export function buildGmailStatus(
   account: AccountStatusInput | null,
   sendMode: 'draft' | 'send',
-  options: { unavailable?: boolean; setupRequired?: boolean } = {}
+  options: { unavailable?: boolean; setupRequired?: boolean; accessAllowed?: boolean } = {}
 ): GmailStatusResponse {
   if (!account) {
     return {
@@ -70,25 +76,30 @@ export function buildGmailStatus(
       canUseGmail: false,
       unavailable: options.unavailable,
       setupRequired: options.setupRequired,
+      accessAllowed: options.accessAllowed ?? true,
+      upgradeRequired: options.accessAllowed === false,
     }
   }
 
   const hasRefreshToken = Boolean(account.refreshToken)
   const scopes = typeof account.scope === 'string' ? account.scope.split(/\s+/).filter(Boolean) : []
   const hasDraftScope = scopes.includes(REQUIRED_GMAIL_DRAFT_SCOPE)
+  const accessAllowed = options.accessAllowed ?? true
   const state: GmailConnectionState = hasRefreshToken && hasDraftScope ? 'connected' : 'expired'
 
   return {
     connected: state === 'connected',
     status: state,
     state,
-    canUseGmail: state === 'connected',
+    canUseGmail: state === 'connected' && accessAllowed,
     email: account.email || null,
     hasRefreshToken,
     expiryDate: toIso(account.expiryDate),
     updatedAt: toIso(account.updatedAt),
     sendMode,
     reconnectRequired: state === 'expired',
+    accessAllowed,
+    upgradeRequired: !accessAllowed,
     message: state === 'expired'
       ? getSafeGmailErrorMessage(hasRefreshToken ? 'scope_missing' : 'missing_refresh_token')
       : undefined,

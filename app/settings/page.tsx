@@ -24,6 +24,20 @@ type GmailStatus = {
   reconnectRequired?: boolean
   unavailable?: boolean
   setupRequired?: boolean
+  accessAllowed?: boolean
+  upgradeRequired?: boolean
+}
+
+const OAUTH_MESSAGES: Record<string, string> = {
+  OAUTH_NOT_CONFIGURED: 'La connexion Gmail est temporairement indisponible.',
+  OAUTH_REDIRECT_MISMATCH: 'La connexion Gmail est temporairement indisponible.',
+  OAUTH_ACCESS_DENIED: 'L’autorisation Gmail a été annulée.',
+  OAUTH_APP_UNVERIFIED: 'La connexion Gmail n’est pas encore disponible pour tous les comptes Google.',
+  OAUTH_ACCOUNT_NOT_ALLOWED: 'Ce compte Google n’est pas autorisé à utiliser la connexion Gmail pour le moment.',
+  GMAIL_TOKEN_EXPIRED: 'Votre connexion Gmail a expiré. Reconnectez votre compte pour continuer.',
+  GMAIL_SCOPE_INSUFFICIENT: 'L’autorisation Gmail ne permet pas de créer des brouillons. Reconnectez Gmail.',
+  GMAIL_INTERNAL_ERROR: 'La connexion Gmail a échoué. Réessayez dans quelques instants.',
+  FREE_CAMPAIGN_COMPLETED: 'Votre campagne d’essai est terminée. Passez au Plan Pro pour reconnecter Gmail.',
 }
 
 export default function SettingsPage() {
@@ -50,10 +64,8 @@ export default function SettingsPage() {
     const result = new URLSearchParams(window.location.search).get('gmail')
     if (!result) return
 
-    if (result === 'connected') showToast('Gmail reconnecté avec succès.')
-    else if (result === 'cancelled') showToast('Autorisation Gmail annulée.', 'info')
-    else if (result === 'refresh_token_error') showToast('Google n’a pas renvoyé de refresh token. Réessayez avec Reconnecter Gmail.', 'error')
-    else showToast('La connexion Gmail a échoué. Réessayez.', 'error')
+    if (result === 'connected') showToast('Gmail connecté avec succès.')
+    else showToast(OAUTH_MESSAGES[result] || 'La connexion Gmail a échoué. Réessayez.', result === 'OAUTH_ACCESS_DENIED' ? 'info' : 'error')
 
     window.history.replaceState({}, '', '/settings')
   }, [showToast])
@@ -176,10 +188,17 @@ export default function SettingsPage() {
               </p>
             )}
 
+            {gmail?.accessAllowed === false && (
+              <div style={{ marginTop: '1rem', border: '1px solid rgba(167,139,250,0.25)', background: 'rgba(83,58,183,0.1)', borderRadius: '10px', padding: '0.85rem', color: '#C4BCDF', fontSize: '0.84rem', lineHeight: 1.55 }}>
+                Votre campagne d’essai est terminée. Votre connexion reste consultable, mais une nouvelle utilisation Gmail nécessite le Plan Pro.
+              </div>
+            )}
+
             <div style={{ marginTop: '1rem', display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
-                <button onClick={() => window.location.assign('/api/gmail/connect?returnTo=/settings')} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem' }}>
+                <button onClick={() => window.location.assign('/api/gmail/connect?returnTo=/settings')} disabled={gmail?.accessAllowed === false} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem', opacity: gmail?.accessAllowed === false ? 0.55 : 1 }}>
                   {gmail?.connected ? 'Reconnecter Gmail' : gmailNeedsReconnect ? 'Reconnecter Gmail' : 'Connecter Gmail'}
                 </button>
+                {gmail?.accessAllowed === false && <SubscriptionButton plan={plan} label="Passer au Plan Pro" />}
                 {(gmail?.connected || gmailNeedsReconnect || gmail?.email) && (
                   <button onClick={disconnectGmail} disabled={disconnecting} className="btn btn-secondary">
                     {disconnecting ? 'Déconnexion...' : 'Déconnecter Gmail'}

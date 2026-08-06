@@ -83,6 +83,8 @@ type GmailStatus = {
   sendMode?: 'draft' | 'send'
   message?: string
   reconnectRequired?: boolean
+  accessAllowed?: boolean
+  upgradeRequired?: boolean
 }
 
 type DraftMessage = {
@@ -233,7 +235,7 @@ export default function CampaignsPage() {
   const { toast, showToast } = useToast()
   const plan = (session?.user as any)?.plan || 'Gratuit'
   const canUseCampaigns = status === 'authenticated'
-  const gmailDraftsDisabled = shouldDisableGmailDrafts(gmail)
+  const gmailDraftsDisabled = shouldDisableGmailDrafts(gmail) || gmail?.accessAllowed === false
   const gmailNeedsReconnect = gmail?.state === 'expired' || Boolean(gmail?.reconnectRequired)
 
   const overview = useMemo(() => {
@@ -286,10 +288,12 @@ export default function CampaignsPage() {
     const result = new URLSearchParams(window.location.search).get('gmail')
     if (!result) return
 
-    if (result === 'connected') showToast('Gmail reconnecté avec succès.')
-    else if (result === 'cancelled') showToast('Autorisation Gmail annulée.', 'info')
-    else if (result === 'refresh_token_error') showToast('Google n’a pas renvoyé de refresh token. Réessayez avec Reconnecter Gmail.', 'error')
-    else showToast('La connexion Gmail a échoué. Réessayez.', 'error')
+    if (result === 'connected') showToast('Gmail connecté avec succès.')
+    else if (result === 'OAUTH_ACCESS_DENIED') showToast('L’autorisation Gmail a été annulée.', 'info')
+    else if (result === 'OAUTH_APP_UNVERIFIED') showToast('La connexion Gmail n’est pas encore disponible pour tous les comptes Google.', 'error')
+    else if (result === 'OAUTH_ACCOUNT_NOT_ALLOWED') showToast('Ce compte Google n’est pas autorisé à utiliser la connexion Gmail pour le moment.', 'error')
+    else if (result === 'FREE_CAMPAIGN_COMPLETED') showToast('Votre campagne d’essai est terminée. Passez au Plan Pro pour continuer.', 'error')
+    else showToast('La connexion Gmail est temporairement indisponible.', 'error')
 
     const url = new URL(window.location.href)
     url.searchParams.delete('gmail')
@@ -789,7 +793,15 @@ export default function CampaignsPage() {
                     Les brouillons Gmail seront créés uniquement pour les prospects avec email valide, sujet et message prêts. Pour les autres créateurs, utilisez les réseaux sociaux ou le site renseignés dans leur fiche.
                   </div>
 
-                  {gmailNeedsReconnect ? (
+                  {gmail?.accessAllowed === false ? (
+                    <div style={{ marginBottom: '1rem', border: '1px solid rgba(167,139,250,0.26)', borderRadius: '12px', background: 'rgba(83,58,183,0.1)', padding: '1rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.92rem', marginBottom: '0.25rem' }}>Campagne d’essai terminée</div>
+                        <div style={{ color: '#C4BCDF', fontSize: '0.8rem', lineHeight: 1.55 }}>Passez au Plan Pro pour créer de nouveaux brouillons Gmail.</div>
+                      </div>
+                      <ProGate context="campaigns" compact />
+                    </div>
+                  ) : gmailNeedsReconnect ? (
                     <div style={{ marginBottom: '1rem', border: '1px solid rgba(245,158,11,0.26)', borderRadius: '12px', background: 'rgba(245,158,11,0.08)', padding: '1rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ color: '#F0EDF8', fontWeight: 800, fontSize: '0.92rem', marginBottom: '0.25rem' }}>Connexion Gmail expirée</div>
