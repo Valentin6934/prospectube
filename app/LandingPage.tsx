@@ -60,7 +60,7 @@ const faqs = [
   ['Combien de recherches sont incluses ?', `Le plan Gratuit comprend ${PRODUCT_LIMITS.freeLifetimeSearches} recherches réussies à vie. Le plan Pro comprend ${PRODUCT_LIMITS.proDailySearches} recherches réussies par jour.`],
   ['Est-ce que Gmail envoie les messages automatiquement ?', 'Non. ProspectTube crée uniquement les brouillons que tu as rédigés. Tu gardes la main dans Gmail avant tout envoi.'],
   ['Puis-je annuler mon abonnement ?', 'Oui. Le Plan Pro est sans engagement et peut être annulé depuis le portail Stripe.'],
-  ['Est-ce adapté aux graphistes et agences ?', 'Oui. Les signaux de production et l’organisation en campagnes peuvent aussi servir aux graphistes, motion designers, freelances et agences.'],
+  ['Est-ce adapté aux MediaMakers et agences ?', 'Oui. Les signaux de production et l’organisation en campagnes peuvent aussi servir aux MediaMakers, motion designers, freelances et agences.'],
 ]
 
 export default function LandingPage() {
