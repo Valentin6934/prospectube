@@ -2170,3 +2170,29 @@ test('landing page matches current free and Pro product limits without AI promis
   assert.doesNotMatch(landing, /message.? IA|grâce à l’IA|recherches? illimité/i)
   assert.doesNotMatch(`${landing}\n${metadata}`, /9,90|9\.90|emails? garantis?|résultats? garantis?/i)
 })
+
+test('landing production polish keeps honest CTAs, responsive structure and legal links', () => {
+  const landing = fs.readFileSync('app/LandingPage.tsx', 'utf8')
+  const styles = fs.readFileSync('app/landing.module.css', 'utf8')
+  const footer = fs.readFileSync('components/LegalFooter.tsx', 'utf8')
+
+  assert.match(landing, /Trouver mes premiers prospects/)
+  assert.match(landing, /Découvrir ProspectTube/)
+  assert.match(landing, /Prospect Score/)
+  assert.match(landing, /Contactabilité/)
+  assert.match(landing, /Il ne garantit ni un besoin, ni une réponse, ni une vente/)
+  assert.match(landing, /crée uniquement les brouillons/)
+  assert.doesNotMatch(landing, /message.? IA|intelligence artificielle|illimitée?s?/i)
+
+  for (const breakpoint of ['1024px', '768px', '480px', '340px']) {
+    assert.match(styles, new RegExp(`@media \\(max-width: ${breakpoint.replace('.', '\\.')}\\)`))
+  }
+  assert.match(styles, /grid-template-columns: 1fr/)
+  assert.match(styles, /prefers-reduced-motion: reduce/)
+  assert.match(styles, /focus-visible/)
+  assert.doesNotMatch(styles, /overflow-x:\s*scroll/)
+
+  for (const path of ['/mentions-legales', '/politique-confidentialite', '/cgu', '/remboursement']) {
+    assert.match(footer, new RegExp(path.replace('/', '\\/')))
+  }
+})
