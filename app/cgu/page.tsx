@@ -11,7 +11,7 @@ export default function TermsPage() {
         <p>
           ProspectTube fournit des outils de recherche, d’organisation et de prospection à destination des
           créateurs et professionnels. Le service peut notamment proposer des favoris, un historique, des
-          campagnes et des fonctions de génération de messages.
+          campagnes et des fonctions de préparation manuelle de messages.
         </p>
       </section>
 
@@ -55,7 +55,7 @@ export default function TermsPage() {
         <h2>Responsabilité de l’utilisateur</h2>
         <p>
           L’utilisateur reste seul responsable des recherches effectuées, des prospects sélectionnés, du
-          contenu des messages générés ou modifiés et des communications envoyées via Gmail ou tout autre canal.
+          contenu des messages préparés ou modifiés et des communications effectuées via Gmail ou tout autre canal.
           Il doit contrôler chaque message avant son utilisation.
         </p>
       </section>

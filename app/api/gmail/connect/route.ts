@@ -9,7 +9,8 @@ import {
   getSafeGmailOAuthReturnPath,
   getStableGmailOAuthCallbackUrl,
 } from '@/lib/gmailOAuthUrl'
-import { isPro, requireProResponse } from '@/lib/plan'
+import { canUseGmailIntegration } from '@/lib/campaignAccess'
+import { getSafeGmailOAuthMessage, logSafeGmailOAuthFailure } from '@/lib/gmailOAuthErrors'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,11 +45,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Utilisateur introuvable.' }, { status: 404 })
     }
 
+    if (!(await canUseGmailIntegration(prisma, user))) {
+      return NextResponse.json({
+        error: 'FREE_CAMPAIGN_COMPLETED',
+        upgrade: true,
+        message: 'Votre campagne d’essai est terminée. Passez au Plan Pro pour reconnecter Gmail.',
+      }, { status: 403 })
+    }
+
     const clientId = process.env.GOOGLE_CLIENT_ID?.trim()
     if (!clientId) {
-      const message = 'GOOGLE_CLIENT_ID est absent des variables d’environnement.'
-      console.error('GET /api/gmail/connect error:', message)
-      return NextResponse.json({ error: message }, { status: 500 })
+      logSafeGmailOAuthFailure({ code: 'OAUTH_NOT_CONFIGURED', step: 'configuration' })
+      return NextResponse.json({
+        error: 'OAUTH_NOT_CONFIGURED',
+        message: getSafeGmailOAuthMessage('OAUTH_NOT_CONFIGURED'),
+      }, { status: 503 })
     }
 
     const state = createGmailOAuthState({
@@ -79,8 +90,10 @@ export async function GET(req: NextRequest) {
 
     return response
   } catch (error) {
-    console.error('GET /api/gmail/connect error:', error)
-    const message = error instanceof Error ? error.message : String(error)
-    return NextResponse.json({ error: message }, { status: 500 })
+    logSafeGmailOAuthFailure({ code: 'GMAIL_INTERNAL_ERROR', step: 'authorization_url', error })
+    return NextResponse.json({
+      error: 'GMAIL_INTERNAL_ERROR',
+      message: getSafeGmailOAuthMessage('GMAIL_INTERNAL_ERROR'),
+    }, { status: 500 })
   }
 }

@@ -51,7 +51,22 @@ const {
   getSafeGmailErrorMessage,
   REQUIRED_GMAIL_DRAFT_SCOPE,
   shouldDisableGmailDrafts,
+  isGmailIntegrationAllowed,
 } = require('../lib/gmailStatus.ts')
+const {
+  classifyGoogleOAuthError,
+  getSafeGmailOAuthMessage,
+  isConnectedOAuthReplay,
+  logSafeGmailOAuthFailure,
+} = require('../lib/gmailOAuthErrors.ts')
+const {
+  extractPublicEmails,
+  normalizeObfuscatedEmail,
+  rankPublicEmailCandidates,
+  redactEmailForLogs,
+  selectBestPublicEmail,
+} = require('../lib/publicContactExtraction.ts')
+const { PRODUCT_LIMITS, PRO_MONTHLY_PRICE_LABEL } = require('../lib/product.ts')
 const {
   buildGmailOAuthStatusRedirect,
   createGmailOAuthState,
@@ -751,7 +766,7 @@ test('settings and campaigns read the same uncached Gmail status endpoint', () =
   assert.match(settingsPage, /fetch\('\/api\/gmail', \{ cache: 'no-store' \}\)/)
   assert.match(campaignsPage, /fetch\('\/api\/gmail', \{ cache: 'no-store' \}\)/)
   assert.match(gmailRoute, /Cache-Control': 'no-store, max-age=0'/)
-  assert.match(gmailRoute, /buildGmailStatus\(account, SEND_MODE\)/)
+  assert.match(gmailRoute, /buildGmailStatus\(account, SEND_MODE/)
 })
 
 test('campaign V1 interface does not expose AI generation controls', () => {
@@ -2041,4 +2056,143 @@ test('standard Pro pricing has no launch offer route, coupon or discount wiring'
   assert.doesNotMatch(sources, /STRIPE_LAUNCH_PROMOTION_ID/)
   assert.doesNotMatch(sources, /4,95|4\.95|9,90|9\.90/)
   assert.doesNotMatch(sources, /offre de lancement|Offre de lancement|5 places/)
+})
+
+test('free Gmail access lasts until the trial campaign succeeds while Pro stays allowed', () => {
+  assert.equal(isGmailIntegrationAllowed('Gratuit', false), true)
+  assert.equal(isGmailIntegrationAllowed('Gratuit', true), false)
+  assert.equal(isGmailIntegrationAllowed(' Pro ', true), true)
+
+  const connectRoute = fs.readFileSync('app/api/gmail/connect/route.ts', 'utf8')
+  const callbackRoute = fs.readFileSync('app/api/gmail/callback/route.ts', 'utf8')
+  const sendRoute = fs.readFileSync('app/api/campaigns/[id]/send/route.ts', 'utf8')
+  assert.match(connectRoute, /canUseGmailIntegration/)
+  assert.match(callbackRoute, /canUseGmailIntegration/)
+  assert.match(sendRoute, /hasCompletedFreeCampaign/)
+  assert.match(sendRoute, /results\.some\(result => result\.success\)/)
+  assert.match(sendRoute, /markFreeCampaignCompleted/)
+})
+
+test('Gmail OAuth uses the minimal compose scope and classifies safe failures', () => {
+  const connectRoute = fs.readFileSync('app/api/gmail/connect/route.ts', 'utf8')
+  assert.equal(REQUIRED_GMAIL_DRAFT_SCOPE, 'https://www.googleapis.com/auth/gmail.compose')
+  assert.doesNotMatch(connectRoute, /https:\/\/mail\.google\.com|gmail\.modify|gmail\.readonly/)
+  assert.equal(classifyGoogleOAuthError('access_denied'), 'OAUTH_ACCESS_DENIED')
+  assert.equal(classifyGoogleOAuthError('redirect_uri_mismatch'), 'OAUTH_REDIRECT_MISMATCH')
+  assert.equal(classifyGoogleOAuthError('app not verified'), 'OAUTH_APP_UNVERIFIED')
+  assert.equal(classifyGoogleOAuthError('test_user_not_allowed'), 'OAUTH_ACCOUNT_NOT_ALLOWED')
+  assert.match(getSafeGmailOAuthMessage('OAUTH_APP_UNVERIFIED'), /pas encore disponible/)
+})
+
+test('Gmail OAuth diagnostics and replay handling do not leak secrets', () => {
+  const calls = []
+  const previous = console.error
+  console.error = value => calls.push(value)
+  try {
+    logSafeGmailOAuthFailure({ code: 'GMAIL_INTERNAL_ERROR', step: 'callback', error: new Error('token=secret@example.com') })
+  } finally {
+    console.error = previous
+  }
+  const serialized = JSON.stringify(calls)
+  assert.match(serialized, /gmail_oauth_failed/)
+  assert.doesNotMatch(serialized, /secret@example\.com|token=/)
+  assert.equal(isConnectedOAuthReplay('invalid_grant', 'refresh-token-present'), true)
+  assert.equal(isConnectedOAuthReplay('invalid_grant', null), false)
+  assert.equal(isConnectedOAuthReplay('access_denied', 'refresh-token-present'), false)
+})
+
+test('public email extraction supports direct and safely obfuscated channel emails', () => {
+  const cases = [
+    'Business: hello@creator.fr',
+    'Contact : hello @ creator.fr',
+    'Contact : hello[at]creator[dot]fr',
+    'Contact : hello (at) creator (dot) fr',
+    'Contact : hello arobase creator point fr',
+  ]
+  for (const text of cases) {
+    const best = selectBestPublicEmail(extractPublicEmails(text))
+    assert.equal(best?.email, 'hello@creator.fr')
+    assert.equal(best?.source, 'channel_description')
+  }
+  assert.match(normalizeObfuscatedEmail('hello [at] creator [dot] fr'), /hello@creator\.fr/)
+})
+
+test('public email ranking favors commercial bios and repeated recent video contacts', () => {
+  const candidates = extractPublicEmails([
+    { text: 'Pour toute collaboration business : creator@studio.fr', source: 'channel_description' },
+    { text: 'Contact vidéo creator@studio.fr', source: 'video_description', publishedAt: new Date().toISOString() },
+    { text: 'Sponsor de la vidéo : deals@brand.fr', source: 'video_description', publishedAt: new Date().toISOString() },
+  ])
+  const ranked = rankPublicEmailCandidates(candidates)
+  assert.equal(ranked[0].email, 'creator@studio.fr')
+  assert.equal(ranked[0].confidence, 'high')
+  assert.equal(ranked[0].occurrences, 2)
+  assert.equal(selectBestPublicEmail(candidates)?.email, 'creator@studio.fr')
+  assert.equal(candidates.find(candidate => candidate.email === 'deals@brand.fr')?.confidence, 'low')
+})
+
+test('public email extraction rejects placeholders, noreply and image filenames', () => {
+  const candidates = extractPublicEmails('example@example.com test@test.com name@domain.com noreply@creator.fr fichier@2x.png real@creator.fr')
+  assert.deepEqual(candidates.map(candidate => candidate.email), ['real@creator.fr'])
+  assert.equal(redactEmailForLogs('real@creator.fr'), 'r***@c***')
+})
+
+test('public email extraction is deduplicated and does not affect Prospect Score or YouTube calls', () => {
+  const candidates = extractPublicEmails([
+    { text: 'Contact me@creator.fr', source: 'video_description', publishedAt: new Date().toISOString() },
+    { text: 'Business me@creator.fr', source: 'video_description', publishedAt: new Date().toISOString() },
+  ])
+  assert.equal(candidates.length, 1)
+  assert.equal(candidates[0].occurrences, 2)
+
+  const youtube = fs.readFileSync('lib/youtube.ts', 'utf8')
+  const scoring = fs.readFileSync('lib/prospectScoring.ts', 'utf8')
+  assert.match(youtube, /recentVideos\.map/)
+  const scoreFunction = scoring.slice(scoring.indexOf('export function calculateProspectScore'))
+  assert.doesNotMatch(scoreFunction, /email|website|instagram|tiktok|twitch/i)
+  assert.equal((youtube.match(/new URL\('https:\/\/www\.googleapis\.com\/youtube\/v3\//g) || []).length, 3)
+})
+
+test('landing page matches current free and Pro product limits without AI promises', () => {
+  const landing = fs.readFileSync('app/LandingPage.tsx', 'utf8')
+  const metadata = [
+    fs.readFileSync('app/layout.tsx', 'utf8'),
+    fs.readFileSync('app/page.tsx', 'utf8'),
+    fs.readFileSync('app/manifest.ts', 'utf8'),
+  ].join('\n')
+  assert.equal(PRO_MONTHLY_PRICE_LABEL, '4,90 €')
+  assert.deepEqual(PRODUCT_LIMITS, { freeLifetimeSearches: 3, proDailySearches: 5, freeCampaigns: 1, freeCampaignProspects: 5 })
+  assert.match(landing, /PRODUCT_LIMITS\.freeLifetimeSearches/)
+  assert.match(landing, /PRODUCT_LIMITS\.proDailySearches/)
+  assert.match(landing, /campagne d’essai/)
+  assert.match(landing, /brouillons Gmail/)
+  assert.match(landing, /ne sont pas garanties/)
+  assert.doesNotMatch(landing, /message.? IA|grâce à l’IA|recherches? illimité/i)
+  assert.doesNotMatch(`${landing}\n${metadata}`, /9,90|9\.90|emails? garantis?|résultats? garantis?/i)
+})
+
+test('landing production polish keeps honest CTAs, responsive structure and legal links', () => {
+  const landing = fs.readFileSync('app/LandingPage.tsx', 'utf8')
+  const styles = fs.readFileSync('app/landing.module.css', 'utf8')
+  const footer = fs.readFileSync('components/LegalFooter.tsx', 'utf8')
+
+  assert.match(landing, /Trouver mes premiers prospects/)
+  assert.match(landing, /Découvrir ProspectTube/)
+  assert.match(landing, /Prospect Score/)
+  assert.match(landing, /Contactabilité/)
+  assert.match(landing, /Il ne garantit ni un besoin, ni une réponse, ni une vente/)
+  assert.match(landing, /crée uniquement les brouillons/)
+  assert.doesNotMatch(landing, /message.? IA|intelligence artificielle|illimitée?s?/i)
+
+  for (const breakpoint of ['1024px', '768px', '480px', '340px']) {
+    assert.match(styles, new RegExp(`@media \\(max-width: ${breakpoint.replace('.', '\\.')}\\)`))
+  }
+  assert.match(styles, /grid-template-columns: 1fr/)
+  assert.match(styles, /prefers-reduced-motion: reduce/)
+  assert.match(styles, /focus-visible/)
+  assert.doesNotMatch(styles, /overflow-x:\s*scroll/)
+
+  for (const path of ['/mentions-legales', '/politique-confidentialite', '/cgu', '/remboursement']) {
+    assert.match(footer, new RegExp(path.replace('/', '\\/')))
+  }
 })

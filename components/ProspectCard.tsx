@@ -22,6 +22,7 @@ export type ProspectChannel = {
   website?: string | null
   channelUrl?: string | null
   desc?: string | null
+  description?: string | null
   avatar?: string | null
   color?: string | null
   thumbnail?: string | null
@@ -51,6 +52,9 @@ export type ProspectChannel = {
   languageConfidence?: string | null
   lastPublishedAt?: string | null
   scoreBreakdown?: Record<string, number> | null
+  publicEmailSource?: 'channel_description' | 'video_description' | null
+  publicEmailConfidence?: 'high' | 'medium' | 'low' | null
+  publicEmailOccurrences?: number | null
 }
 
 type ProspectCardProps = {
