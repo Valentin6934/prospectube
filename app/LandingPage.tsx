@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react'
 import { useState } from 'react'
 import LegalFooter from '@/components/LegalFooter'
 import { isPro } from '@/lib/plan'
+import { PRODUCT_LIMITS, PRO_MONTHLY_PRICE_LABEL } from '@/lib/product'
 import styles from './landing.module.css'
 
 const features = [
@@ -23,19 +24,19 @@ const features = [
   },
   {
     icon: '🤖',
-    title: 'Messages IA personnalisés',
-    description: 'Transformez les données d’une chaîne en un email court, crédible et adapté au créateur.',
+    title: 'Contacts publics',
+    description: 'Repérez les emails et réseaux sociaux rendus publics par les créateurs lorsqu’ils sont disponibles.',
     accent: styles.featureCyan,
     visual: (
       <div className={styles.messageVisual}>
-        <i /><i /><i /><span>Générer</span>
+        <i /><i /><i /><span>Contact public</span>
       </div>
     ),
   },
   {
     icon: '📬',
     title: 'Gmail intégré',
-    description: 'Connectez Gmail, organisez vos campagnes et créez des brouillons sans quitter ProspectTube.',
+    description: 'Connectez Gmail pour créer les brouillons préparés manuellement dans vos campagnes.',
     accent: styles.featureGreen,
     visual: (
       <div className={styles.gmailVisual}>
@@ -46,7 +47,7 @@ const features = [
   {
     icon: '⭐',
     title: 'Score Prospect',
-    description: 'Repérez immédiatement les meilleures opportunités grâce aux scores, labels et raisons détaillées.',
+    description: 'Estimez le potentiel de montage à partir des performances récentes, de l’activité et des formats publics.',
     accent: styles.featureAmber,
     visual: (
       <div className={styles.scoreVisual}>
@@ -60,14 +61,14 @@ const steps = [
   ['01', 'Choisissez une niche', 'Définissez votre audience cible et vos critères.'],
   ['02', 'Analyse YouTube', 'ProspectTube enrichit et classe les chaînes.'],
   ['03', 'Sélectionnez vos prospects', 'Gardez les profils les plus prometteurs.'],
-  ['04', 'Envoyez vos emails', 'Générez puis envoyez vos messages personnalisés.'],
+  ['04', 'Préparez vos brouillons', 'Rédigez vos messages puis créez les brouillons dans Gmail.'],
 ]
 
 const faqs = [
   ['Puis-je annuler ?', 'Oui. L’abonnement Pro est sans engagement et peut être annulé à tout moment depuis le portail Stripe.'],
-  ['Comment fonctionne Gmail ?', 'Vous autorisez ProspectTube via Google OAuth. L’intégration sert uniquement à créer des brouillons ou envoyer les messages que vous validez.'],
-  ['Pourquoi seulement 4,90 € ?', 'Nous avons conçu une offre simple et accessible, centrée sur les fonctions réellement utiles à la prospection YouTube.'],
-  ['Les recherches sont-elles limitées ?', 'Le plan Gratuit comprend 3 recherches réussies au total. Le plan Pro comprend 5 recherches par jour.'],
+  ['Comment fonctionne Gmail ?', 'Vous autorisez ProspectTube via Google OAuth. L’intégration sert uniquement à créer dans Gmail les brouillons que vous avez rédigés. Aucun message n’est envoyé automatiquement.'],
+  [`Pourquoi seulement ${PRO_MONTHLY_PRICE_LABEL} ?`, 'Nous avons conçu une offre simple et accessible, centrée sur la recherche, l’organisation des prospects et la préparation de brouillons Gmail.'],
+  ['Les recherches sont-elles limitées ?', `Le plan Gratuit comprend ${PRODUCT_LIMITS.freeLifetimeSearches} recherches réussies au total. Le plan Pro comprend ${PRODUCT_LIMITS.proDailySearches} recherches réussies par jour.`],
 ]
 
 export default function LandingPage() {
@@ -131,18 +132,18 @@ export default function LandingPage() {
         <div className={styles.heroInner}>
           <div className={styles.heroCopy}>
             <div className={styles.eyebrow}><span /> La prospection YouTube, enfin structurée</div>
-            <h1>Trouvez les meilleurs créateurs YouTube à contacter en quelques secondes.</h1>
+            <h1>Trouve et organise des créateurs YouTube susceptibles d’avoir besoin de montage vidéo.</h1>
             <p>
-              ProspectTube analyse YouTube, détecte les emails, réseaux sociaux et score automatiquement
-              chaque créateur grâce à l’IA.
+              ProspectTube estime leur potentiel à partir de signaux publics : performances récentes, fréquence,
+              activité, formats, pertinence et coordonnées publiques disponibles.
             </p>
             <div className={styles.heroActions}>
-              <button onClick={startFree} className={styles.primaryButton}>🚀 Commencer gratuitement</button>
-              <a href="#demo" className={styles.secondaryButton}>▶ Voir une démo</a>
+              <button onClick={startFree} className={styles.primaryButton}>Trouver mes premiers prospects</button>
+              <a href="#fonctionnalites" className={styles.secondaryButton}>Découvrir ProspectTube</a>
             </div>
             <div className={styles.heroNote}>
               <span>✓ Sans carte bancaire</span>
-              <span>✓ 3 recherches gratuites + 1 campagne d’essai</span>
+              <span>✓ {PRODUCT_LIMITS.freeLifetimeSearches} recherches gratuites + {PRODUCT_LIMITS.freeCampaigns} campagne d’essai</span>
             </div>
           </div>
 
@@ -171,7 +172,7 @@ export default function LandingPage() {
           <div className={styles.proofStats}>
             <div><strong>12 400+</strong><span>✓ Créateurs analysés</span></div>
             <div><strong>3 800+</strong><span>✓ Emails trouvés</span></div>
-            <div><strong>1 250+</strong><span>✓ Messages générés</span></div>
+            <div><strong>1 250+</strong><span>✓ Prospects organisés</span></div>
           </div>
         </div>
       </section>
@@ -231,8 +232,10 @@ export default function LandingPage() {
               <div className={styles.price}><strong>0 €</strong><span>/mois</span></div>
               <p>Pour découvrir la prospection structurée.</p>
               <ul>
-                <li>✓ 3 recherches réussies</li>
-                <li>✓ 1 campagne d’essai, jusqu’à 5 prospects</li>
+                <li>✓ {PRODUCT_LIMITS.freeLifetimeSearches} recherches réussies à vie</li>
+                <li>✓ Recherche par niche, sous-niche, langue et abonnés</li>
+                <li>✓ {PRODUCT_LIMITS.freeCampaigns} campagne d’essai, jusqu’à {PRODUCT_LIMITS.freeCampaignProspects} prospects</li>
+                <li>✓ Messages modifiables et brouillons Gmail</li>
                 <li>✓ Favoris</li>
                 <li>✓ Historique</li>
               </ul>
@@ -242,13 +245,14 @@ export default function LandingPage() {
             <article className={`${styles.priceCard} ${styles.priceFeatured}`}>
               <div className={styles.popularBadge}>⭐ Le plus populaire</div>
               <div className={styles.priceName}>Pro</div>
-              <div className={styles.price}><strong>4,90 €</strong><span>/mois</span></div>
+              <div className={styles.price}><strong>{PRO_MONTHLY_PRICE_LABEL}</strong><span>/mois</span></div>
               <p>Pour transformer vos recherches en opportunités.</p>
               <ul>
-                <li>✓ 5 recherches par jour</li>
-                <li>✓ Messages IA personnalisés</li>
-                <li>✓ Gmail intégré</li>
-                <li>✓ Campagnes</li>
+                <li>✓ {PRODUCT_LIMITS.proDailySearches} recherches réussies par jour</li>
+                <li>✓ Rotation vers de nouveaux prospects</li>
+                <li>✓ Emails publics détectés quand disponibles</li>
+                <li>✓ Score de potentiel de montage estimé</li>
+                <li>✓ Campagnes et brouillons Gmail</li>
                 <li>✓ Export CSV</li>
               </ul>
               <button onClick={openPro} disabled={checkoutLoading} className={styles.pricePrimary}>
@@ -259,6 +263,10 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      <p style={{ maxWidth: '900px', margin: '0 auto 2rem', padding: '0 1.5rem', color: '#8F86AA', textAlign: 'center', fontSize: '0.82rem', lineHeight: 1.6 }}>
+        ProspectTube analyse des données publiques. Les coordonnées et opportunités ne sont pas garanties.
+      </p>
 
       <section id="faq" className={`${styles.section} ${styles.faqSection}`}>
         <div className={styles.sectionInner}>
@@ -282,7 +290,7 @@ export default function LandingPage() {
           <span>Votre prochaine opportunité est peut-être déjà sur YouTube.</span>
           <h2>Commencez à prospecter avec plus de précision.</h2>
         </div>
-        <button onClick={startFree} className={styles.primaryButton}>🚀 Commencer gratuitement</button>
+        <button onClick={startFree} className={styles.primaryButton}>Trouver mes premiers prospects</button>
       </section>
 
       <LegalFooter />

@@ -1,7 +1,9 @@
-export const FREE_LIFETIME_SEARCH_LIMIT = 3
+import { PRODUCT_LIMITS } from './product'
+
+export const FREE_LIFETIME_SEARCH_LIMIT = PRODUCT_LIMITS.freeLifetimeSearches
 export const FREE_SEARCH_QUOTA_VERSION = 1
 export const FREE_SEARCH_PERIOD_KEY = `free-lifetime-v${FREE_SEARCH_QUOTA_VERSION}`
-export const PRO_DAILY_SEARCH_LIMIT = 5
+export const PRO_DAILY_SEARCH_LIMIT = PRODUCT_LIMITS.proDailySearches
 export const SEARCH_CACHE_VERSION = 'youtube-search-v8'
 export const SEARCH_CACHE_TTL_HOURS = 48
 export const SEARCH_CATALOG_POOR_REFRESH_HOURS = 12

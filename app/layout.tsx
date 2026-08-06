@@ -4,7 +4,7 @@ import './globals.css'
 import { Providers } from './providers'
 
 const description =
-  'Trouvez des créateurs YouTube à contacter avec emails, réseaux sociaux, IA et campagnes.'
+  'Trouvez et organisez des créateurs YouTube grâce à des signaux publics, un score de potentiel de montage et des campagnes avec brouillons Gmail.'
 
 const inter = Inter({
   subsets: ['latin'],

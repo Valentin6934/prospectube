@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 import LandingPage from './LandingPage'
 
-const title = 'ProspectTube — Trouvez des créateurs YouTube à contacter'
+const title = 'ProspectTube — Trouvez des créateurs YouTube à prospecter'
 const description =
-  'Trouvez les meilleurs créateurs YouTube, leurs emails et réseaux sociaux, puis organisez vos campagnes de prospection avec ProspectTube.'
+  'Trouvez et organisez des créateurs YouTube susceptibles d’avoir besoin de montage grâce à des signaux et coordonnées publics.'
 
 export const metadata: Metadata = {
   title: {
