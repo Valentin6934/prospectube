@@ -31,6 +31,9 @@ export type ProspectPresentationInput = {
   contentRelevance?: number | null
   detectedLanguage?: string | null
   languageConfidence?: string | null
+  publicEmailSource?: 'channel_description' | 'video_description' | null
+  publicEmailConfidence?: 'high' | 'medium' | 'low' | null
+  publicEmailOccurrences?: number | null
 }
 
 export type ProspectPresentationContact = {
@@ -105,7 +108,12 @@ export function normalizeProspectPresentation(channel: ProspectPresentationInput
   const videos = channel.videoCountFormatted || `${formatProspectCompactNumber(channel.videoCount)} videos`
 
   const contacts = [
-    channel.email ? { key: 'email' as const, label: 'Email trouve', href: `mailto:${channel.email}`, color: '#22c55e' } : null,
+    channel.email ? {
+      key: 'email' as const,
+      label: channel.publicEmailConfidence === 'low' ? 'Email public possible' : 'Email public trouvé',
+      href: `mailto:${channel.email}`,
+      color: '#22c55e',
+    } : null,
     channel.instagram ? { key: 'instagram' as const, label: 'Instagram', href: channel.instagram, color: '#e879f9' } : null,
     channel.tiktok ? { key: 'tiktok' as const, label: 'TikTok', href: channel.tiktok, color: '#f472b6' } : null,
     channel.twitch ? { key: 'twitch' as const, label: 'Twitch', href: channel.twitch, color: '#9146FF' } : null,

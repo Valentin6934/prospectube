@@ -13,6 +13,7 @@ import {
   collectNewYouTubeChannelIds,
   shouldRunNextYouTubeQuery,
 } from '@/lib/youtubeSearchParams'
+import { extractPublicEmails, selectBestPublicEmail } from '@/lib/publicContactExtraction'
 
 const YOUTUBE_REQUEST_TIMEOUT_MS = 12_000
 const YOUTUBE_SEARCH_FIELDS = 'items(id/videoId,snippet(channelId,title,description,publishedAt,thumbnails/default/url))'
@@ -103,12 +104,6 @@ function decodeHtml(text: string): string {
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-}
-
-function extractEmail(text: string): string | null {
-  const decoded = decodeHtml(text)
-  const match = decoded.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
-  return match ? match[0] : null
 }
 
 function normalizeUrl(url: string | null): string | null {
@@ -345,7 +340,15 @@ export async function discoverYouTubeCatalog(
       const brandingDesc = ch.brandingSettings?.channel?.description || ''
       const fullDesc = `${snippetDesc}\n${brandingDesc}`
       const desc = (fullDesc || 'Pas de description disponible.').slice(0, 160)
-      const email = extractEmail(fullDesc)
+      const publicEmail = selectBestPublicEmail(extractPublicEmails([
+        { text: fullDesc, source: 'channel_description' },
+        ...recentVideos.map(video => ({
+          text: String(video.description || ''),
+          source: 'video_description' as const,
+          publishedAt: video.publishedAt || null,
+        })),
+      ]))
+      const email = publicEmail?.email || null
       const socials = extractSocialLinks(fullDesc)
 
       const channel = {
@@ -376,6 +379,10 @@ export async function discoverYouTubeCatalog(
         channelUrl: `https://www.youtube.com/channel/${ch.id}`,
         aboutUrl: `https://www.youtube.com/channel/${ch.id}/about`,
         desc,
+        description: fullDesc,
+        publicEmailSource: publicEmail?.source || null,
+        publicEmailConfidence: publicEmail?.confidence || null,
+        publicEmailOccurrences: publicEmail?.occurrences || 0,
         avatar: (ch.snippet?.title || 'YT').slice(0, 2).toUpperCase(),
         color: '#533AB7',
         thumbnail: ch.snippet?.thumbnails?.default?.url || null,

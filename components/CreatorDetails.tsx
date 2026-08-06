@@ -154,7 +154,14 @@ export default function CreatorDetails({
         <section style={{ marginBottom: '1.25rem' }}>
           <h3 style={{ color: '#F0EDF8', fontSize: '0.95rem', marginBottom: '0.75rem' }}>Contacts</h3>
           <div style={{ display: 'grid', gap: '0.45rem', fontSize: '0.85rem' }}>
-            {channel.email && <a href={`mailto:${channel.email}`} style={{ color: '#22c55e', textDecoration: 'none' }}>📧 {channel.email}</a>}
+            {channel.email && (
+              <div style={{ display: 'grid', gap: '0.2rem' }}>
+                <a href={`mailto:${channel.email}`} style={{ color: '#22c55e', textDecoration: 'none' }}>📧 {channel.email}</a>
+                <span style={{ color: '#8F86AA', fontSize: '0.74rem' }}>
+                  {channel.publicEmailConfidence === 'low' ? 'Email public possible' : 'Email public trouvé'} · {channel.publicEmailSource === 'video_description' ? 'description d’une vidéo' : 'bio publique'} · confiance {channel.publicEmailConfidence === 'high' ? 'élevée' : channel.publicEmailConfidence === 'medium' ? 'moyenne' : 'faible'}
+                </span>
+              </div>
+            )}
             {channel.instagram && <a href={channel.instagram} target="_blank" rel="noopener noreferrer" style={{ color: '#e879f9', textDecoration: 'none' }}>📱 Instagram</a>}
             {channel.tiktok && <a href={channel.tiktok} target="_blank" rel="noopener noreferrer" style={{ color: '#f472b6', textDecoration: 'none' }}>🎵 TikTok</a>}
             {channel.twitch && <a href={channel.twitch} target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF', textDecoration: 'none' }}>🎮 Twitch</a>}
@@ -190,7 +197,7 @@ export default function CreatorDetails({
 
         <section style={{ marginBottom: '1.25rem' }}>
           <h3 style={{ color: '#F0EDF8', fontSize: '0.95rem', marginBottom: '0.75rem' }}>Description complète</h3>
-          <div style={{ color: '#C4BCDF', fontSize: '0.9rem', lineHeight: 1.7, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.9rem' }}>{channel.desc || 'Pas de description disponible.'}</div>
+          <div style={{ color: '#C4BCDF', fontSize: '0.9rem', lineHeight: 1.7, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.9rem', whiteSpace: 'pre-wrap' }}>{channel.description || channel.desc || 'Pas de description disponible.'}</div>
         </section>
 
         <section>
