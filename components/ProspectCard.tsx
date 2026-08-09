@@ -51,6 +51,11 @@ export type ProspectChannel = {
   detectedLanguage?: string | null
   languageConfidence?: string | null
   lastPublishedAt?: string | null
+  activityStatus?: 'ACTIVE_HIGH' | 'ACTIVE_MEDIUM' | 'ACTIVE_LOW' | 'INACTIVE' | 'LIMITED_DATA' | null
+  activityLabel?: string | null
+  videosLast30Days?: number | null
+  videosLast90Days?: number | null
+  medianPublishIntervalDays?: number | null
   scoreBreakdown?: Record<string, number> | null
   publicEmailSource?: 'channel_description' | 'video_description' | null
   publicEmailConfidence?: 'high' | 'medium' | 'low' | null

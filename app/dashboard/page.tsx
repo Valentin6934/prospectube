@@ -522,7 +522,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        <div id="search-form" className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem', scrollMarginTop: '90px' }}>
+        <div id="search-form" className="card search-surface" style={{ padding: '1.5rem', marginBottom: '1.5rem', scrollMarginTop: '90px' }}>
           {quotaMessage && (
             <div style={{ marginBottom: '1rem', padding: '0.7rem 0.85rem', borderRadius: '9px', background: 'rgba(83,58,183,0.12)', border: '1px solid rgba(83,58,183,0.3)', color: '#B9B0D4', fontSize: '0.83rem' }}>
               {quotaMessage}
@@ -649,11 +649,8 @@ export default function Dashboard() {
                     const statBadges = [
                       `👥 ${ch.subs || formatCompactNumber(ch.subsNum || 0)}`,
                       ch.recentMedianViews ? `👁 ${formatCompactNumber(ch.recentMedianViews)} vues médianes` : 'Données limitées',
-                      ch.publishingFrequency || null,
-                      ch.contentRelevance !== undefined ? `Pertinence ${ch.contentRelevance}%` : null,
-                      ch.subnicheMatchLabel ? `Sous-niche ${ch.subnicheMatchLabel}` : null,
+                      ch.activityLabel || ch.publishingFrequency || null,
                       ch.editingPotentialLabel ? `Montage estimé ${ch.editingPotentialLabel}` : null,
-                      ch.contactability ? `Contactabilité ${ch.contactability}` : null,
                     ].filter(Boolean)
 
                     return (

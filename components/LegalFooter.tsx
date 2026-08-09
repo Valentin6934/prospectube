@@ -2,8 +2,8 @@ import Link from 'next/link'
 
 const LEGAL_LINKS = [
   { href: '/mentions-legales', label: 'Mentions légales' },
-  { href: '/politique-confidentialite', label: 'Confidentialité' },
-  { href: '/cgu', label: 'CGU' },
+  { href: '/privacy', label: 'Confidentialité' },
+  { href: '/terms', label: 'Conditions d’utilisation' },
   { href: '/remboursement', label: 'Remboursement' },
   { href: 'mailto:support@prospecttube.com', label: 'Contact' },
 ]

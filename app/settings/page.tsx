@@ -26,6 +26,7 @@ type GmailStatus = {
   setupRequired?: boolean
   accessAllowed?: boolean
   upgradeRequired?: boolean
+  publicOAuthAvailable?: boolean
 }
 
 const OAUTH_MESSAGES: Record<string, string> = {
@@ -194,8 +195,14 @@ export default function SettingsPage() {
               </div>
             )}
 
+            {gmail?.publicOAuthAvailable === false && (
+              <div style={{ marginTop: '1rem', border: '1px solid rgba(245,158,11,0.24)', background: 'rgba(245,158,11,0.08)', borderRadius: '10px', padding: '0.85rem', color: '#fbbf24', fontSize: '0.84rem', lineHeight: 1.55 }}>
+                Connexion Gmail momentanément limitée pendant la validation Google.
+              </div>
+            )}
+
             <div style={{ marginTop: '1rem', display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
-                <button onClick={() => window.location.assign('/api/gmail/connect?returnTo=/settings')} disabled={gmail?.accessAllowed === false} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem', opacity: gmail?.accessAllowed === false ? 0.55 : 1 }}>
+                <button onClick={() => window.location.assign('/api/gmail/connect?returnTo=/settings')} disabled={gmail?.accessAllowed === false || gmail?.publicOAuthAvailable === false} className="btn-primary" style={{ padding: '0.65rem 1rem', fontSize: '0.84rem', opacity: gmail?.accessAllowed === false || gmail?.publicOAuthAvailable === false ? 0.55 : 1 }}>
                   {gmail?.connected ? 'Reconnecter Gmail' : gmailNeedsReconnect ? 'Reconnecter Gmail' : 'Connecter Gmail'}
                 </button>
                 {gmail?.accessAllowed === false && <SubscriptionButton plan={plan} label="Passer au Plan Pro" />}
