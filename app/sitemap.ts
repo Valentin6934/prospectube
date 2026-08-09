@@ -10,6 +10,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/mentions-legales', changeFrequency: 'yearly', priority: 0.2 },
     { path: '/politique-confidentialite', changeFrequency: 'yearly', priority: 0.2 },
     { path: '/cgu', changeFrequency: 'yearly', priority: 0.2 },
+    { path: '/privacy', changeFrequency: 'yearly', priority: 0.3 },
+    { path: '/terms', changeFrequency: 'yearly', priority: 0.3 },
     { path: '/remboursement', changeFrequency: 'yearly', priority: 0.2 },
   ] as const
 

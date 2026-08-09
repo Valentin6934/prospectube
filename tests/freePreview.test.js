@@ -2268,7 +2268,29 @@ test('landing production polish keeps honest CTAs, responsive structure and lega
   assert.match(styles, /focus-visible/)
   assert.doesNotMatch(styles, /overflow-x:\s*scroll/)
 
-  for (const path of ['/mentions-legales', '/politique-confidentialite', '/cgu', '/remboursement']) {
+  for (const path of ['/mentions-legales', '/privacy', '/terms', '/remboursement']) {
     assert.match(footer, new RegExp(path.replace('/', '\\/')))
   }
+})
+
+test('public legal pages accurately disclose the Gmail OAuth integration', () => {
+  const privacy = fs.readFileSync('app/privacy/page.tsx', 'utf8')
+  const terms = fs.readFileSync('app/terms/page.tsx', 'utf8')
+  const footer = fs.readFileSync('components/LegalFooter.tsx', 'utf8')
+  const sitemap = fs.readFileSync('app/sitemap.ts', 'utf8')
+
+  assert.match(privacy, /https:\/\/www\.googleapis\.com\/auth\/gmail\.compose/)
+  assert.match(privacy, /jetons OAuth d’accès et de renouvellement/)
+  assert.match(privacy, /n’utilise pas cet accès pour lire votre boîte de réception/)
+  assert.match(privacy, /Google API Services User Data Policy/)
+  assert.match(privacy, /Limited Use/)
+  assert.match(privacy, /Déconnecter Gmail/)
+  assert.match(terms, /n’envoie pas automatiquement les brouillons/)
+  assert.match(terms, /Prospection responsable/)
+  assert.match(footer, /href: '\/privacy'/)
+  assert.match(footer, /href: '\/terms'/)
+  assert.match(sitemap, /path: '\/privacy'/)
+  assert.match(sitemap, /path: '\/terms'/)
+  assert.equal(fs.existsSync('app/privacy/layout.tsx'), false)
+  assert.equal(fs.existsSync('app/terms/layout.tsx'), false)
 })
