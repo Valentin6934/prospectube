@@ -59,6 +59,7 @@ const {
   isConnectedOAuthReplay,
   logSafeGmailOAuthFailure,
 } = require('../lib/gmailOAuthErrors.ts')
+const { getGmailPublicOAuthStatus, isGmailPublicOAuthAvailable } = require('../lib/gmailPublicAccess.ts')
 const {
   extractPublicEmails,
   normalizeObfuscatedEmail,
@@ -129,7 +130,7 @@ const { buildExposureTargetKey, buildUserTargetKey, countGlobalChannelExposure, 
 const { buildDiscoveryFallbackQueries, calculateQueryVariantYield, classifyQueryBreadth, rankQueryVariants, selectComplementaryVariant, selectNextDiscoveryVariant, updateVariantPerformance } = require('../lib/discoveryVariants.ts')
 const { calculateCatalogCoverage, getUserCoverage } = require('../lib/catalogCoverage.ts')
 const { classifyRegistrationError, getSafePrismaMeta, normalizeAccountEmail, validateRegistrationInput } = require('../lib/registration.ts')
-const { calculateMedian, calculateTrimmedMean, scoreVideoTopicMatch, scoreChannelContentRelevance, detectDominantContentLanguage, calculateProspectScore, getContactability } = require('../lib/prospectScoring.ts')
+const { analyzeCreatorActivity, calculateMedian, calculateTrimmedMean, scoreVideoTopicMatch, scoreChannelContentRelevance, detectDominantContentLanguage, calculateProspectScore, getContactability } = require('../lib/prospectScoring.ts')
 const {
   PROSPECT_SCORE_EXPLANATION,
   PROSPECT_SCORE_LEVELS,
@@ -2082,6 +2083,81 @@ test('Gmail OAuth uses the minimal compose scope and classifies safe failures', 
   assert.equal(classifyGoogleOAuthError('app not verified'), 'OAUTH_APP_UNVERIFIED')
   assert.equal(classifyGoogleOAuthError('test_user_not_allowed'), 'OAUTH_ACCOUNT_NOT_ALLOWED')
   assert.match(getSafeGmailOAuthMessage('OAUTH_APP_UNVERIFIED'), /pas encore disponible/)
+})
+
+test('Gmail public OAuth availability is explicit and documented for Production', () => {
+  assert.equal(getGmailPublicOAuthStatus('testing'), 'testing')
+  assert.equal(isGmailPublicOAuthAvailable('testing'), false)
+  assert.equal(getGmailPublicOAuthStatus('production'), 'production')
+  assert.equal(isGmailPublicOAuthAvailable('production'), true)
+  assert.equal(isGmailPublicOAuthAvailable(undefined), true)
+
+  const connectRoute = fs.readFileSync('app/api/gmail/connect/route.ts', 'utf8')
+  const settings = fs.readFileSync('app/settings/page.tsx', 'utf8')
+  const documentation = fs.readFileSync('docs/google-oauth-production-checklist.md', 'utf8')
+  assert.match(connectRoute, /isGmailPublicOAuthAvailable/)
+  assert.match(settings, /Connexion Gmail momentanément limitée pendant la validation Google/)
+  assert.match(documentation, /scope restreint/)
+  assert.match(documentation, /https:\/\/prospectube\.vercel\.app\/api\/gmail\/callback/)
+  assert.match(documentation, /GMAIL_PUBLIC_OAUTH_STATUS/)
+  assert.doesNotMatch(connectRoute, /gmail\.modify|gmail\.readonly|https:\/\/mail\.google\.com/)
+})
+
+test('creator activity follows recency bands without inventing sparse frequency', () => {
+  const now = new Date('2026-08-09T12:00:00.000Z')
+  const daysAgo = days => new Date(now.getTime() - days * 86400000).toISOString()
+  const activity = days => analyzeCreatorActivity([
+    { publishedAt: daysAgo(days) },
+    { publishedAt: daysAgo(days + 7) },
+    { publishedAt: daysAgo(days + 14) },
+  ], now)
+
+  assert.equal(activity(10).status, 'ACTIVE_HIGH')
+  assert.equal(activity(40).status, 'ACTIVE_MEDIUM')
+  assert.equal(activity(70).status, 'ACTIVE_LOW')
+  assert.equal(activity(100).status, 'INACTIVE')
+  assert.equal(analyzeCreatorActivity([{ publishedAt: daysAgo(5) }], now).label, 'Données limitées')
+  assert.equal(analyzeCreatorActivity([], now).status, 'LIMITED_DATA')
+  assert.equal(activity(10).videosLast30Days, 3)
+  assert.equal(activity(10).medianPublishIntervalDays, 7)
+})
+
+test('inactive creators are filtered and cannot keep an excellent Prospect Score', () => {
+  const target = { niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' }
+  const staleVideos = Array.from({ length: 8 }, (_, index) => ({
+    title: 'Fortnite gameplay montage',
+    description: 'Fortnite français gameplay',
+    publishedAt: new Date(Date.now() - (120 + index * 7) * 86400000).toISOString(),
+    viewCount: 100000,
+    durationSeconds: 900,
+  }))
+  const freshVideos = staleVideos.map((video, index) => ({
+    ...video,
+    publishedAt: new Date(Date.now() - (5 + index * 3) * 86400000).toISOString(),
+    viewCount: 20000,
+  }))
+  const stale = calculateProspectScore({ videos: staleVideos, target, subscribers: 30000 })
+  const fresh = calculateProspectScore({ videos: freshVideos, target, subscribers: 30000 })
+  assert.equal(stale.activity.status, 'INACTIVE')
+  assert.ok(stale.score <= 45)
+  assert.ok(fresh.score > stale.score)
+
+  const filtered = filterYouTubeCatalog({ channels: [
+    { id: 'stale', subsNum: 30000, recentVideos: staleVideos },
+    { id: 'fresh', subsNum: 30000, recentVideos: freshVideos },
+  ] }, 10000, 100000, 20, target)
+  assert.deepEqual(filtered.map(channel => channel.id), ['fresh'])
+})
+
+test('visible product copy uses MediaMaker and contains no Graphiste wording', () => {
+  const visibleFiles = [
+    ...fs.readdirSync('app', { recursive: true }).filter(file => /\.(tsx|ts)$/.test(file)).map(file => `app/${file}`),
+    ...fs.readdirSync('components', { recursive: true }).filter(file => /\.(tsx|ts)$/.test(file)).map(file => `components/${file}`),
+    ...fs.readdirSync('docs', { recursive: true }).filter(file => /\.md$/.test(file)).map(file => `docs/${file}`),
+  ]
+  const copy = visibleFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n')
+  assert.doesNotMatch(copy, /graphistes?/i)
+  assert.match(fs.readFileSync('app/LandingPage.tsx', 'utf8'), /MediaMakers/)
 })
 
 test('Gmail OAuth diagnostics and replay handling do not leak secrets', () => {

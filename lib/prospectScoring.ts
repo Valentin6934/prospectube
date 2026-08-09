@@ -1,6 +1,19 @@
 import { getNicheVocabulary, getSubnicheVocabulary, normalizeTargetText, type SearchTarget } from './searchTargeting'
 
 export type RecentVideo = { title?: string; description?: string; publishedAt?: string; viewCount?: number; likeCount?: number; commentCount?: number; categoryId?: string; defaultLanguage?: string; durationSeconds?: number }
+export type CreatorActivityStatus = 'ACTIVE_HIGH' | 'ACTIVE_MEDIUM' | 'ACTIVE_LOW' | 'INACTIVE' | 'LIMITED_DATA'
+
+export type CreatorActivity = {
+  status: CreatorActivityStatus
+  label: 'Très active' | 'Active' | 'Régulière' | 'Peu active' | 'Inactive' | 'Données limitées'
+  lastPublishedAt: string | null
+  ageDays: number | null
+  videosLast30Days: number
+  videosLast90Days: number
+  medianPublishIntervalDays: number | null
+  sampleSize: number
+  hasFrequencyData: boolean
+}
 
 const STOP_WORDS: Record<string, string[]> = {
   fr: [' le ', ' la ', ' les ', ' des ', ' une ', ' avec ', ' pour ', ' dans ', ' sur ', ' est ', ' vous '],
@@ -94,12 +107,49 @@ export function calculateRecentEngagementRate(videos: RecentVideo[]): number | n
   return rates.length ? calculateMedian(rates) : null
 }
 
-export function classifyPublishingFrequency(videos: RecentVideo[], now = new Date()): string {
+export function analyzeCreatorActivity(videos: RecentVideo[], now = new Date()): CreatorActivity {
   const dates = videos.map(video => new Date(String(video.publishedAt || ''))).filter(date => !Number.isNaN(date.getTime())).sort((a, b) => b.getTime() - a.getTime())
-  if (dates.length < 2) return dates.length ? 'Données limitées' : 'Inconnue'
-  const weeks = Math.max(1, (now.getTime() - dates[dates.length - 1].getTime()) / 604800000)
-  const perWeek = dates.length / weeks
-  return perWeek >= 2 ? 'Très active' : perWeek >= 0.75 ? 'Active' : perWeek >= 0.25 ? 'Occasionnelle' : 'Peu active'
+  if (!dates.length) {
+    return { status: 'LIMITED_DATA', label: 'Données limitées', lastPublishedAt: null, ageDays: null, videosLast30Days: 0, videosLast90Days: 0, medianPublishIntervalDays: null, sampleSize: 0, hasFrequencyData: false }
+  }
+
+  const ageInDays = (date: Date) => Math.max(0, (now.getTime() - date.getTime()) / 86400000)
+  const ageDays = ageInDays(dates[0])
+  const videosLast30Days = dates.filter(date => ageInDays(date) <= 30).length
+  const videosLast90Days = dates.filter(date => ageInDays(date) <= 90).length
+  const intervals = dates.slice(0, -1).map((date, index) => Math.abs(date.getTime() - dates[index + 1].getTime()) / 86400000)
+  const medianPublishIntervalDays = intervals.length ? calculateMedian(intervals) : null
+  const status: CreatorActivityStatus = ageDays <= 30
+    ? 'ACTIVE_HIGH'
+    : ageDays <= 60
+      ? 'ACTIVE_MEDIUM'
+      : ageDays <= 90
+        ? 'ACTIVE_LOW'
+        : 'INACTIVE'
+  const hasFrequencyData = dates.length >= 2
+  let label: CreatorActivity['label'] = 'Données limitées'
+
+  if (status === 'INACTIVE') label = 'Inactive'
+  else if (hasFrequencyData && (videosLast30Days >= 4 || Number(medianPublishIntervalDays) <= 8)) label = 'Très active'
+  else if (hasFrequencyData && (videosLast90Days >= 6 || Number(medianPublishIntervalDays) <= 16)) label = 'Active'
+  else if (hasFrequencyData && (videosLast90Days >= 3 || Number(medianPublishIntervalDays) <= 35)) label = 'Régulière'
+  else if (hasFrequencyData) label = 'Peu active'
+
+  return {
+    status,
+    label,
+    lastPublishedAt: dates[0].toISOString(),
+    ageDays,
+    videosLast30Days,
+    videosLast90Days,
+    medianPublishIntervalDays,
+    sampleSize: dates.length,
+    hasFrequencyData,
+  }
+}
+
+export function classifyPublishingFrequency(videos: RecentVideo[], now = new Date()): string {
+  return analyzeCreatorActivity(videos, now).label
 }
 
 export function getContactability(channel: any) {
@@ -110,9 +160,9 @@ export function getContactability(channel: any) {
 export function calculateProspectScore(input: { videos: RecentVideo[]; target: SearchTarget; subscribers: number }) {
   const relevance = scoreChannelContentRelevance(input.videos, input.target)
   const language = detectDominantContentLanguage(input.videos)
-  const frequency = classifyPublishingFrequency(input.videos)
-  const latest = Math.max(0, ...input.videos.map(video => new Date(String(video.publishedAt || '')).getTime()).filter(Number.isFinite))
-  const ageDays = latest ? (Date.now() - latest) / 86400000 : Infinity
+  const activity = analyzeCreatorActivity(input.videos)
+  const frequency = activity.label
+  const ageDays = activity.ageDays ?? Infinity
   const medianViews = calculateMedian(input.videos.map(video => Number(video.viewCount || 0)))
   const ratio = calculateRecentViewSubscriberRatio(input.videos, input.subscribers)
   const engagementRate = calculateRecentEngagementRate(input.videos)
@@ -120,12 +170,13 @@ export function calculateProspectScore(input: { videos: RecentVideo[]; target: S
 
   const recentViews = medianViews >= 100000 ? 30 : medianViews >= 50000 ? 27 : medianViews >= 20000 ? 24 : medianViews >= 10000 ? 21 : medianViews >= 5000 ? 16 : medianViews >= 2000 ? 10 : medianViews > 0 ? 4 : 0
   const growthPotential = ratio >= 1 ? 20 : ratio >= 0.6 ? 18 : ratio >= 0.35 ? 15 : ratio >= 0.2 ? 11 : ratio >= 0.1 ? 7 : ratio > 0 ? 3 : 0
-  const publishingRhythm = frequency === 'Très active' ? 15 : frequency === 'Active' ? 12 : frequency === 'Occasionnelle' ? 7 : frequency === 'Peu active' ? 2 : 0
+  const publishingRhythm = frequency === 'Très active' ? 15 : frequency === 'Active' ? 12 : frequency === 'Régulière' ? 8 : frequency === 'Peu active' ? 3 : 0
   const recentActivity = ageDays <= 14 ? 15 : ageDays <= 30 ? 13 : ageDays <= 60 ? 9 : ageDays <= 90 ? 5 : Number.isFinite(ageDays) ? 1 : 0
   const targeting = Math.min(5, Math.round(relevance.score * 0.05))
   const scoreBreakdown = { recentViews, growthPotential, publishingRhythm, recentActivity, editingNeed: editingPotential.points, targeting }
-  const score = Object.values(scoreBreakdown).reduce((sum, value) => sum + value, 0)
+  const rawScore = Object.values(scoreBreakdown).reduce((sum, value) => sum + value, 0)
+  const score = activity.status === 'INACTIVE' ? Math.min(45, rawScore) : rawScore
   const label = score >= 80 ? 'Excellent prospect' : score >= 65 ? 'Bon prospect' : score >= 50 ? 'Prospect moyen' : 'Données limitées'
   const confidence = input.videos.length >= 8 ? 'Elevee' : input.videos.length >= 3 ? 'Moyenne' : 'Faible'
-  return { score, label, scoreBreakdown, relevance, language, frequency, medianViews, recentViewSubscriberRatio: ratio, engagementRate, editingPotential, confidence, lastPublishedAt: latest ? new Date(latest).toISOString() : null }
+  return { score, label, scoreBreakdown, relevance, language, frequency, activity, medianViews, recentViewSubscriberRatio: ratio, engagementRate, editingPotential, confidence, lastPublishedAt: activity.lastPublishedAt }
 }

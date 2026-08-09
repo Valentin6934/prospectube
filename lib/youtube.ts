@@ -407,6 +407,11 @@ export async function discoverYouTubeCatalog(
         recentViewSubscriberRatio: scoreData.recentViewSubscriberRatio,
         recentEngagementRate: scoreData.engagementRate,
         publishingFrequency: scoreData.frequency,
+        activityStatus: scoreData.activity.status,
+        activityLabel: scoreData.activity.label,
+        videosLast30Days: scoreData.activity.videosLast30Days,
+        videosLast90Days: scoreData.activity.videosLast90Days,
+        medianPublishIntervalDays: scoreData.activity.medianPublishIntervalDays,
         lastPublishedAt: scoreData.lastPublishedAt,
         contactability: contactability.level,
         editingPotential: scoreData.editingPotential.value,
@@ -425,6 +430,7 @@ export async function discoverYouTubeCatalog(
         if (metrics) metrics.rejectedLanguage += 1
         return false
       }
+      if (ch.activityStatus === 'INACTIVE') return false
       return true
     })
     .sort((a: any, b: any) => b.score - a.score)

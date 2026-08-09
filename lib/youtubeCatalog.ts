@@ -52,9 +52,17 @@ export function filterYouTubeCatalog(
         editingPotential: scoreData.editingPotential.value,
         editingPotentialLabel: scoreData.editingPotential.label,
         scoreConfidence: scoreData.confidence,
+        publishingFrequency: scoreData.frequency,
+        activityStatus: scoreData.activity.status,
+        activityLabel: scoreData.activity.label,
+        videosLast30Days: scoreData.activity.videosLast30Days,
+        videosLast90Days: scoreData.activity.videosLast90Days,
+        medianPublishIntervalDays: scoreData.activity.medianPublishIntervalDays,
+        lastPublishedAt: scoreData.activity.lastPublishedAt,
       }
     })
     .filter(channel => Number.isFinite(Number(channel?.subsNum)) && channel.subsNum >= subsMin && channel.subsNum <= subsMax)
+    .filter(channel => channel.activityStatus !== 'INACTIVE')
     .filter(channel => !target || Number(channel.contentRelevance || 0) >= 10)
   const hasSpecificTarget = Boolean(target && (target.subNiches.length || target.customKeyword))
   const strict = hasSpecificTarget ? qualified.filter(channel => Number(channel.subnicheMatch || 0) >= 25) : qualified

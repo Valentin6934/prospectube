@@ -27,6 +27,8 @@ export type ProspectPresentationInput = {
   channelCreatedAt?: string | null
   recentMedianViews?: number | null
   publishingFrequency?: string | null
+  activityLabel?: string | null
+  videosLast30Days?: number | null
   contactability?: string | null
   contentRelevance?: number | null
   detectedLanguage?: string | null
@@ -128,7 +130,7 @@ export function normalizeProspectPresentation(channel: ProspectPresentationInput
     score: channel.score || 0,
     scoreLabel: channel.scoreLabel || 'Score inconnu',
     scoreReason: channel.scoreReason || 'Aucune analyse disponible.',
-    stats: [subs, channel.recentMedianViews ? `${formatProspectCompactNumber(channel.recentMedianViews)} vues médianes` : views, channel.publishingFrequency || videos, channel.contactability ? `Contactabilité ${channel.contactability}` : null, channel.contentRelevance !== undefined && channel.contentRelevance !== null ? `Pertinence ${channel.contentRelevance}%` : null, channel.detectedLanguage ? `${channel.detectedLanguage.toUpperCase()} (${channel.languageConfidence || 'faible'})` : null, createdYear ? `cree en ${createdYear}` : null].filter(Boolean) as string[],
+    stats: [subs, channel.recentMedianViews ? `${formatProspectCompactNumber(channel.recentMedianViews)} vues médianes` : views, channel.activityLabel || channel.publishingFrequency || videos, Number(channel.videosLast30Days) > 0 ? `${channel.videosLast30Days} vidéo${channel.videosLast30Days === 1 ? '' : 's'} / 30 j` : !channel.activityLabel && !channel.publishingFrequency && createdYear ? `cree en ${createdYear}` : null].filter(Boolean) as string[],
     contacts,
     youtubeUrl: isHttpUrl(channel.channelUrl) ? channel.channelUrl || null : null,
   }
