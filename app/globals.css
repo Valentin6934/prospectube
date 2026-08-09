@@ -6,10 +6,10 @@
   --v: #533AB7;
   --v2: #3C2A8A;
   --v3: #EDE9FF;
-  --surface: rgba(18, 15, 30, 0.96);
-  --surface-strong: rgba(24, 20, 38, 0.98);
-  --border-soft: rgba(139, 92, 246, 0.24);
-  --text-soft: #A89FCC;
+  --surface: #121117;
+  --surface-strong: #17151d;
+  --border-soft: rgba(255, 255, 255, 0.09);
+  --text-soft: #aaa5b3;
 }
 
 * { box-sizing: border-box; }
@@ -19,9 +19,7 @@ html {
 }
 
 body {
-  background:
-    radial-gradient(circle at top left, rgba(83, 58, 183, 0.12), transparent 28rem),
-    #0A0812;
+  background: #0c0b0f;
   color: #F0EDF8;
   font-family: var(--font-dm-sans), sans-serif;
   font-size: 15px;
@@ -48,20 +46,20 @@ h1, h2, h3 {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #533AB7, #7B63D3);
+  background: #6f5bd3;
   color: white;
   border: none;
   padding: 0.75rem 2rem;
-  border-radius: 12px;
+  border-radius: 8px;
   font-weight: 750;
   cursor: pointer;
   transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease, opacity 160ms ease;
-  box-shadow: 0 12px 28px rgba(83, 58, 183, 0.28);
+  box-shadow: none;
 }
 
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 18px 38px rgba(83, 58, 183, 0.36);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
   filter: brightness(1.04);
 }
 
@@ -124,21 +122,27 @@ select:focus-visible {
 }
 
 .card {
-  background: linear-gradient(180deg, var(--surface-strong), var(--surface));
+  background: var(--surface);
   border: 1px solid var(--border-soft);
-  border-radius: 16px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  border-radius: 10px;
+  box-shadow: none;
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, background 180ms ease;
 }
 
 .card:hover {
-  border-color: rgba(139, 92, 246, 0.34);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
 }
 
 .prospect-card:hover {
-  border-color: rgba(139, 92, 246, 0.42) !important;
-  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22) !important;
+}
+
+.search-surface {
+  background: #141218;
+  border-color: rgba(255, 255, 255, 0.11);
+  border-top: 2px solid rgba(111, 91, 211, 0.72);
 }
 
 .campaign-prospect-card {
