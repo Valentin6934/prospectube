@@ -2243,6 +2243,8 @@ test('landing page matches current free and Pro product limits without AI promis
   assert.match(landing, /campagne d’essai/)
   assert.match(landing, /brouillons Gmail/)
   assert.match(landing, /ne sont pas garanties/)
+  assert.match(landing, /ProspectTube aide les MediaMakers à rechercher des créateurs YouTube potentiellement intéressés par leurs services/)
+  assert.match(landing, /identifier les contacts publics disponibles et à préparer des campagnes de prospection/)
   assert.doesNotMatch(landing, /message.? IA|grâce à l’IA|recherches? illimité/i)
   assert.doesNotMatch(`${landing}\n${metadata}`, /9,90|9\.90|emails? garantis?|résultats? garantis?/i)
 })

@@ -115,7 +115,7 @@ export default function LandingPage() {
             <div className={styles.eyebrow}><span /> Prospection YouTube pour monteurs et créatifs</div>
             <h1>Trouve des créateurs YouTube à prospecter, plus vite.</h1>
             <p>
-              ProspectTube analyse des signaux publics pour t’aider à identifier, classer et organiser des créateurs pertinents selon ta niche, leur activité et leur potentiel de production.
+              ProspectTube aide les MediaMakers à rechercher des créateurs YouTube potentiellement intéressés par leurs services, à identifier les contacts publics disponibles et à préparer des campagnes de prospection.
             </p>
             <div className={styles.heroActions}>
               <button onClick={startFree} className={styles.primaryButton}>Trouver mes premiers prospects</button>
