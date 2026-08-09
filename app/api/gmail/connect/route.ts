@@ -11,6 +11,7 @@ import {
 } from '@/lib/gmailOAuthUrl'
 import { canUseGmailIntegration } from '@/lib/campaignAccess'
 import { getSafeGmailOAuthMessage, logSafeGmailOAuthFailure } from '@/lib/gmailOAuthErrors'
+import { isGmailPublicOAuthAvailable } from '@/lib/gmailPublicAccess'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,6 +52,14 @@ export async function GET(req: NextRequest) {
         upgrade: true,
         message: 'Votre campagne d’essai est terminée. Passez au Plan Pro pour reconnecter Gmail.',
       }, { status: 403 })
+    }
+
+    if (!isGmailPublicOAuthAvailable()) {
+      logSafeGmailOAuthFailure({ code: 'OAUTH_APP_UNVERIFIED', step: 'public_access' })
+      return NextResponse.json({
+        error: 'OAUTH_APP_UNVERIFIED',
+        message: 'Connexion Gmail momentanément limitée pendant la validation Google.',
+      }, { status: 503 })
     }
 
     const clientId = process.env.GOOGLE_CLIENT_ID?.trim()

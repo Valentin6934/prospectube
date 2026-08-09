@@ -16,6 +16,7 @@ export type GmailStatusResponse = {
   setupRequired?: boolean
   accessAllowed?: boolean
   upgradeRequired?: boolean
+  publicOAuthAvailable?: boolean
 }
 
 type AccountStatusInput = {

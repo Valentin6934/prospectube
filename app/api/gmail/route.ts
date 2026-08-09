@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { SEND_MODE } from '@/lib/gmail'
 import { buildDisconnectedGmailStatus, buildGmailStatus } from '@/lib/gmailStatus'
 import { canUseGmailIntegration } from '@/lib/campaignAccess'
+import { isGmailPublicOAuthAvailable } from '@/lib/gmailPublicAccess'
 
 export const dynamic = 'force-dynamic'
 const NO_STORE_HEADERS = { 'Cache-Control': 'no-store, max-age=0' }
@@ -36,16 +37,21 @@ export async function GET() {
       },
     })
     const accessAllowed = await canUseGmailIntegration(prisma, user)
+    const publicOAuthAvailable = isGmailPublicOAuthAvailable()
 
     if (!account) {
       return NextResponse.json({
         ...buildDisconnectedGmailStatus(SEND_MODE),
         accessAllowed,
         upgradeRequired: !accessAllowed,
+        publicOAuthAvailable,
       }, { headers: NO_STORE_HEADERS })
     }
 
-    return NextResponse.json(buildGmailStatus(account, SEND_MODE, { accessAllowed }), { headers: NO_STORE_HEADERS })
+    return NextResponse.json({
+      ...buildGmailStatus(account, SEND_MODE, { accessAllowed }),
+      publicOAuthAvailable,
+    }, { headers: NO_STORE_HEADERS })
   } catch (error) {
     console.error('GET /api/gmail error:', error)
 
