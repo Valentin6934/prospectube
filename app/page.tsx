@@ -3,7 +3,7 @@ import LandingPage from './LandingPage'
 
 const title = 'ProspectTube — Trouvez des créateurs YouTube à prospecter'
 const description =
-  'Trouvez et organisez des créateurs YouTube susceptibles d’avoir besoin de montage grâce à des signaux et coordonnées publics.'
+  'ProspectTube aide les MediaMakers à identifier des créateurs YouTube pertinents, analyser les informations publiques de leurs chaînes et préparer leur prospection commerciale.'
 
 export const metadata: Metadata = {
   title: {

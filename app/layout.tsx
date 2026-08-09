@@ -4,7 +4,7 @@ import './globals.css'
 import { Providers } from './providers'
 
 const description =
-  'Trouvez et organisez des créateurs YouTube grâce à des signaux publics, un score de potentiel de montage et des campagnes avec brouillons Gmail.'
+  'ProspectTube aide les MediaMakers à identifier des créateurs YouTube pertinents, analyser les informations publiques de leurs chaînes et préparer leur prospection commerciale.'
 
 const inter = Inter({
   subsets: ['latin'],
