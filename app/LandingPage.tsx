@@ -113,9 +113,9 @@ export default function LandingPage() {
         <div className={styles.heroInner}>
           <div className={styles.heroCopy}>
             <div className={styles.eyebrow}><span /> Prospection YouTube pour monteurs et créatifs</div>
-            <h1>Trouve des créateurs YouTube à prospecter, plus vite.</h1>
+            <h1>ProspectTube aide les MediaMakers à trouver des créateurs YouTube pertinents.</h1>
             <p>
-              ProspectTube aide les MediaMakers à rechercher des créateurs YouTube potentiellement intéressés par leurs services, à identifier les contacts publics disponibles et à préparer des campagnes de prospection.
+              Analysez les informations publiques disponibles sur leurs chaînes, identifiez leurs contacts publics et préparez vos campagnes de prospection commerciale.
             </p>
             <div className={styles.heroActions}>
               <button onClick={startFree} className={styles.primaryButton}>Trouver mes premiers prospects</button>
