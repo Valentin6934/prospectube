@@ -4,7 +4,7 @@ import './globals.css'
 import { Providers } from './providers'
 
 const description =
-  'ProspectTube aide les MediaMakers à identifier des créateurs YouTube pertinents, analyser les informations publiques de leurs chaînes et préparer leur prospection commerciale.'
+  'ProspectTube aide les MiniMakers et monteurs vidéo à trouver des créateurs YouTube actifs, analyser leurs données publiques et organiser leur prospection.'
 
 const inter = Inter({
   subsets: ['latin'],

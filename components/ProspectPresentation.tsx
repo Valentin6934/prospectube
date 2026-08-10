@@ -43,6 +43,11 @@ export default function ProspectPresentation({ channel, compact = false, selecte
         <div style={{ minWidth: 0, flex: '1 1 0', maxWidth: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
             <div style={{ fontWeight: 800, fontSize: compact ? '0.95rem' : '1rem', color: '#F0EDF8', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prospect.name}</div>
+            {prospect.activityLabel && (
+              <span style={{ color: prospect.activityColor, fontSize: '0.68rem', fontWeight: 800 }}>
+                {prospect.activityLabel}
+              </span>
+            )}
             <span style={{ ...getScoreStyles(prospect.score), fontSize: '0.72rem', fontWeight: 800 }}>
               {prospect.scoreLabel}
             </span>

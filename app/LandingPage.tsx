@@ -4,7 +4,6 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { useState } from 'react'
 import LegalFooter from '@/components/LegalFooter'
 import { isPro } from '@/lib/plan'
 import { PRODUCT_LIMITS, PRO_MONTHLY_PRICE_LABEL } from '@/lib/product'
@@ -12,7 +11,7 @@ import styles from './landing.module.css'
 
 const benefits = [
   ['⌕', 'Moins de temps à chercher'],
-  ['↗', 'Des prospects classés par potentiel'],
+  ['↗', 'Des chaînes actives classées par potentiel'],
   ['@', 'Des coordonnées publiques quand elles existent'],
   ['✓', 'Une campagne prête à organiser'],
   ['✉', 'Des brouillons Gmail sans quitter ton workflow'],
@@ -60,32 +59,20 @@ const faqs = [
   ['Combien de recherches sont incluses ?', `Le plan Gratuit comprend ${PRODUCT_LIMITS.freeLifetimeSearches} recherches réussies à vie. Le plan Pro comprend ${PRODUCT_LIMITS.proDailySearches} recherches réussies par jour.`],
   ['Est-ce que Gmail envoie les messages automatiquement ?', 'Non. ProspectTube crée uniquement les brouillons que tu as rédigés. Tu gardes la main dans Gmail avant tout envoi.'],
   ['Puis-je annuler mon abonnement ?', 'Oui. Le Plan Pro est sans engagement et peut être annulé depuis le portail Stripe.'],
-  ['Est-ce adapté aux MediaMakers et agences ?', 'Oui. Les signaux de production et l’organisation en campagnes peuvent aussi servir aux MediaMakers, motion designers, freelances et agences.'],
+  ['À qui s’adresse ProspectTube ?', 'ProspectTube est conçu pour les MiniMakers et les monteurs vidéo qui cherchent des créateurs YouTube actifs à contacter pour proposer leurs services.'],
 ]
 
 export default function LandingPage() {
   const router = useRouter()
   const { data: session } = useSession()
-  const [checkoutLoading, setCheckoutLoading] = useState(false)
-  const [checkoutError, setCheckoutError] = useState('')
   const plan = (session?.user as any)?.plan || 'Gratuit'
 
   const startFree = () => router.push(session ? '/dashboard/home' : '/register')
 
-  const openPro = async () => {
+  const openPro = () => {
     if (!session) return router.push('/register')
     if (isPro(plan)) return router.push('/dashboard/home')
-
-    setCheckoutLoading(true)
-    setCheckoutError('')
-    const response = await fetch('/api/stripe/checkout', { method: 'POST' })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok || typeof data.url !== 'string') {
-      setCheckoutLoading(false)
-      setCheckoutError(data.error || 'Impossible d’ouvrir le paiement Stripe.')
-      return
-    }
-    window.location.assign(data.url)
+    router.push('/pro')
   }
 
   return (
@@ -112,13 +99,13 @@ export default function LandingPage() {
         <div className={styles.heroGrid} aria-hidden="true" />
         <div className={styles.heroInner}>
           <div className={styles.heroCopy}>
-            <div className={styles.eyebrow}><span /> ProspectTube — Prospection YouTube pour MediaMakers</div>
-            <h1>ProspectTube aide les MediaMakers à trouver des créateurs YouTube pertinents.</h1>
+            <div className={styles.eyebrow}><span /> Pour MiniMakers et monteurs vidéo</div>
+            <h1>ProspectTube aide les MiniMakers et monteurs vidéo à trouver des YouTubers actifs à prospecter.</h1>
             <p>
-              Analysez les informations publiques disponibles sur leurs chaînes, identifiez leurs contacts publics et préparez vos campagnes de prospection commerciale. La connexion Google est facultative : ProspectTube utilise Gmail uniquement pour préparer et créer les brouillons que vous choisissez, sans envoi automatique.
+              Repérez les chaînes pertinentes, analysez leur activité et leurs performances publiques, puis identifiez les coordonnées qu’elles publient pour organiser votre prospection. La connexion Google est facultative : ProspectTube utilise Gmail uniquement pour préparer et créer les brouillons que vous choisissez, sans envoi automatique.
             </p>
             <div className={styles.heroActions}>
-              <button onClick={startFree} className={styles.primaryButton}>Trouver mes premiers prospects</button>
+              <button onClick={startFree} className={styles.primaryButton}>Trouver des créateurs actifs</button>
               <a href="#comment-ca-marche" className={styles.secondaryButton}>Découvrir ProspectTube</a>
             </div>
             <div className={styles.heroNote}>3 recherches gratuites <i /> 1 campagne d’essai <i /> sans carte bancaire</div>
@@ -148,8 +135,8 @@ export default function LandingPage() {
         <div className={styles.sectionInner}>
           <div className={styles.sectionHeading}>
             <span>Un workflow simple</span>
-            <h2>De ta cible à ta campagne, sans disperser tes recherches.</h2>
-            <p>Chaque étape reste lisible, actionnable et sous ton contrôle.</p>
+            <h2>De votre spécialité à une liste de créateurs à contacter.</h2>
+            <p>Vous gardez le contrôle sur la cible, les contacts retenus et chaque brouillon Gmail.</p>
           </div>
           <div className={styles.stepGrid}>
             {steps.map(step => (
@@ -233,8 +220,7 @@ export default function LandingPage() {
             <article className={`${styles.priceCard} ${styles.priceFeatured}`}>
               <div className={styles.popularBadge}>Plan recommandé</div><div className={styles.priceName}>Pro</div><div className={styles.price}><strong>{PRO_MONTHLY_PRICE_LABEL}</strong><span>/mois</span></div><p>Pour prospecter régulièrement et organiser plusieurs campagnes.</p>
               <ul><li>{PRODUCT_LIMITS.proDailySearches} recherches réussies par jour</li><li>Campagnes supplémentaires</li><li>Rotation vers de nouveaux prospects</li><li>Score orienté montage et emails publics</li><li>Brouillons Gmail, favoris et historique</li></ul>
-              <button onClick={openPro} disabled={checkoutLoading} className={styles.pricePrimary}>{checkoutLoading ? 'Ouverture de Stripe…' : isPro(plan) ? 'Accéder au dashboard' : 'Passer au Pro'}</button>
-              {checkoutError && <div className={styles.checkoutError} role="alert">{checkoutError}</div>}
+              <button onClick={openPro} className={styles.pricePrimary}>{isPro(plan) ? 'Accéder au dashboard' : 'Découvrir le Plan Pro'}</button>
             </article>
           </div>
         </div>

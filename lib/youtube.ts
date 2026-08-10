@@ -1,7 +1,7 @@
 import { selectDiverseProspectPreview } from '@/lib/freePreview'
 import { PROSPECT_SCORE_THRESHOLDS } from '@/lib/prospectScoreInfo'
 import { SEARCH_CACHE_VERSION } from '@/lib/searchPolicy'
-import { calculateProspectScore, getContactability, scoreChannelContentRelevance, type RecentVideo } from '@/lib/prospectScoring'
+import { calculateProspectScore, getContactability, isCreatorActive, scoreChannelContentRelevance, type RecentVideo } from '@/lib/prospectScoring'
 import { getPrimarySearchFocus, getSearchFocusVariants, type SearchTarget } from '@/lib/searchTargeting'
 import { buildDiscoveryFallbackQueries, selectNextDiscoveryVariant, updateVariantPerformance, type DiscoveryVariant } from '@/lib/discoveryVariants'
 import { YouTubeApiError, classifyYouTubeError } from '@/lib/youtubeQuota'
@@ -430,7 +430,7 @@ export async function discoverYouTubeCatalog(
         if (metrics) metrics.rejectedLanguage += 1
         return false
       }
-      if (ch.activityStatus === 'INACTIVE') return false
+      if (!isCreatorActive(ch.activityStatus)) return false
       return true
     })
     .sort((a: any, b: any) => b.score - a.score)

@@ -44,8 +44,8 @@ function relativeDate(date: Date) {
 }
 
 function goalTargets(plan: string) {
-  if (isPro(plan)) return { prospects: 100, emails: 50, campaigns: 10, messages: 50 }
-  return { prospects: 10, emails: 5, campaigns: 2, messages: 5 }
+  if (isPro(plan)) return { prospects: 100, emails: 50, campaigns: 10, drafts: 50 }
+  return { prospects: 10, emails: 5, campaigns: 2, drafts: 5 }
 }
 
 export default async function DashboardHomePage({
@@ -146,14 +146,14 @@ export default async function DashboardHomePage({
     ...recentGeneratedCampaigns.map(item => ({
       id: `campaign-message-${item.id}`,
       icon: '✨',
-      title: 'Message IA généré',
+      title: 'Message préparé',
       detail: item.name,
       date: item.createdAt,
     })),
     ...recentGeneratedIndividuals.map(item => ({
       id: `message-${item.id}`,
       icon: '✨',
-      title: 'Message IA généré',
+      title: 'Message préparé',
       detail: item.channelName,
       date: item.createdAt,
     })),
@@ -185,7 +185,7 @@ export default async function DashboardHomePage({
     { label: 'Prospects sauvegardés', value: savedProspects, target: targets.prospects, color: '#8b5cf6' },
     { label: 'Emails trouvés', value: emailsFound, target: targets.emails, color: '#22c55e' },
     { label: 'Campagnes créées', value: campaignCount, target: targets.campaigns, color: '#38bdf8' },
-    { label: 'Messages IA générés', value: generatedMessages, target: targets.messages, color: '#f59e0b' },
+    { label: 'Messages préparés', value: generatedMessages, target: targets.drafts, color: '#f59e0b' },
   ]
 
   return (

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type CSSProperties } from 'react'
+import { useRouter } from 'next/navigation'
 import { isPro as isProPlan } from '@/lib/plan'
 
 type SubscriptionButtonProps = {
@@ -16,15 +17,21 @@ export default function SubscriptionButton({
   style,
   fullWidth = false,
 }: SubscriptionButtonProps) {
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const isPro = isProPlan(plan)
 
-  const openStripe = async () => {
+  const handleSubscription = async () => {
+    if (!isPro) {
+      router.push('/pro')
+      return
+    }
+
     setLoading(true)
     setError('')
 
-    const response = await fetch(isPro ? '/api/stripe/portal' : '/api/stripe/checkout', {
+    const response = await fetch('/api/stripe/portal', {
       method: 'POST',
     })
     const data = await response.json().catch(() => ({}))
@@ -41,7 +48,7 @@ export default function SubscriptionButton({
   return (
     <div style={{ width: fullWidth ? '100%' : undefined }}>
       <button
-        onClick={openStripe}
+        onClick={handleSubscription}
         disabled={loading}
         className={isPro ? 'btn btn-secondary' : 'btn-primary'}
         style={{

@@ -130,7 +130,7 @@ const { buildExposureTargetKey, buildUserTargetKey, countGlobalChannelExposure, 
 const { buildDiscoveryFallbackQueries, calculateQueryVariantYield, classifyQueryBreadth, rankQueryVariants, selectComplementaryVariant, selectNextDiscoveryVariant, updateVariantPerformance } = require('../lib/discoveryVariants.ts')
 const { calculateCatalogCoverage, getUserCoverage } = require('../lib/catalogCoverage.ts')
 const { classifyRegistrationError, getSafePrismaMeta, normalizeAccountEmail, validateRegistrationInput } = require('../lib/registration.ts')
-const { analyzeCreatorActivity, calculateMedian, calculateTrimmedMean, scoreVideoTopicMatch, scoreChannelContentRelevance, detectDominantContentLanguage, calculateProspectScore, getContactability } = require('../lib/prospectScoring.ts')
+const { analyzeCreatorActivity, calculateMedian, calculateTrimmedMean, scoreVideoTopicMatch, scoreChannelContentRelevance, detectDominantContentLanguage, calculateProspectScore, getContactability, isCreatorActive } = require('../lib/prospectScoring.ts')
 const {
   PROSPECT_SCORE_EXPLANATION,
   PROSPECT_SCORE_LEVELS,
@@ -844,13 +844,19 @@ test('prospect presentation normalizes media, contacts and fallback identity', (
     totalViews: 1200000,
     videoCount: 134,
     createdAt: '2021-03-01T00:00:00.000Z',
+    activityStatus: 'ACTIVE_HIGH',
+    activityLabel: 'Très active',
+    videosLast30Days: 6,
+    lastPublishedAt: '2026-08-07T00:00:00.000Z',
   }
   const data = normalizeProspectPresentation(withAvatarUrl)
 
   assert.equal(getProspectImageUrl(withAvatarUrl), 'https://cdn.example.com/avatar.jpg')
   assert.equal(data.name, 'Creator One')
   assert.equal(data.score, 83)
-  assert.deepEqual(data.stats, ['42K abonnes', '1.2M vues', '134 videos', 'cree en 2021'])
+  assert.equal(data.activityLabel, 'Très active')
+  assert.equal(data.activityColor, '#67d9a1')
+  assert.deepEqual(data.stats, ['42K abonnes', '1.2M vues', 'Dernière vidéo il y a 3 j', '6 vidéos sur 30 j'])
   assert.deepEqual(data.contacts.map(contact => contact.key), ['email', 'instagram'])
 })
 
@@ -894,10 +900,12 @@ test('main app navigation uses the shared premium labels and emojis', () => {
     '🎯 Campagnes',
     '🔍 Nouvelle recherche',
     '⚙️ Paramètres',
-    '⭐ Plan {plan}',
   ]) {
     assert.match(nav, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
+
+  assert.match(nav, /href="\/pro"/)
+  assert.match(nav, /Découvrir Pro/)
 
   assert.match(signOut, /🚪 Déconnexion/)
 })
@@ -1323,9 +1331,9 @@ test('discovery catalog keys are shared across subscriber ranges and remain vers
 
 test('catalog filtering applies subscriber ranges locally without changing discovery data', () => {
   const catalog = { channels: [
-    { id: 'low', subsNum: 20000, score: 40 },
-    { id: 'middle', subsNum: 75000, score: 80 },
-    { id: 'high', subsNum: 300000, score: 60 },
+    { id: 'low', subsNum: 20000, score: 40, activityStatus: 'ACTIVE_HIGH' },
+    { id: 'middle', subsNum: 75000, score: 80, activityStatus: 'ACTIVE_MEDIUM' },
+    { id: 'high', subsNum: 300000, score: 60, activityStatus: 'ACTIVE_LOW' },
   ] }
   assert.deepEqual(filterYouTubeCatalog(catalog, 10000, 50000, 20).map(item => item.id), ['low'])
   assert.deepEqual(filterYouTubeCatalog(catalog, 10000, 100000, 20).map(item => item.id), ['middle', 'low'])
@@ -1736,10 +1744,11 @@ test('free campaign discovery is limited and durable without enabling campaign A
 
 test('subniche filtering relaxes only topic qualification when strict matches are empty', () => {
   const target = { niche: 'Gaming', subNiches: ['Fortnite'], customKeyword: '', language: 'Français' }
-  const nearby = filterYouTubeCatalog({ channels: [{ id: 'near', subsNum: 20000, score: 40, recentVideos: [{ title: 'Actualite gaming generale' }] }] }, 10000, 100000, 20, target)
+  const recentDate = new Date(Date.now() - 7 * 86400000).toISOString()
+  const nearby = filterYouTubeCatalog({ channels: [{ id: 'near', subsNum: 20000, score: 40, recentVideos: [{ title: 'Actualite gaming generale', publishedAt: recentDate }] }] }, 10000, 100000, 20, target)
   assert.equal(nearby.length, 1)
   assert.equal(nearby[0].matchMode, 'nearby')
-  assert.deepEqual(filterYouTubeCatalog({ channels: [{ id: 'outside', subsNum: 200000, recentVideos: [{ title: 'Fortnite francais' }] }] }, 10000, 100000, 20, target), [])
+  assert.deepEqual(filterYouTubeCatalog({ channels: [{ id: 'outside', subsNum: 200000, recentVideos: [{ title: 'Fortnite francais', publishedAt: recentDate }] }] }, 10000, 100000, 20, target), [])
 })
 
 test('Mode homme uses three targeted queries without a generic Mode query', () => {
@@ -2116,8 +2125,13 @@ test('creator activity follows recency bands without inventing sparse frequency'
   assert.equal(activity(40).status, 'ACTIVE_MEDIUM')
   assert.equal(activity(70).status, 'ACTIVE_LOW')
   assert.equal(activity(100).status, 'INACTIVE')
-  assert.equal(analyzeCreatorActivity([{ publishedAt: daysAgo(5) }], now).label, 'Données limitées')
+  assert.equal(analyzeCreatorActivity([{ publishedAt: daysAgo(5) }], now).label, 'Publication récente')
   assert.equal(analyzeCreatorActivity([], now).status, 'LIMITED_DATA')
+  assert.equal(isCreatorActive('ACTIVE_HIGH'), true)
+  assert.equal(isCreatorActive('ACTIVE_MEDIUM'), true)
+  assert.equal(isCreatorActive('ACTIVE_LOW'), true)
+  assert.equal(isCreatorActive('INACTIVE'), false)
+  assert.equal(isCreatorActive('LIMITED_DATA'), false)
   assert.equal(activity(10).videosLast30Days, 3)
   assert.equal(activity(10).medianPublishIntervalDays, 7)
 })
@@ -2149,15 +2163,15 @@ test('inactive creators are filtered and cannot keep an excellent Prospect Score
   assert.deepEqual(filtered.map(channel => channel.id), ['fresh'])
 })
 
-test('visible product copy uses MediaMaker and contains no Graphiste wording', () => {
+test('visible product copy uses MiniMaker and contains no legacy target wording', () => {
   const visibleFiles = [
     ...fs.readdirSync('app', { recursive: true }).filter(file => /\.(tsx|ts)$/.test(file)).map(file => `app/${file}`),
     ...fs.readdirSync('components', { recursive: true }).filter(file => /\.(tsx|ts)$/.test(file)).map(file => `components/${file}`),
     ...fs.readdirSync('docs', { recursive: true }).filter(file => /\.md$/.test(file)).map(file => `docs/${file}`),
   ]
   const copy = visibleFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n')
-  assert.doesNotMatch(copy, /graphistes?/i)
-  assert.match(fs.readFileSync('app/LandingPage.tsx', 'utf8'), /MediaMakers/)
+  assert.doesNotMatch(copy, /graphistes?|mediamakers?/i)
+  assert.match(fs.readFileSync('app/LandingPage.tsx', 'utf8'), /MiniMakers et monteurs vidéo/)
 })
 
 test('Gmail OAuth diagnostics and replay handling do not leak secrets', () => {
@@ -2243,10 +2257,10 @@ test('landing page matches current free and Pro product limits without AI promis
   assert.match(landing, /campagne d’essai/)
   assert.match(landing, /brouillons Gmail/)
   assert.match(landing, /ne sont pas garanties/)
-  assert.match(landing, /<h1>ProspectTube aide les MediaMakers à trouver des créateurs YouTube pertinents\.<\/h1>/)
-  assert.match(landing, /Analysez les informations publiques disponibles sur leurs chaînes/)
-  assert.match(landing, /identifiez leurs contacts publics et préparez vos campagnes de prospection commerciale/)
-  assert.match(metadata, /ProspectTube aide les MediaMakers à identifier des créateurs YouTube pertinents/)
+  assert.match(landing, /<h1>ProspectTube aide les MiniMakers et monteurs vidéo à trouver des YouTubers actifs à prospecter\.<\/h1>/)
+  assert.match(landing, /analysez leur activité et leurs performances publiques/)
+  assert.match(landing, /identifiez les coordonnées qu’elles publient pour organiser votre prospection/)
+  assert.match(metadata, /MiniMakers et monteurs vidéo/)
   assert.doesNotMatch(landing, /message.? IA|grâce à l’IA|recherches? illimité/i)
   assert.doesNotMatch(`${landing}\n${metadata}`, /9,90|9\.90|emails? garantis?|résultats? garantis?/i)
 })
@@ -2275,6 +2289,25 @@ test('landing production polish keeps honest CTAs, responsive structure and lega
   for (const path of ['/mentions-legales', '/privacy', '/terms', '/remboursement']) {
     assert.match(footer, new RegExp(path.replace('/', '\\/')))
   }
+})
+
+test('all upgrade discovery paths lead to the dedicated Pro page before Stripe', () => {
+  const landing = fs.readFileSync('app/LandingPage.tsx', 'utf8')
+  const subscriptionButton = fs.readFileSync('components/SubscriptionButton.tsx', 'utf8')
+  const dashboard = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
+  const proPage = fs.readFileSync('app/pro/page.tsx', 'utf8')
+  const proCheckout = fs.readFileSync('app/pro/ProCheckoutButton.tsx', 'utf8')
+  const sitemap = fs.readFileSync('app/sitemap.ts', 'utf8')
+
+  assert.match(landing, /router\.push\('\/pro'\)/)
+  assert.match(subscriptionButton, /router\.push\('\/pro'\)/)
+  assert.match(dashboard, /href="\/pro"/)
+  assert.doesNotMatch(`${landing}\n${subscriptionButton}\n${dashboard}`, /api\/stripe\/checkout/)
+  assert.match(proCheckout, /api\/stripe\/checkout/)
+  assert.match(proCheckout, /Passer à Pro — 4,90 €\/mois/)
+  assert.match(proPage, /MiniMakers et monteurs vidéo/)
+  assert.match(proPage, /aucun envoi automatique|uniquement les brouillons Gmail que vous choisissez/i)
+  assert.match(sitemap, /path: '\/pro'/)
 })
 
 test('public legal pages accurately disclose the Gmail OAuth integration', () => {
@@ -2310,11 +2343,11 @@ test('public Google OAuth branding uses one canonical ProspectTube identity', ()
   const sitemap = fs.readFileSync('app/sitemap.ts', 'utf8')
   const publicCopy = [landing, page, privacy, terms, footer].join('\n')
 
-  assert.match(landing, /ProspectTube — Prospection YouTube pour MediaMakers/)
-  assert.match(landing, /<h1>ProspectTube aide les MediaMakers à trouver des créateurs YouTube pertinents\.<\/h1>/)
-  assert.match(landing, /informations publiques disponibles sur leurs chaînes/)
-  assert.match(landing, /identifiez leurs contacts publics/)
-  assert.match(landing, /campagnes de prospection commerciale/)
+  assert.match(page, /ProspectTube — Prospection YouTube pour MiniMakers et monteurs vidéo/)
+  assert.match(landing, /<h1>ProspectTube aide les MiniMakers et monteurs vidéo à trouver des YouTubers actifs à prospecter\.<\/h1>/)
+  assert.match(landing, /performances publiques/)
+  assert.match(landing, /coordonnées qu’elles publient/)
+  assert.match(landing, /organiser votre prospection/)
   assert.match(landing, /ProspectTube utilise Gmail uniquement pour préparer et créer les brouillons/)
   assert.match(landing, /sans envoi automatique/)
   assert.match(layout, /applicationName: 'ProspectTube'/)

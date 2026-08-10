@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'ProspectTube',
     short_name: 'ProspectTube',
     description:
-      'Trouvez et organisez des créateurs YouTube grâce à des signaux publics et des campagnes avec brouillons Gmail.',
+      'ProspectTube aide les MiniMakers et monteurs vidéo à trouver des créateurs YouTube actifs et organiser leur prospection.',
     start_url: '/',
     display: 'standalone',
     background_color: '#0A0812',
