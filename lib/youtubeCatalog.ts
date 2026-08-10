@@ -1,4 +1,4 @@
-import { calculateProspectScore } from './prospectScoring'
+import { calculateProspectScore, isCreatorActive } from './prospectScoring'
 import type { SearchTarget } from './searchTargeting'
 import type { QueryVariantPerformance } from './discoveryVariants'
 import type { CatalogCoverage } from './catalogCoverage'
@@ -62,7 +62,7 @@ export function filterYouTubeCatalog(
       }
     })
     .filter(channel => Number.isFinite(Number(channel?.subsNum)) && channel.subsNum >= subsMin && channel.subsNum <= subsMax)
-    .filter(channel => channel.activityStatus !== 'INACTIVE')
+    .filter(channel => isCreatorActive(channel.activityStatus))
     .filter(channel => !target || Number(channel.contentRelevance || 0) >= 10)
   const hasSpecificTarget = Boolean(target && (target.subNiches.length || target.customKeyword))
   const strict = hasSpecificTarget ? qualified.filter(channel => Number(channel.subnicheMatch || 0) >= 25) : qualified

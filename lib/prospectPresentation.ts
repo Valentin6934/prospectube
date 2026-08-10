@@ -27,8 +27,12 @@ export type ProspectPresentationInput = {
   channelCreatedAt?: string | null
   recentMedianViews?: number | null
   publishingFrequency?: string | null
+  activityStatus?: 'ACTIVE_HIGH' | 'ACTIVE_MEDIUM' | 'ACTIVE_LOW' | 'INACTIVE' | 'LIMITED_DATA' | null
   activityLabel?: string | null
   videosLast30Days?: number | null
+  videosLast90Days?: number | null
+  medianPublishIntervalDays?: number | null
+  lastPublishedAt?: string | null
   contactability?: string | null
   contentRelevance?: number | null
   detectedLanguage?: string | null
@@ -53,6 +57,8 @@ export type ProspectPresentationData = {
   score: number
   scoreLabel: string
   scoreReason: string
+  activityLabel: string | null
+  activityColor: string
   stats: string[]
   contacts: ProspectPresentationContact[]
   youtubeUrl: string | null
@@ -102,12 +108,31 @@ export function getProspectImageUrl(channel: ProspectPresentationInput): string 
   return null
 }
 
+export function formatProspectLastPublication(value?: string | null, now = new Date()): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  const days = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 86400000))
+  if (days === 0) return "Dernière vidéo aujourd’hui"
+  if (days === 1) return 'Dernière vidéo hier'
+  return `Dernière vidéo il y a ${days} j`
+}
+
+function getActivityColor(status?: ProspectPresentationInput['activityStatus']): string {
+  if (status === 'ACTIVE_HIGH' || status === 'ACTIVE_MEDIUM') return '#67d9a1'
+  if (status === 'ACTIVE_LOW') return '#f2c66d'
+  if (status === 'INACTIVE') return '#f87171'
+  return '#8f8899'
+}
+
 export function normalizeProspectPresentation(channel: ProspectPresentationInput): ProspectPresentationData {
   const name = channel.name || 'Chaine inconnue'
   const createdYear = getProspectCreatedYear(channel)
   const subs = channel.subs || `${formatProspectCompactNumber(channel.subsNum)} abonnes`
   const views = channel.totalViewsFormatted || `${formatProspectCompactNumber(channel.totalViews ?? channel.viewCount)} vues`
   const videos = channel.videoCountFormatted || `${formatProspectCompactNumber(channel.videoCount)} videos`
+  const lastPublication = formatProspectLastPublication(channel.lastPublishedAt)
+  const activityLabel = channel.activityLabel || channel.publishingFrequency || null
 
   const contacts = [
     channel.email ? {
@@ -130,7 +155,9 @@ export function normalizeProspectPresentation(channel: ProspectPresentationInput
     score: channel.score || 0,
     scoreLabel: channel.scoreLabel || 'Score inconnu',
     scoreReason: channel.scoreReason || 'Aucune analyse disponible.',
-    stats: [subs, channel.recentMedianViews ? `${formatProspectCompactNumber(channel.recentMedianViews)} vues médianes` : views, channel.activityLabel || channel.publishingFrequency || videos, Number(channel.videosLast30Days) > 0 ? `${channel.videosLast30Days} vidéo${channel.videosLast30Days === 1 ? '' : 's'} / 30 j` : !channel.activityLabel && !channel.publishingFrequency && createdYear ? `cree en ${createdYear}` : null].filter(Boolean) as string[],
+    activityLabel,
+    activityColor: getActivityColor(channel.activityStatus),
+    stats: [subs, channel.recentMedianViews ? `${formatProspectCompactNumber(channel.recentMedianViews)} vues médianes` : views, lastPublication, Number(channel.videosLast30Days) > 0 ? `${channel.videosLast30Days} vidéo${channel.videosLast30Days === 1 ? '' : 's'} sur 30 j` : videos, !lastPublication && createdYear ? `créée en ${createdYear}` : null].filter(Boolean) as string[],
     contacts,
     youtubeUrl: isHttpUrl(channel.channelUrl) ? channel.channelUrl || null : null,
   }

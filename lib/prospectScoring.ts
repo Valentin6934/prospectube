@@ -3,9 +3,15 @@ import { getNicheVocabulary, getSubnicheVocabulary, normalizeTargetText, type Se
 export type RecentVideo = { title?: string; description?: string; publishedAt?: string; viewCount?: number; likeCount?: number; commentCount?: number; categoryId?: string; defaultLanguage?: string; durationSeconds?: number }
 export type CreatorActivityStatus = 'ACTIVE_HIGH' | 'ACTIVE_MEDIUM' | 'ACTIVE_LOW' | 'INACTIVE' | 'LIMITED_DATA'
 
+export const ACTIVE_CREATOR_STATUSES: CreatorActivityStatus[] = ['ACTIVE_HIGH', 'ACTIVE_MEDIUM', 'ACTIVE_LOW']
+
+export function isCreatorActive(status?: CreatorActivityStatus | null): boolean {
+  return Boolean(status && ACTIVE_CREATOR_STATUSES.includes(status))
+}
+
 export type CreatorActivity = {
   status: CreatorActivityStatus
-  label: 'Très active' | 'Active' | 'Régulière' | 'Peu active' | 'Inactive' | 'Données limitées'
+  label: 'Très active' | 'Active' | 'Régulière' | 'Peu active' | 'Publication récente' | 'Inactive' | 'Données limitées'
   lastPublishedAt: string | null
   ageDays: number | null
   videosLast30Days: number
@@ -130,6 +136,7 @@ export function analyzeCreatorActivity(videos: RecentVideo[], now = new Date()):
   let label: CreatorActivity['label'] = 'Données limitées'
 
   if (status === 'INACTIVE') label = 'Inactive'
+  else if (!hasFrequencyData) label = 'Publication récente'
   else if (hasFrequencyData && (videosLast30Days >= 4 || Number(medianPublishIntervalDays) <= 8)) label = 'Très active'
   else if (hasFrequencyData && (videosLast90Days >= 6 || Number(medianPublishIntervalDays) <= 16)) label = 'Active'
   else if (hasFrequencyData && (videosLast90Days >= 3 || Number(medianPublishIntervalDays) <= 35)) label = 'Régulière'
