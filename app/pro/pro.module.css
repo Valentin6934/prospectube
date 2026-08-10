@@ -1,0 +1,105 @@
+.page {
+  min-height: 100vh;
+  background: #0a0812;
+  color: #f4f1fa;
+  padding-bottom: 5rem;
+}
+
+.nav {
+  width: min(1180px, calc(100% - 40px));
+  min-height: 72px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.logo { color: #f4f1fa; font-size: 1.15rem; font-weight: 850; text-decoration: none; }
+.logo span { color: #a78bfa; }
+.backLink { color: #bbb2cf; text-decoration: none; font-size: 0.9rem; font-weight: 700; }
+.backLink:hover { color: #fff; }
+
+.hero {
+  width: min(920px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 7rem 0 6rem;
+  text-align: center;
+}
+
+.eyebrow, .sectionHeading p {
+  margin: 0 0 1rem;
+  color: #a78bfa;
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.hero h1 {
+  max-width: 850px;
+  margin: 0 auto;
+  font-size: clamp(2.6rem, 7vw, 5.6rem);
+  line-height: 0.98;
+  letter-spacing: 0;
+}
+
+.lead { max-width: 720px; margin: 1.6rem auto 0; color: #bbb2cf; font-size: 1.08rem; line-height: 1.75; }
+.priceLine { display: flex; justify-content: center; align-items: baseline; gap: 0.5rem; margin-top: 2rem; }
+.priceLine strong { font-size: 2.2rem; }
+.priceLine span, .billingNote { color: #8f86aa; }
+.billingNote { margin: 0.45rem 0 1.2rem; font-size: 0.82rem; }
+.checkoutArea { display: flex; flex-direction: column; align-items: center; }
+
+.checkoutButton {
+  min-height: 50px;
+  padding: 0.8rem 1.35rem;
+  border: 1px solid #8b5cf6;
+  border-radius: 8px;
+  background: #7c3aed;
+  color: white;
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease;
+}
+.checkoutButton:hover:not(:disabled) { background: #8b5cf6; transform: translateY(-1px); }
+.checkoutButton:disabled { opacity: 0.65; cursor: wait; }
+.checkoutButton:focus-visible, .backLink:focus-visible, .logo:focus-visible { outline: 3px solid #c4b5fd; outline-offset: 4px; }
+.error { margin: 0.7rem 0 0; color: #fca5a5; font-size: 0.85rem; }
+
+.comparison { width: min(1080px, calc(100% - 40px)); margin: 0 auto; padding: 5rem 0; border-top: 1px solid rgba(255,255,255,0.09); }
+.sectionHeading { max-width: 680px; margin-bottom: 2rem; }
+.sectionHeading h2 { margin: 0; font-size: clamp(1.8rem, 4vw, 3rem); line-height: 1.08; }
+.tableWrap { overflow-x: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; }
+.tableWrap table { width: 100%; border-collapse: collapse; min-width: 640px; }
+.tableWrap th, .tableWrap td { padding: 1rem 1.2rem; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.tableWrap thead th { color: #8f86aa; font-size: 0.75rem; text-transform: uppercase; }
+.tableWrap tbody th { color: #f4f1fa; font-size: 0.9rem; }
+.tableWrap td { color: #bbb2cf; font-size: 0.88rem; }
+.tableWrap td:last-child { color: #ddd6fe; background: rgba(124,58,237,0.08); }
+.tableWrap tr:last-child > * { border-bottom: 0; }
+
+.workflow { width: min(1080px, calc(100% - 40px)); margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid rgba(255,255,255,0.09); border-bottom: 1px solid rgba(255,255,255,0.09); }
+.workflow > div { padding: 3rem 2rem; border-right: 1px solid rgba(255,255,255,0.09); }
+.workflow > div:last-child { border-right: 0; }
+.workflow span { color: #a78bfa; font-size: 0.75rem; font-weight: 850; }
+.workflow h2 { margin: 1rem 0 0.7rem; font-size: 1.2rem; }
+.workflow p { margin: 0; color: #978da9; line-height: 1.65; font-size: 0.9rem; }
+
+.finalCta { width: min(1080px, calc(100% - 40px)); margin: 5rem auto 0; display: flex; align-items: center; justify-content: space-between; gap: 2rem; }
+.finalCta p { margin: 0 0 0.5rem; color: #a78bfa; font-weight: 800; }
+.finalCta h2 { margin: 0; font-size: clamp(1.6rem, 4vw, 2.8rem); }
+
+@media (max-width: 760px) {
+  .hero { padding: 5rem 0 4rem; }
+  .workflow { grid-template-columns: 1fr; }
+  .workflow > div { padding: 2rem 0; border-right: 0; border-bottom: 1px solid rgba(255,255,255,0.09); }
+  .workflow > div:last-child { border-bottom: 0; }
+  .finalCta { align-items: stretch; flex-direction: column; }
+  .finalCta .checkoutArea, .finalCta .checkoutButton { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkoutButton { transition: none; }
+}

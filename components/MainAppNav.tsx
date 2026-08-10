@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import HomeSignOutButton from './HomeSignOutButton'
 import styles from '@/app/dashboard/home/home.module.css'
+import { isPro } from '@/lib/plan'
 
 type MainAppNavProps = {
   plan: string
@@ -9,7 +10,7 @@ type MainAppNavProps = {
 
 export default function MainAppNav({ plan, active }: MainAppNavProps) {
   return (
-    <nav className={styles.nav}>
+    <nav className={styles.nav} aria-label="Navigation principale">
       <div className={styles.navInner}>
         <Link href="/dashboard/home" className={styles.logo}>
           Prospect<span>Tube</span>
@@ -23,7 +24,9 @@ export default function MainAppNav({ plan, active }: MainAppNavProps) {
           </div>
           <Link href="/dashboard" className={styles.searchButton} aria-current={active === 'search' ? 'page' : undefined}>🔍 Nouvelle recherche</Link>
           <Link href="/settings" className={styles.settingsLink} aria-current={active === 'settings' ? 'page' : undefined}>⚙️ Paramètres</Link>
-          <span className={styles.planBadge}>⭐ Plan {plan}</span>
+          {isPro(plan)
+            ? <span className={styles.planBadge}>Plan Pro</span>
+            : <Link href="/pro" className={styles.planBadge}>Découvrir Pro</Link>}
           <HomeSignOutButton className={styles.signOut} />
         </div>
       </div>

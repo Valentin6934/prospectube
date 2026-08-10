@@ -254,7 +254,6 @@
 .priceCard li { position: relative; padding: .34rem 0 .34rem 1.1rem; color: #bbb5c2; font-size: .76rem; }
 .priceCard li::before { content: '✓'; position: absolute; left: 0; color: var(--green); font-weight: 800; }
 .pricePrimary, .priceSecondary { width: 100%; margin-top: 1rem; padding: .7rem 1rem; font-size: .78rem; }
-.checkoutError { margin-top: .6rem; color: #f38b8b; font-size: .7rem; }
 
 .faqSection { border-block: 1px solid var(--border); background: #0d0b12; }
 .faqList { width: min(860px,100%); display: grid; gap: .5rem; }

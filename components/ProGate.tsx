@@ -15,9 +15,9 @@ type ProGateProps = {
 
 const contextCopy: Record<ProGateContext, { title: string; intro: string }> = {
   default: {
-    title: 'Débloquez toute la puissance de ProspectTube',
+    title: 'Prospectez régulièrement avec ProspectTube Pro',
     intro:
-      'ProspectTube Pro centralise la recherche, l’organisation et la préparation de vos prises de contact pour transformer YouTube en vrai canal de prospection.',
+      'ProspectTube Pro augmente votre capacité de recherche et de campagne pour organiser une prospection YouTube régulière.',
   },
   campaigns: {
     title: 'Passez à des campagnes régulières avec Pro',
@@ -25,9 +25,9 @@ const contextCopy: Record<ProGateContext, { title: string; intro: string }> = {
       'Après votre campagne d’essai, créez de nouvelles campagnes et ajoutez davantage de prospects avec le Plan Pro.',
   },
   ai: {
-    title: 'Générez des emails personnalisés avec ProspectTube Pro',
+    title: 'Préparez vos prises de contact avec ProspectTube Pro',
     intro:
-      'Passez moins de temps à écrire à la main et obtenez des objets et messages adaptés à chaque créateur sélectionné.',
+      'Préparez des objets et messages adaptés à chaque créateur sélectionné, puis gardez la main avant tout envoi.',
   },
   export: {
     title: 'Exportez vos prospects avec ProspectTube Pro',
@@ -47,8 +47,8 @@ const benefits = [
     text: 'Lancez jusqu’à cinq recherches par jour, avec réinitialisation à minuit UTC.',
   },
   {
-    title: 'Intelligence artificielle',
-    text: 'Générez des objets et des emails personnalisés adaptés à chaque créateur.',
+    title: 'Messages préparés',
+    text: 'Préparez des objets et messages adaptés à chaque créateur avant de les relire.',
   },
   {
     title: 'Campagnes',
@@ -109,8 +109,8 @@ export default function ProGate({
             <p style={{ margin: '0 0 0.65rem' }}>{description || copy.intro}</p>
             {!compact && (
               <p style={{ margin: 0 }}>
-                Réduisez le temps passé à chercher manuellement, trouvez davantage de prospects qualifiés,
-                générez vos emails personnalisés et centralisez votre prospection dans un seul outil.
+                Réduisez le temps passé à chercher manuellement, trouvez davantage de prospects actifs
+                et centralisez votre prospection dans un seul outil.
               </p>
             )}
           </div>

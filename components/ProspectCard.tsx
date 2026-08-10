@@ -224,7 +224,7 @@ export default function ProspectCard({
         )}
         {onGenerateEmail && (
           <button onClick={() => onGenerateEmail(channel)} disabled={!canEmail} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: canEmail ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 700 }}>
-            {canEmail ? 'Message IA' : 'IA Pro'}
+            {canEmail ? 'Préparer un message' : 'Message Pro'}
           </button>
         )}
         <button onClick={openCampaignPicker} style={{ background: 'rgba(83,58,183,0.14)', color: '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>

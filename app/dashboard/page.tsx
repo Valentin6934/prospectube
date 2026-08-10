@@ -515,10 +515,8 @@ export default function Dashboard() {
         </section>
         {isFree(plan) && (
           <div style={{ background: 'rgba(83,58,183,0.15)', border: '1px solid rgba(83,58,183,0.4)', borderRadius: '12px', padding: '1rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-            <p style={{ color: '#a78bfa', fontSize: '0.9rem' }}>🔒 Passe au plan Pro pour débloquer Instagram, TikTok, Twitch, site web, messages IA, export CSV et plus de résultats</p>
-            <Link href="/#pricing">
-              <Link href="/dashboard/home" className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem', textDecoration: 'none' }}>Passer Pro — 4,90 €/mois</Link>
-            </Link>
+            <p style={{ color: '#a78bfa', fontSize: '0.9rem' }}>Passez à Pro pour obtenir 5 recherches par jour, organiser davantage de campagnes et exporter vos prospects.</p>
+            <Link href="/pro" className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem', textDecoration: 'none' }}>Découvrir le Plan Pro</Link>
           </div>
         )}
 
@@ -698,7 +696,7 @@ export default function Dashboard() {
                             {favoriteIds.includes(ch.id) ? '⭐ Favori' : favoriteLoadingId === ch.id ? 'Ajout...' : '☆ Favori'}
                           </button>
                           <button onClick={() => generateEmail(ch)} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: canEmail ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 700 }}>
-                            {canEmail ? '✨ Message IA' : '🔒 IA Pro'}
+                            {canEmail ? 'Préparer un message' : 'Message Pro'}
                           </button>
                           <button onClick={() => addToCampaign(ch)} style={{ background: 'rgba(83,58,183,0.14)', color: '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
                             Ajouter à campagne
@@ -884,7 +882,7 @@ export default function Dashboard() {
                       {favoriteIds.includes(ch.id) ? '⭐ Favori ajouté' : favoriteLoadingId === ch.id ? 'Ajout...' : '☆ Ajouter aux favoris'}
                     </button>
                     <button onClick={() => generateEmail(ch)} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.82rem', cursor: canEmail ? 'pointer' : 'not-allowed', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                      {canEmail ? '✨ Message IA' : '🔒 IA Pro'}
+                      {canEmail ? 'Préparer un message' : 'Message Pro'}
                     </button>
                   </div>
                 </div>
@@ -968,12 +966,12 @@ export default function Dashboard() {
         <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
           <div className="card modal-panel" role="dialog" aria-modal="true" aria-labelledby="email-modal-title" style={{ width: '100%', maxWidth: '560px', padding: '1.75rem', position: 'relative' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 id="email-modal-title" className="font-display" style={{ fontWeight: 700 }}>Message généré par IA ✨</h3>
+              <h3 id="email-modal-title" className="font-display" style={{ fontWeight: 700 }}>Message préparé</h3>
               <button aria-label="Fermer la fenêtre" onClick={() => { setEmailModal(null); setEmailData(null); setSendStatus('') }} style={{ background: 'none', border: 'none', color: '#A89FCC', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
             </div>
 
             {emailLoading ? (
-              <AppLoader text="Génération du message par IA..." fullScreen={false} />
+              <AppLoader text="Préparation du message..." fullScreen={false} />
             ) : emailData ? (
               <>
                 <div style={{ background: 'rgba(83,58,183,0.08)', border: '1px solid rgba(83,58,183,0.2)', borderRadius: '10px', padding: '1.25rem', marginBottom: '1rem' }}>
