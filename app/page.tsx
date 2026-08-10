@@ -10,6 +10,9 @@ export const metadata: Metadata = {
     absolute: title,
   },
   description,
+  alternates: {
+    canonical: '/',
+  },
   keywords: ['prospection YouTube', 'créateurs YouTube', 'emails créateurs', 'campagnes influenceurs'],
   openGraph: {
     title,

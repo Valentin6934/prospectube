@@ -4,6 +4,9 @@ import LegalPage from '@/components/LegalPage'
 export const metadata: Metadata = {
   title: 'Politique de confidentialité',
   description: 'Politique de confidentialité de ProspectTube, notamment pour la connexion Google OAuth et la création de brouillons Gmail.',
+  alternates: {
+    canonical: '/privacy',
+  },
 }
 
 export default function PrivacyPage() {

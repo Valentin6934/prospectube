@@ -19,7 +19,8 @@ const spaceGrotesk = Space_Grotesk({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://prospectube.vercel.app'),
+  metadataBase: new URL('https://www.prospectube.fr'),
+  applicationName: 'ProspectTube',
   title: {
     default: 'ProspectTube',
     template: '%s | ProspectTube',

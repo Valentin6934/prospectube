@@ -4,6 +4,9 @@ import LegalPage from '@/components/LegalPage'
 export const metadata: Metadata = {
   title: 'Conditions d’utilisation',
   description: 'Conditions d’utilisation de ProspectTube et de son intégration Gmail.',
+  alternates: {
+    canonical: '/terms',
+  },
 }
 
 export default function TermsPage() {
