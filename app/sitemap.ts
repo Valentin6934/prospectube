@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next'
 
-const baseUrl = 'https://prospectube.vercel.app'
+const baseUrl = 'https://www.prospectube.fr'
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const routes = [

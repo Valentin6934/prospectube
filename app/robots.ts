@@ -7,7 +7,7 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: ['/api/', '/dashboard/', '/favorites', '/history', '/campaigns', '/settings'],
     },
-    sitemap: 'https://prospectube.vercel.app/sitemap.xml',
-    host: 'https://prospectube.vercel.app',
+    sitemap: 'https://www.prospectube.fr/sitemap.xml',
+    host: 'https://www.prospectube.fr',
   }
 }

@@ -112,10 +112,10 @@ export default function LandingPage() {
         <div className={styles.heroGrid} aria-hidden="true" />
         <div className={styles.heroInner}>
           <div className={styles.heroCopy}>
-            <div className={styles.eyebrow}><span /> Prospection YouTube pour monteurs et créatifs</div>
+            <div className={styles.eyebrow}><span /> ProspectTube — Prospection YouTube pour MediaMakers</div>
             <h1>ProspectTube aide les MediaMakers à trouver des créateurs YouTube pertinents.</h1>
             <p>
-              Analysez les informations publiques disponibles sur leurs chaînes, identifiez leurs contacts publics et préparez vos campagnes de prospection commerciale.
+              Analysez les informations publiques disponibles sur leurs chaînes, identifiez leurs contacts publics et préparez vos campagnes de prospection commerciale. La connexion Google est facultative : ProspectTube utilise Gmail uniquement pour préparer et créer les brouillons que vous choisissez, sans envoi automatique.
             </p>
             <div className={styles.heroActions}>
               <button onClick={startFree} className={styles.primaryButton}>Trouver mes premiers prospects</button>
