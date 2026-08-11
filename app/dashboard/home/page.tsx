@@ -1,4 +1,3 @@
-import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getServerSession } from 'next-auth'
@@ -6,7 +5,6 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getPlanName, isPro } from '@/lib/plan'
 import MainAppNav from '@/components/MainAppNav'
-import SubscriptionButton from '@/components/SubscriptionButton'
 import LegalFooter from '@/components/LegalFooter'
 import styles from './home.module.css'
 
@@ -43,11 +41,6 @@ function relativeDate(date: Date) {
   }).format(date)
 }
 
-function goalTargets(plan: string) {
-  if (isPro(plan)) return { prospects: 100, emails: 50, campaigns: 10, drafts: 50 }
-  return { prospects: 10, emails: 5, campaigns: 2, drafts: 5 }
-}
-
 export default async function DashboardHomePage({
   searchParams,
 }: {
@@ -67,10 +60,6 @@ export default async function DashboardHomePage({
     favoriteCount,
     campaignCount,
     campaignProspectCount,
-    favoriteEmailCount,
-    campaignEmailCount,
-    generatedCampaignCount,
-    generatedIndividualCount,
     recentSearches,
     recentFavorites,
     recentCampaigns,
@@ -81,14 +70,6 @@ export default async function DashboardHomePage({
     prisma.favorite.count({ where: { userId: user.id } }),
     prisma.campaign.count({ where: { userId: user.id } }),
     prisma.campaignProspect.count({ where: { campaign: { userId: user.id } } }),
-    prisma.favorite.count({ where: { userId: user.id, email: { not: null } } }),
-    prisma.campaignProspect.count({
-      where: { campaign: { userId: user.id }, email: { not: null } },
-    }),
-    prisma.campaignProspect.count({
-      where: { campaign: { userId: user.id }, generatedBody: { not: null } },
-    }),
-    prisma.emailSent.count({ where: { userId: user.id } }),
     prisma.search.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
@@ -162,10 +143,7 @@ export default async function DashboardHomePage({
     .slice(0, 5)
 
   const savedProspects = favoriteCount + campaignProspectCount
-  const emailsFound = favoriteEmailCount + campaignEmailCount
-  const generatedMessages = generatedCampaignCount + generatedIndividualCount
   const plan = getPlanName(user.plan)
-  const targets = goalTargets(plan)
 
   const stats = [
     { icon: '🔍', label: 'Recherches', value: searchCount, accent: styles.violet },
@@ -175,17 +153,9 @@ export default async function DashboardHomePage({
   ]
 
   const quickActions = [
-    { href: '/dashboard', icon: '🔍', title: 'Nouvelle recherche', text: 'Trouver de nouveaux créateurs' },
     { href: '/favorites', icon: '⭐', title: 'Mes favoris', text: 'Retrouver les prospects retenus' },
     { href: '/campaigns', icon: '📧', title: 'Mes campagnes', text: 'Préparer les prises de contact' },
     { href: '/history', icon: '📁', title: 'Historique', text: 'Revoir les recherches sauvegardées' },
-  ]
-
-  const goals = [
-    { label: 'Prospects sauvegardés', value: savedProspects, target: targets.prospects, color: '#8b5cf6' },
-    { label: 'Emails trouvés', value: emailsFound, target: targets.emails, color: '#22c55e' },
-    { label: 'Campagnes créées', value: campaignCount, target: targets.campaigns, color: '#38bdf8' },
-    { label: 'Messages préparés', value: generatedMessages, target: targets.drafts, color: '#f59e0b' },
   ]
 
   return (
@@ -196,16 +166,13 @@ export default async function DashboardHomePage({
         <header className={styles.welcome}>
           <div>
             <p className={styles.eyebrow}>Vue d’ensemble</p>
-            <h1>Bonjour {firstName(user.name, user.email)} 👋</h1>
-            <p>Voici où en est votre prospection aujourd’hui.</p>
-            <Link href="/dashboard" className={styles.heroSearchButton}>
-              Rechercher des créateurs
-            </Link>
+            <h1>Bonjour {firstName(user.name, user.email)}</h1>
+            <p>Votre prochaine liste de prospects commence par une cible claire.</p>
           </div>
           <div className={styles.currentPlan}>
             <span>Plan actuel</span>
             <strong>{plan}</strong>
-            <SubscriptionButton plan={plan} />
+            {!isPro(plan) && <Link href="/pro">Voir le Plan Pro</Link>}
           </div>
         </header>
 
@@ -229,11 +196,11 @@ export default async function DashboardHomePage({
             </svg>
           </div>
           <div className={styles.searchHeroContent}>
-            <p className={styles.eyebrow}>Action principale</p>
-            <h2 id="new-search-title">Nouvelle recherche</h2>
+            <p className={styles.eyebrow}>Commencer</p>
+            <h2 id="new-search-title">Trouver des créateurs actifs</h2>
             <p>
-              Lancez une prospection YouTube en choisissant une niche, une langue et une taille de chaîne.
-              ProspectTube analyse ensuite les créateurs, contacts et scores.
+              Définissez une niche, une langue et une taille de chaîne. ProspectTube classe ensuite les profils
+              selon leur activité récente et leur potentiel pour vos services.
             </p>
             <div className={styles.searchHeroMeta} aria-label="Filtres disponibles">
               <span>Niche</span>
@@ -242,7 +209,7 @@ export default async function DashboardHomePage({
             </div>
           </div>
           <Link href="/dashboard" className={styles.searchHeroButton}>
-            Rechercher des créateurs
+            Définir ma cible
           </Link>
         </section>
 
@@ -305,46 +272,6 @@ export default async function DashboardHomePage({
           </div>
         </section>
 
-        <section className={styles.lowerGrid}>
-          <div className={styles.goalsPanel}>
-            <div className={styles.sectionHeading}>
-              <div>
-                <p className={styles.eyebrow}>Ce mois-ci</p>
-                <h2>Objectifs</h2>
-              </div>
-            </div>
-            <div className={styles.goalsList}>
-              {goals.map(goal => {
-                const percent = Math.min(100, Math.round((goal.value / goal.target) * 100))
-                return (
-                  <div key={goal.label} className={styles.goal}>
-                    <div className={styles.goalMeta}>
-                      <span>{goal.label}</span>
-                      <strong>{goal.value} / {goal.target}</strong>
-                    </div>
-                    <div className={styles.progressTrack}>
-                      <div
-                        className={styles.progressFill}
-                        style={{ width: `${percent}%`, background: goal.color } as CSSProperties}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          <aside className={styles.tipPanel}>
-            <div className={styles.tipIcon}>💡</div>
-            <p className={styles.eyebrow}>Conseil du jour</p>
-            <h2>Visez les créateurs accessibles</h2>
-            <p>
-              Les chaînes entre 20 000 et 150 000 abonnés répondent généralement plus souvent
-              aux propositions personnalisées.
-            </p>
-            <Link href="/dashboard">Lancer une recherche →</Link>
-          </aside>
-        </section>
       </div>
       <LegalFooter />
     </main>
