@@ -13,8 +13,8 @@ const benefits = [
   ['⌕', 'Moins de temps à chercher'],
   ['↗', 'Des chaînes actives classées par potentiel'],
   ['@', 'Des coordonnées publiques quand elles existent'],
-  ['✓', 'Une campagne prête à organiser'],
-  ['✉', 'Des brouillons Gmail sans quitter ton workflow'],
+  ['✓', 'Une liste plus rapide à évaluer'],
+  ['✉', 'Des prospects prêts à organiser'],
 ]
 
 const steps = [
@@ -59,7 +59,7 @@ const faqs = [
   ['Combien de recherches sont incluses ?', `Le plan Gratuit comprend ${PRODUCT_LIMITS.freeLifetimeSearches} recherches réussies à vie. Le plan Pro comprend ${PRODUCT_LIMITS.proDailySearches} recherches réussies par jour.`],
   ['Est-ce que Gmail envoie les messages automatiquement ?', 'Non. ProspectTube crée uniquement les brouillons que tu as rédigés. Tu gardes la main dans Gmail avant tout envoi.'],
   ['Puis-je annuler mon abonnement ?', 'Oui. Le Plan Pro est sans engagement et peut être annulé depuis le portail Stripe.'],
-  ['À qui s’adresse ProspectTube ?', 'ProspectTube est conçu pour les MiniMakers et les monteurs vidéo qui cherchent des créateurs YouTube actifs à contacter pour proposer leurs services.'],
+  ['À qui s’adresse ProspectTube ?', 'ProspectTube est conçu pour les MiniMakers et monteurs vidéo qui cherchent des YouTubers actifs à prospecter pour proposer leurs services.'],
 ]
 
 export default function LandingPage() {
@@ -99,14 +99,14 @@ export default function LandingPage() {
         <div className={styles.heroGrid} aria-hidden="true" />
         <div className={styles.heroInner}>
           <div className={styles.heroCopy}>
-            <div className={styles.eyebrow}><span /> Pour MiniMakers et monteurs vidéo</div>
+            <div className={styles.eyebrow}><span /> Pour les MiniMakers et monteurs vidéo</div>
             <h1>ProspectTube aide les MiniMakers et monteurs vidéo à trouver des YouTubers actifs à prospecter.</h1>
             <p>
-              Repérez les chaînes pertinentes, analysez leur activité et leurs performances publiques, puis identifiez les coordonnées qu’elles publient pour organiser votre prospection. La connexion Google est facultative : ProspectTube utilise Gmail uniquement pour préparer et créer les brouillons que vous choisissez, sans envoi automatique.
+              Ne perdez plus des heures à chercher manuellement des chaînes inactives ou peu pertinentes. ProspectTube analyse les informations publiques, classe les YouTubers selon leur activité et vous aide à organiser une liste de prospects plus rapide à évaluer.
             </p>
             <div className={styles.heroActions}>
-              <button onClick={startFree} className={styles.primaryButton}>Trouver des créateurs actifs</button>
-              <a href="#comment-ca-marche" className={styles.secondaryButton}>Découvrir ProspectTube</a>
+              <button onClick={startFree} className={styles.primaryButton}>Commencer une recherche</button>
+              <a href="#comment-ca-marche" className={styles.secondaryButton}>Voir comment ça marche</a>
             </div>
             <div className={styles.heroNote}>3 recherches gratuites <i /> 1 campagne d’essai <i /> sans carte bancaire</div>
           </div>
@@ -134,8 +134,8 @@ export default function LandingPage() {
       <section id="comment-ca-marche" className={styles.section}>
         <div className={styles.sectionInner}>
           <div className={styles.sectionHeading}>
-            <span>Un workflow simple</span>
-            <h2>De votre spécialité à une liste de créateurs à contacter.</h2>
+            <span>Un parcours simple</span>
+            <h2>De votre spécialité à une liste de YouTubers à prospecter.</h2>
             <p>Vous gardez le contrôle sur la cible, les contacts retenus et chaque brouillon Gmail.</p>
           </div>
           <div className={styles.stepGrid}>
@@ -201,7 +201,7 @@ export default function LandingPage() {
           <div className={styles.showcaseCopy}>
             <span className={styles.kicker}>Campagnes</span>
             <h2>Prépare ta prospection sans perdre le contrôle du message.</h2>
-            <p>Ajoute les prospects sélectionnés, personnalise chaque message, connecte Gmail et crée les brouillons lorsque tout est prêt.</p>
+            <p>Ajoute les prospects sélectionnés et personnalise chaque message. La connexion Google reste facultative : ProspectTube utilise Gmail uniquement pour créer les brouillons que tu choisis.</p>
             <ol className={styles.workflowList}><li><span>1</span>Ajouter les prospects</li><li><span>2</span>Personnaliser les messages</li><li><span>3</span>Créer les brouillons Gmail</li><li><span>4</span>Suivre l’organisation de la campagne</li></ol>
             <p className={styles.highlightText}>Aucun envoi automatique : tu relis et envoies depuis Gmail.</p>
           </div>
@@ -210,10 +210,10 @@ export default function LandingPage() {
 
       <section id="tarifs" className={styles.section}>
         <div className={styles.sectionInner}>
-          <div className={`${styles.sectionHeading} ${styles.centerHeading}`}><span>Tarifs clairs</span><h2>Commence gratuitement. Passe Pro quand ton workflow est prêt.</h2></div>
+          <div className={`${styles.sectionHeading} ${styles.centerHeading}`}><span>Tarifs clairs</span><h2>Commence gratuitement. Passe Pro quand tu prospectes régulièrement.</h2></div>
           <div className={styles.pricingGrid}>
             <article className={styles.priceCard}>
-              <div className={styles.priceName}>Gratuit</div><div className={styles.price}><strong>0 €</strong><span>/mois</span></div><p>Pour tester ton premier workflow de prospection.</p>
+              <div className={styles.priceName}>Gratuit</div><div className={styles.price}><strong>0 €</strong><span>/mois</span></div><p>Pour tester ta première recherche et organiser tes premiers prospects.</p>
               <ul><li>{PRODUCT_LIMITS.freeLifetimeSearches} recherches réussies à vie</li><li>{PRODUCT_LIMITS.freeCampaigns} campagne d’essai</li><li>Jusqu’à {PRODUCT_LIMITS.freeCampaignProspects} prospects</li><li>Favoris et historique</li><li>Aucun paiement requis</li></ul>
               <button onClick={startFree} className={styles.priceSecondary}>Tester gratuitement</button>
             </article>
@@ -235,7 +235,7 @@ export default function LandingPage() {
 
       <section className={styles.finalCta}>
         <div><span>3 recherches gratuites · sans carte bancaire</span><h2>Transforme ta prochaine recherche YouTube en liste de prospection claire.</h2></div>
-        <button onClick={startFree} className={styles.primaryButton}>Trouver mes premiers prospects</button>
+        <button onClick={startFree} className={styles.primaryButton}>Essayer ProspectTube</button>
       </section>
 
       <p className={styles.publicDataNote}>ProspectTube analyse des données publiques. Les coordonnées et opportunités ne sont pas garanties.</p>

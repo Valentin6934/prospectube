@@ -109,7 +109,7 @@ export default function ProspectCard({
   const [campaignLoading, setCampaignLoading] = useState(false)
   const [campaignError, setCampaignError] = useState('')
   const [newCampaignName, setNewCampaignName] = useState('')
-  const name = channel.name || 'Chaine inconnue'
+  const name = channel.name || 'Chaîne inconnue'
   const channelId = channel.channelId || channel.id || ''
   const actionColumns = showRemoveButton ? 3 : showFavoriteButton && onGenerateEmail ? 4 : 3
 
@@ -119,7 +119,7 @@ export default function ProspectCard({
       return
     }
 
-    if (!channelId) return showToast('Cette chaine ne peut pas etre ajoutee.', 'error')
+    if (!channelId) return showToast('Cette chaîne ne peut pas être ajoutée.', 'error')
 
     setCampaignModalOpen(true)
     setCampaignError('')
@@ -142,7 +142,7 @@ export default function ProspectCard({
   }
 
   const addToCampaign = async (campaignId: string | 'new') => {
-    if (!channelId) return showToast('Cette chaine ne peut pas etre ajoutee.', 'error')
+    if (!channelId) return showToast('Cette chaîne ne peut pas être ajoutée.', 'error')
 
     setCampaignLoading(true)
     setCampaignError('')
@@ -152,7 +152,7 @@ export default function ProspectCard({
       const campaignName = newCampaignName.trim()
       if (!campaignName) {
         setCampaignLoading(false)
-        setCampaignError('Nom de campagne requis.')
+        setCampaignError('Le nom de la campagne est requis.')
         return
       }
 
@@ -169,17 +169,17 @@ export default function ProspectCard({
           setUpgradeOpen(true)
           return
         }
-        setCampaignError(createData.error || 'Impossible de creer la campagne.')
+        setCampaignError(createData.error || 'Impossible de créer la campagne.')
         return
       }
       const createdCampaignId = getCampaignIdFromCreateResponse(createData)
       if (!createdCampaignId) {
         setCampaignLoading(false)
-        setCampaignError("La campagne a ete creee, mais son identifiant est introuvable.")
+        setCampaignError("La campagne a été créée, mais son identifiant est introuvable.")
         return
       }
       targetCampaignId = createdCampaignId
-      showToast('Campagne creee')
+      showToast('Campagne créée')
     }
 
     const addRes = await fetch(`/api/campaigns/${targetCampaignId}/prospects`, {
@@ -195,14 +195,14 @@ export default function ProspectCard({
         setUpgradeOpen(true)
         return
       }
-      setCampaignError(addData.error || "Impossible d'ajouter ce prospect a la campagne.")
+      setCampaignError(addData.error || "Impossible d'ajouter ce prospect à la campagne.")
       return
     }
 
     setCampaignModalOpen(false)
     setNewCampaignName('')
     showToast(
-      addData.added ? 'Prospect ajoute a la campagne' : 'Ce prospect est deja present dans cette campagne.',
+      addData.added ? 'Prospect ajouté à la campagne' : 'Ce prospect est déjà présent dans cette campagne.',
       addData.added ? 'success' : 'info'
     )
   }
@@ -214,12 +214,12 @@ export default function ProspectCard({
       <div className="prospect-actions" style={{ display: 'grid', gridTemplateColumns: `repeat(${actionColumns}, minmax(0, 1fr))`, gap: '0.55rem', marginTop: '0.9rem' }}>
         {showFavoriteButton && (
           <button onClick={() => onAddFavorite?.(channel)} disabled={isFavorite || favoriteLoading} style={{ background: isFavorite ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.14)', color: isFavorite ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: isFavorite ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-            {isFavorite ? 'Favori' : favoriteLoading ? 'Ajout...' : 'Favori'}
+            {isFavorite ? 'Favori' : favoriteLoading ? 'Ajout…' : 'Favori'}
           </button>
         )}
         {showRemoveButton && (
           <button onClick={() => onRemoveFavorite?.(channel)} disabled={removing} style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: removing ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-            {removing ? 'Suppression...' : 'Supprimer'}
+            {removing ? 'Suppression…' : 'Supprimer'}
           </button>
         )}
         {onGenerateEmail && (
@@ -227,8 +227,8 @@ export default function ProspectCard({
             {canEmail ? 'Préparer un message' : 'Message Pro'}
           </button>
         )}
-        <button onClick={openCampaignPicker} style={{ background: 'rgba(83,58,183,0.14)', color: '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-          Ajouter a campagne
+        <button onClick={openCampaignPicker} style={{ background: '#6d4bd1', color: '#fff', border: '1px solid #8062df', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 800 }}>
+          Ajouter à une campagne
         </button>
         <button onClick={() => setDetailsOpen(true)} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
           Voir la fiche
@@ -255,10 +255,10 @@ export default function ProspectCard({
         <div className="modal-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(0,0,0,0.72)', display: 'grid', placeItems: 'center', padding: '1rem' }} onClick={() => !campaignLoading && setCampaignModalOpen(false)}>
           <div className="modal-panel" style={{ width: '100%', maxWidth: '560px', position: 'relative' }} onClick={event => event.stopPropagation()}>
             <button aria-label="Fermer" onClick={() => setCampaignModalOpen(false)} disabled={campaignLoading} style={{ position: 'absolute', top: '0.7rem', right: '0.7rem', zIndex: 1, border: 'none', background: 'transparent', color: '#A89FCC', cursor: campaignLoading ? 'default' : 'pointer', fontSize: '1rem' }}>x</button>
-            <h3 className="font-display" style={{ color: '#F0EDF8', fontSize: '1.1rem', marginBottom: '0.35rem' }}>Ajouter a une campagne</h3>
+            <h3 className="font-display" style={{ color: '#F0EDF8', fontSize: '1.1rem', marginBottom: '0.35rem' }}>Ajouter à une campagne</h3>
             <p style={{ color: '#A89FCC', fontSize: '0.85rem', lineHeight: 1.55, marginBottom: '1rem' }}>Choisissez une campagne existante ou créez-en une nouvelle.</p>
 
-            {campaignLoading && <div style={{ color: '#A89FCC', fontSize: '0.85rem', marginBottom: '0.8rem' }}>Chargement...</div>}
+            {campaignLoading && <div role="status" style={{ color: '#A89FCC', fontSize: '0.85rem', marginBottom: '0.8rem' }}>Chargement des campagnes…</div>}
             {campaignError && <div style={{ color: '#ef4444', fontSize: '0.82rem', marginBottom: '0.8rem' }}>{campaignError}</div>}
 
             <div style={{ display: 'grid', gap: '0.55rem', marginBottom: '1rem' }}>
@@ -275,7 +275,7 @@ export default function ProspectCard({
                   >
                     <span style={{ display: 'block', fontWeight: 800 }}>{campaign.name}</span>
                     <span style={{ display: 'block', color: alreadyPresent ? '#86efac' : '#A89FCC', fontSize: '0.78rem', marginTop: '0.25rem' }}>
-                      {alreadyPresent ? 'Deja present' : `${campaign._count?.prospects || 0} prospect${(campaign._count?.prospects || 0) !== 1 ? 's' : ''}`}
+                      {alreadyPresent ? 'Déjà présent' : `${campaign._count?.prospects || 0} prospect${(campaign._count?.prospects || 0) !== 1 ? 's' : ''}`}
                     </span>
                   </button>
                 )

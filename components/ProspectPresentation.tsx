@@ -61,6 +61,12 @@ export default function ProspectPresentation({ channel, compact = false, selecte
             ))}
           </div>
 
+          {!compact && (
+            <p title={prospect.scoreReason} style={{ maxWidth: '680px', margin: prospect.contacts.length > 0 ? '0 0 0.5rem' : '0.45rem 0 0', color: '#9188AB', fontSize: '0.76rem', lineHeight: 1.45, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {prospect.scoreReason}
+            </p>
+          )}
+
           {prospect.contacts.length > 0 && (
             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
               {prospect.contacts.map(contact => (

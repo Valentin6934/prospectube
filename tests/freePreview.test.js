@@ -847,7 +847,7 @@ test('prospect presentation normalizes media, contacts and fallback identity', (
     activityStatus: 'ACTIVE_HIGH',
     activityLabel: 'Très active',
     videosLast30Days: 6,
-    lastPublishedAt: '2026-08-07T00:00:00.000Z',
+    lastPublishedAt: new Date(Date.now() - (3 * 24 * 60 * 60 * 1000)).toISOString(),
   }
   const data = normalizeProspectPresentation(withAvatarUrl)
 
@@ -2258,8 +2258,9 @@ test('landing page matches current free and Pro product limits without AI promis
   assert.match(landing, /brouillons Gmail/)
   assert.match(landing, /ne sont pas garanties/)
   assert.match(landing, /<h1>ProspectTube aide les MiniMakers et monteurs vidéo à trouver des YouTubers actifs à prospecter\.<\/h1>/)
-  assert.match(landing, /analysez leur activité et leurs performances publiques/)
-  assert.match(landing, /identifiez les coordonnées qu’elles publient pour organiser votre prospection/)
+  assert.match(landing, /Ne perdez plus des heures à chercher manuellement/)
+  assert.match(landing, /classe les YouTubers selon leur activité/)
+  assert.match(landing, /liste de prospects plus rapide à évaluer/)
   assert.match(metadata, /MiniMakers et monteurs vidéo/)
   assert.doesNotMatch(landing, /message.? IA|grâce à l’IA|recherches? illimité/i)
   assert.doesNotMatch(`${landing}\n${metadata}`, /9,90|9\.90|emails? garantis?|résultats? garantis?/i)
@@ -2270,8 +2271,8 @@ test('landing production polish keeps honest CTAs, responsive structure and lega
   const styles = fs.readFileSync('app/landing.module.css', 'utf8')
   const footer = fs.readFileSync('components/LegalFooter.tsx', 'utf8')
 
-  assert.match(landing, /Trouver mes premiers prospects/)
-  assert.match(landing, /Découvrir ProspectTube/)
+  assert.match(landing, /Commencer une recherche/)
+  assert.match(landing, /Essayer ProspectTube/)
   assert.match(landing, /Prospect Score/)
   assert.match(landing, /Contactabilité/)
   assert.match(landing, /Il ne garantit ni un besoin, ni une réponse, ni une vente/)
@@ -2310,6 +2311,27 @@ test('all upgrade discovery paths lead to the dedicated Pro page before Stripe',
   assert.match(sitemap, /path: '\/pro'/)
 })
 
+test('final product polish keeps discovery focused and Pro contextual', () => {
+  const dashboard = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
+  const home = fs.readFileSync('app/dashboard/home/page.tsx', 'utf8')
+  const proPage = fs.readFileSync('app/pro/page.tsx', 'utf8')
+  const proStyles = fs.readFileSync('app/pro/pro.module.css', 'utf8')
+  const presentation = fs.readFileSync('components/ProspectPresentation.tsx', 'utf8')
+
+  assert.match(home, /id="new-search-title"/)
+  assert.doesNotMatch(home, /Objectifs|Conseil du jour|SubscriptionButton/)
+  assert.match(dashboard, /recentMedianViews/)
+  assert.match(dashboard, /Alimentez votre prospection chaque jour/)
+  assert.doesNotMatch(dashboard, /display:\s*['"]none['"]/)
+  assert.match(presentation, /scoreReason/)
+
+  assert.match(proPage, /const proBenefits/)
+  assert.match(proPage, /Ne laissez pas votre prospection/)
+  assert.match(proPage, /Aucun envoi automatique/)
+  assert.doesNotMatch(proPage, /<table|styles\.comparison|styles\.workflow/)
+  assert.doesNotMatch(proStyles, /tableWrap|\.workflow/)
+})
+
 test('public legal pages accurately disclose the Gmail OAuth integration', () => {
   const privacy = fs.readFileSync('app/privacy/page.tsx', 'utf8')
   const terms = fs.readFileSync('app/terms/page.tsx', 'utf8')
@@ -2345,11 +2367,11 @@ test('public Google OAuth branding uses one canonical ProspectTube identity', ()
 
   assert.match(page, /ProspectTube — Prospection YouTube pour MiniMakers et monteurs vidéo/)
   assert.match(landing, /<h1>ProspectTube aide les MiniMakers et monteurs vidéo à trouver des YouTubers actifs à prospecter\.<\/h1>/)
-  assert.match(landing, /performances publiques/)
-  assert.match(landing, /coordonnées qu’elles publient/)
-  assert.match(landing, /organiser votre prospection/)
-  assert.match(landing, /ProspectTube utilise Gmail uniquement pour préparer et créer les brouillons/)
-  assert.match(landing, /sans envoi automatique/)
+  assert.match(landing, /informations publiques/)
+  assert.match(landing, /YouTubers selon leur activité/)
+  assert.match(landing, /organiser une liste de prospects/)
+  assert.match(landing, /ProspectTube utilise Gmail uniquement pour créer les brouillons/)
+  assert.match(landing, /Aucun envoi automatique/)
   assert.match(layout, /applicationName: 'ProspectTube'/)
   assert.match(layout, /metadataBase: new URL\('https:\/\/www\.prospectube\.fr'\)/)
   assert.match(page, /canonical: '\/'/)

@@ -13,15 +13,11 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 }
 
-const rows = [
-  ['Recherches', `${PRODUCT_LIMITS.freeLifetimeSearches} réussies à vie`, `${PRODUCT_LIMITS.proDailySearches} réussies par jour`],
-  ['Campagnes', `${PRODUCT_LIMITS.freeCampaigns} campagne d’essai`, 'Campagnes supplémentaires'],
-  ['Prospects par campagne', `${PRODUCT_LIMITS.freeCampaignProspects} maximum`, 'Jusqu’à 20 par lot'],
-  ['Prospect Score', 'Inclus', 'Inclus'],
-  ['Contacts publics', 'Inclus', 'Inclus'],
-  ['Favoris et historique', 'Inclus', 'Inclus'],
-  ['Brouillons Gmail', 'Campagne d’essai', 'Campagnes régulières'],
-  ['Export CSV', 'Non inclus', 'Inclus'],
+const proBenefits = [
+  ['Chercher chaque jour', `${PRODUCT_LIMITS.proDailySearches} recherches quotidiennes pour alimenter régulièrement votre prospection.`],
+  ['Construire plusieurs listes', 'Organisez vos prospects dans plusieurs campagnes, au-delà de la campagne d’essai.'],
+  ['Préparer vos prises de contact', 'Créez les brouillons Gmail que vous choisissez. Aucun envoi automatique.'],
+  ['Emporter votre suivi', 'Exportez vos prospects en CSV pour poursuivre le travail dans vos propres outils.'],
 ] as const
 
 export default async function ProPage() {
@@ -39,10 +35,10 @@ export default async function ProPage() {
 
       <section className={styles.hero}>
         <p className={styles.eyebrow}>ProspectTube Pro</p>
-        <h1>Plus de recherches. Plus de campagnes. Le même contrôle.</h1>
+        <h1>Ne laissez pas votre prospection s’arrêter après trois recherches.</h1>
         <p className={styles.lead}>
-          Pro est conçu pour les MiniMakers et monteurs vidéo qui prospectent régulièrement :
-          recherchez des créateurs actifs chaque jour, organisez plusieurs campagnes et exportez votre suivi.
+          ProspectTube Pro aide les MiniMakers et monteurs vidéo à trouver de nouveaux créateurs actifs chaque jour,
+          construire plusieurs listes et préparer leur prospection sans perdre le fil.
         </p>
         <div className={styles.priceLine}>
           <strong>{PRO_MONTHLY_PRICE_LABEL}</strong><span>/ mois</span>
@@ -51,25 +47,39 @@ export default async function ProPage() {
         <ProCheckoutButton authenticated={Boolean(session)} isPro={plan === 'Pro'} />
       </section>
 
-      <section className={styles.comparison} aria-labelledby="comparison-title">
+      <section className={styles.benefits} aria-labelledby="benefits-title">
         <div className={styles.sectionHeading}>
-          <p>Comparer les plans</p>
-          <h2 id="comparison-title">Choisissez selon votre rythme de prospection.</h2>
+          <p>Ce que Pro change</p>
+          <h2 id="benefits-title">Un rythme de prospection régulier, pas seulement plus de fonctionnalités.</h2>
         </div>
-        <div className={styles.tableWrap}>
-          <table>
-            <thead><tr><th>Fonction</th><th>Gratuit</th><th>Pro</th></tr></thead>
-            <tbody>{rows.map(([feature, free, pro]) => (
-              <tr key={feature}><th scope="row">{feature}</th><td>{free}</td><td>{pro}</td></tr>
-            ))}</tbody>
-          </table>
+        <div className={styles.benefitGrid}>
+          {proBenefits.map(([title, text], index) => (
+            <article key={title}>
+              <span>0{index + 1}</span>
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </article>
+          ))}
         </div>
       </section>
 
-      <section className={styles.workflow}>
-        <div><span>01</span><h2>Trouvez des chaînes actives</h2><p>ProspectTube classe les créateurs selon leur activité et leur potentiel commercial estimé.</p></div>
-        <div><span>02</span><h2>Gardez les bons signaux</h2><p>Comparez l’activité récente, les performances publiques et les coordonnées publiées.</p></div>
-        <div><span>03</span><h2>Préparez vos campagnes</h2><p>Organisez vos prospects et créez uniquement les brouillons Gmail que vous choisissez.</p></div>
+      <section className={styles.planChoice} aria-labelledby="plan-choice-title">
+        <div>
+          <p className={styles.eyebrow}>Gratuit ou Pro</p>
+          <h2 id="plan-choice-title">Commencez gratuitement. Passez Pro quand la recherche devient une habitude.</h2>
+        </div>
+        <div className={styles.planSummary}>
+          <article>
+            <span>Gratuit</span>
+            <strong>Pour valider votre ciblage</strong>
+            <p>{PRODUCT_LIMITS.freeLifetimeSearches} recherches à vie · {PRODUCT_LIMITS.freeCampaigns} campagne · {PRODUCT_LIMITS.freeCampaignProspects} prospects maximum</p>
+          </article>
+          <article className={styles.proSummary}>
+            <span>Pro</span>
+            <strong>Pour prospecter chaque semaine</strong>
+            <p>{PRODUCT_LIMITS.proDailySearches} recherches par jour · campagnes supplémentaires · brouillons Gmail · export CSV</p>
+          </article>
+        </div>
       </section>
 
       <section className={styles.finalCta}>

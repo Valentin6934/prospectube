@@ -3,7 +3,7 @@ import LandingPage from './LandingPage'
 
 const title = 'ProspectTube — Prospection YouTube pour MiniMakers et monteurs vidéo'
 const description =
-  'ProspectTube aide les MiniMakers et monteurs vidéo à trouver des créateurs YouTube actifs, analyser leurs données publiques et organiser leur prospection.'
+  'ProspectTube aide les MiniMakers et monteurs vidéo à trouver des YouTubers actifs à prospecter, analyser leurs informations publiques et organiser une liste de prospects.'
 
 export const metadata: Metadata = {
   title: {

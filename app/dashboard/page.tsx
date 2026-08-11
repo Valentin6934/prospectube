@@ -14,7 +14,6 @@ import { getPlanName, isFree, isPro as isProPlan } from '@/lib/plan'
 import { buildCampaignProspectPayload, getCampaignIdFromCreateResponse } from '@/lib/campaignClient'
 import { FREE_LIFETIME_SEARCH_LIMIT, PRO_DAILY_SEARCH_LIMIT } from '@/lib/searchPolicy'
 
-const NICHES = ['Gaming', 'Finance & Business', 'Tech & Programmation', 'Fitness & Santé', 'Lifestyle & Vlog', 'Cuisine', 'Musique', 'Éducation', 'Voyage', 'Beauté & Mode']
 const LANGS = SEARCH_LANGUAGES
 const SUBS_LABELS = ['1K', '10K', '50K', '100K', '500K', '1M', '5M+']
 
@@ -23,12 +22,6 @@ function formatCompactNumber(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1).replace('.0', '')}M`
   if (n >= 1000) return `${(n / 1000).toFixed(1).replace('.0', '')}K`
   return String(n || 0)
-}
-
-function getCreatedYear(createdAt: string | null | undefined): string {
-  if (!createdAt) return ''
-  const year = new Date(createdAt).getFullYear()
-  return Number.isFinite(year) ? String(year) : ''
 }
 
 function getScoreStyles(scoreColor: string | undefined, score: number) {
@@ -135,11 +128,6 @@ export default function Dashboard() {
       })
       .catch(() => setFavoriteIds([]))
   }, [status])
-
-  const copyEmail = async (email: string) => {
-    await navigator.clipboard.writeText(email)
-    showToast('✓ Email copié')
-  }
 
   const exportCSV = () => {
     if (!isPro) {
@@ -499,7 +487,7 @@ export default function Dashboard() {
             </div>
           </section>
         )}
-        <section className="search-spotlight" aria-labelledby="search-spotlight-title" style={{ position: 'relative', overflow: 'hidden', marginBottom: '1.25rem', border: '1px solid rgba(139,92,246,0.32)', borderRadius: '18px', padding: '1.6rem', background: 'radial-gradient(circle at top left, rgba(123,99,211,0.32), transparent 34%), linear-gradient(135deg, rgba(18,15,30,0.98), rgba(10,8,18,0.94))', boxShadow: '0 24px 70px rgba(0,0,0,0.28)' }}>
+        <section className="search-spotlight" aria-labelledby="search-spotlight-title" style={{ position: 'relative', overflow: 'hidden', marginBottom: '1.25rem', border: '1px solid rgba(139,92,246,0.28)', borderRadius: '14px', padding: '1.6rem', background: '#12101b' }}>
           <div style={{ maxWidth: '680px' }}>
             <p style={{ margin: '0 0 0.45rem', color: '#a78bfa', fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Nouvelle prospection</p>
             <h1 id="search-spotlight-title" className="font-display" style={{ margin: 0, fontSize: 'clamp(1.55rem, 3vw, 2.35rem)', lineHeight: 1.1, color: '#F0EDF8' }}>
@@ -513,24 +501,14 @@ export default function Dashboard() {
             </a>
           </div>
         </section>
-        {isFree(plan) && (
-          <div style={{ background: 'rgba(83,58,183,0.15)', border: '1px solid rgba(83,58,183,0.4)', borderRadius: '12px', padding: '1rem 1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-            <p style={{ color: '#a78bfa', fontSize: '0.9rem' }}>Passez à Pro pour obtenir 5 recherches par jour, organiser davantage de campagnes et exporter vos prospects.</p>
-            <Link href="/pro" className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem', textDecoration: 'none' }}>Découvrir le Plan Pro</Link>
-          </div>
-        )}
-
         <div id="search-form" className="card search-surface" style={{ padding: '1.5rem', marginBottom: '1.5rem', scrollMarginTop: '90px' }}>
           {quotaMessage && (
             <div style={{ marginBottom: '1rem', padding: '0.7rem 0.85rem', borderRadius: '9px', background: 'rgba(83,58,183,0.12)', border: '1px solid rgba(83,58,183,0.3)', color: '#B9B0D4', fontSize: '0.83rem' }}>
               {quotaMessage}
             </div>
           )}
-          <p style={{ color: '#8F86AA', fontSize: '0.86rem', lineHeight: 1.55, margin: '0 0 1.25rem' }}>
-            Renseignez vos critères principaux. L’aperçu gratuit affiche une sélection honnête et variée quand les scores disponibles le permettent.
-          </p>
           <h2 className="font-display" style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '1.25rem' }}>
-            🔍 Rechercher des chaînes YouTube
+            Définir la cible
           </h2>
 
           <div className="search-fields" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
@@ -579,12 +557,15 @@ export default function Dashboard() {
           </div>
 
           <button className="btn-primary" onClick={handleSearch} disabled={loading || Date.now() < searchPausedUntil} style={{ width: '100%', padding: '0.85rem', fontSize: '0.95rem' }}>
-            {loading ? '⏳ Recherche en cours...' : 'Rechercher des chaînes →'}
+            {loading ? 'Recherche en cours…' : 'Trouver des créateurs actifs'}
           </button>
         </div>
 
         {loading && (
           <div role="status" aria-label="Recherche des chaînes en cours">
+            <p style={{ margin: '0 0 0.85rem', color: '#B9B0D4', fontSize: '0.88rem' }}>
+              Recherche des chaînes, analyse de leur activité et classement des prospects…
+            </p>
             {[0, 1, 2].map(item => <ProspectSkeleton key={item} />)}
           </div>
         )}
@@ -607,7 +588,7 @@ export default function Dashboard() {
                 <ProspectScoreExplanation />
                 <span style={{ fontSize: '0.8rem', color: '#6B5F96' }}>{niche} · {lang}</span>
                 <button onClick={exportCSV} style={{ background: isPro ? 'rgba(83,58,183,0.25)' : 'rgba(83,58,183,0.10)', border: '1px solid rgba(83,58,183,0.35)', color: isPro ? '#a78bfa' : '#6B5F96', padding: '0.35rem 0.75rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem' }}>
-                  {isPro ? '📥 Export CSV' : '🔒 CSV Pro'}
+                  {isPro ? 'Exporter en CSV' : 'Export Pro'}
                 </button>
               </div>
             </div>
@@ -678,6 +659,10 @@ export default function Dashboard() {
                                 ))}
                               </div>
 
+                              <p style={{ margin: '0 0 0.55rem', color: '#9188AB', fontSize: '0.78rem', lineHeight: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {ch.scoreReason || "Activité et performances récentes analysées."}
+                              </p>
+
                               {contacts.length > 0 && (
                                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                                   {contacts.map(contact => (
@@ -692,14 +677,14 @@ export default function Dashboard() {
                         </div>
 
                         <div className="prospect-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.55rem', marginTop: '0.9rem' }}>
-                          <button onClick={() => addFavorite(ch)} disabled={favoriteIds.includes(ch.id) || favoriteLoadingId === ch.id} style={{ background: favoriteIds.includes(ch.id) ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.14)', color: favoriteIds.includes(ch.id) ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: favoriteIds.includes(ch.id) ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-                            {favoriteIds.includes(ch.id) ? '⭐ Favori' : favoriteLoadingId === ch.id ? 'Ajout...' : '☆ Favori'}
+                          <button onClick={() => addToCampaign(ch)} style={{ background: '#6d4bd1', color: 'white', border: '1px solid #8062df', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 800 }}>
+                            Ajouter à une campagne
                           </button>
-                          <button onClick={() => generateEmail(ch)} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: canEmail ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 700 }}>
+                          <button onClick={() => addFavorite(ch)} disabled={favoriteIds.includes(ch.id) || favoriteLoadingId === ch.id} style={{ background: favoriteIds.includes(ch.id) ? 'rgba(234,179,8,0.12)' : 'rgba(255,255,255,0.035)', color: favoriteIds.includes(ch.id) ? '#eab308' : '#B5ACC9', border: '1px solid rgba(255,255,255,0.09)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: favoriteIds.includes(ch.id) ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+                            {favoriteIds.includes(ch.id) ? 'En favoris' : favoriteLoadingId === ch.id ? 'Ajout…' : 'Garder'}
+                          </button>
+                          <button onClick={() => generateEmail(ch)} style={{ background: 'rgba(255,255,255,0.035)', color: canEmail ? '#B5ACC9' : '#6B5F96', border: '1px solid rgba(255,255,255,0.09)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: canEmail ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 700 }}>
                             {canEmail ? 'Préparer un message' : 'Message Pro'}
-                          </button>
-                          <button onClick={() => addToCampaign(ch)} style={{ background: 'rgba(83,58,183,0.14)', color: '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-                            Ajouter à campagne
                           </button>
                           <button onClick={() => toggleAnalysis(ch.id)} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
                             {isExpanded ? '▼ Masquer' : '▶ Voir l’analyse'}
@@ -738,157 +723,19 @@ export default function Dashboard() {
                       </div>
                     )
                   })()}
-                  <div style={{ display: 'none', width: '42px', height: '42px', borderRadius: '50%', background: ch.color + '33', border: `2px solid ${ch.color}66`, alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem', color: ch.color, flexShrink: 0 }}>
-                    {ch.avatar}
-                  </div>
-
-                  <div style={{ display: 'none', flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: '1rem', marginBottom: '0.2rem' }}>{ch.name}</div>
-
-                    <div style={{
-                      display: 'inline-block',
-                      marginBottom: '0.35rem',
-                      padding: '0.2rem 0.6rem',
-                      borderRadius: '999px',
-                      ...getScoreStyles(ch.scoreColor, ch.score || 0),
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                    }}>
-                      {ch.scoreLabel || '🔴 Faible potentiel'}
-                    </div>
-
-                    <div style={{ fontSize: '0.9rem', color: '#F0EDF8', fontWeight: 700, marginBottom: '0.35rem' }}>
-                      {ch.score || 0}/100
-                    </div>
-
-                    <div style={{ display: 'grid', gap: '0.2rem', fontSize: '0.82rem', color: '#C4BCDF', marginBottom: '0.6rem' }}>
-                      {String(ch.scoreReason || "Peu d'informations exploitables").split(' • ').map((reason: string) => (
-                        <div key={reason}>{reason}</div>
-                      ))}
-                    </div>
-
-                    <div style={{
-                      display: 'none',
-                      marginBottom: '0.35rem',
-                      padding: '0.2rem 0.6rem',
-                      borderRadius: '999px',
-                      ...getScoreStyles(ch.scoreColor, ch.score || 0),
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                    }}>
-                      ⭐ {ch.scoreLabel || 'Potentiel faible'} · {ch.score || 0}/100
-                    </div>
-
-                    <div style={{ display: 'none', fontSize: '0.82rem', color: '#C4BCDF', marginBottom: '0.25rem' }}>
-                      {ch.scoreReason || "Faible potentiel ou peu d'informations disponibles"}
-                    </div>
-
-                    <div style={{ fontSize: '0.82rem', color: '#A89FCC', marginBottom: '0.6rem' }}>
-                      {ch.subs} abonnés · {ch.totalViewsFormatted || formatCompactNumber(ch.totalViews || 0)} vues · {ch.videoCountFormatted || formatCompactNumber(ch.videoCount || 0)} vidéos{getCreatedYear(ch.createdAt) ? ` · créée en ${getCreatedYear(ch.createdAt)}` : ''}
-                    </div>
-
-                    <div style={{
-                      display: 'none',
-                      marginBottom: '0.5rem',
-                      padding: '0.2rem 0.6rem',
-                      borderRadius: '999px',
-                      background: (ch.score || 0) >= 80 ? 'rgba(34,197,94,0.15)' : (ch.score || 0) >= 60 ? 'rgba(234,179,8,0.15)' : 'rgba(239,68,68,0.15)',
-                      color: (ch.score || 0) >= 80 ? '#22c55e' : (ch.score || 0) >= 60 ? '#eab308' : '#ef4444',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                    }}>
-                      🎯 Score prospect : {ch.score || 0}/100
-                    </div>
-
-                    <div style={{ fontSize: '0.82rem', color: '#A89FCC', marginBottom: '0.6rem' }}>{ch.subs} abonnés · {ch.desc}</div>
-
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-                      {[ch.niche, ch.lang, ch.freq].map(tag => (
-                        <span key={tag} style={{ fontSize: '0.75rem', padding: '0.15rem 0.6rem', borderRadius: '20px', background: 'rgba(83,58,183,0.15)', border: '1px solid rgba(83,58,183,0.3)', color: '#a78bfa' }}>{tag}</span>
-                      ))}
-                    </div>
-
-                    <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8rem' }}>
-                      {ch.email ? (
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <a href={`mailto:${ch.email}`} style={{ color: '#22c55e', textDecoration: 'none' }}>
-                            📧 {ch.email}
-                          </a>
-                          <button onClick={() => copyEmail(ch.email)} style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.25)', color: '#22c55e', borderRadius: '6px', padding: '0.15rem 0.45rem', cursor: 'pointer', fontSize: '0.72rem' }}>
-                            Copier
-                          </button>
-                        </div>
-                      ) : (
-                        <div style={{ color: '#6B5F96' }}>📭 Email non trouvé</div>
-                      )}
-
-                      {ch.channelUrl && (
-                        <a href={ch.channelUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', textDecoration: 'none' }}>
-                          🎥 Voir la chaîne YouTube
-                        </a>
-                      )}
-
-                      {isFree(plan) ? (
-                        <>
-                          <div style={{ color: '#6B5F96' }}>🔒 Instagram disponible en Pro</div>
-                          <div style={{ color: '#6B5F96' }}>🔒 TikTok disponible en Pro</div>
-                          <div style={{ color: '#6B5F96' }}>🔒 Twitch disponible en Pro</div>
-                          <div style={{ color: '#6B5F96' }}>🔒 Site web disponible en Pro</div>
-                        </>
-                      ) : (
-                        <>
-                          {ch.instagram ? (
-                            <a href={ch.instagram} target="_blank" rel="noopener noreferrer" style={{ color: '#e879f9', textDecoration: 'none' }}>
-                              📷 Instagram
-                            </a>
-                          ) : (
-                            <div style={{ color: '#6B5F96' }}>📷 Instagram non trouvé</div>
-                          )}
-
-                          {ch.tiktok ? (
-                            <a href={ch.tiktok} target="_blank" rel="noopener noreferrer" style={{ color: '#f472b6', textDecoration: 'none' }}>
-                              🎵 TikTok
-                            </a>
-                          ) : (
-                            <div style={{ color: '#6B5F96' }}>🎵 TikTok non trouvé</div>
-                          )}
-
-                          {ch.twitch ? (
-                            <a href={ch.twitch} target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF', textDecoration: 'none' }}>
-                              🎮 Twitch
-                            </a>
-                          ) : (
-                            <div style={{ color: '#6B5F96' }}>🎮 Twitch non trouvé</div>
-                          )}
-
-                          {ch.website ? (
-                            <a href={ch.website} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>
-                              🌐 Site web
-                            </a>
-                          ) : (
-                            <div style={{ color: '#6B5F96' }}>🌐 Site web non trouvé</div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div style={{ flexShrink: 0, display: 'none', gap: '0.5rem' }}>
-                    <button
-                      onClick={() => addFavorite(ch)}
-                      disabled={favoriteIds.includes(ch.id) || favoriteLoadingId === ch.id}
-                      style={{ background: favoriteIds.includes(ch.id) ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.15)', color: favoriteIds.includes(ch.id) ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.82rem', cursor: favoriteIds.includes(ch.id) ? 'default' : 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
-                    >
-                      {favoriteIds.includes(ch.id) ? '⭐ Favori ajouté' : favoriteLoadingId === ch.id ? 'Ajout...' : '☆ Ajouter aux favoris'}
-                    </button>
-                    <button onClick={() => generateEmail(ch)} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.82rem', cursor: canEmail ? 'pointer' : 'not-allowed', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                      {canEmail ? 'Préparer un message' : 'Message Pro'}
-                    </button>
-                  </div>
                 </div>
                 </div>
               ))}
               {visibleResults < results.length && <button className="btn-secondary" onClick={() => setVisibleResults(value => value + 10)} style={{ width: '100%', marginTop: '0.4rem' }}>Afficher plus</button>}
+              {isFree(plan) && (
+                <aside style={{ marginTop: '1rem', padding: '1rem 1.1rem', borderTop: '1px solid rgba(167,139,250,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <strong style={{ display: 'block', color: '#F0EDF8', fontSize: '0.9rem' }}>Alimentez votre prospection chaque jour.</strong>
+                    <span style={{ color: '#9188AB', fontSize: '0.8rem' }}>Pro permet 5 recherches quotidiennes, plusieurs campagnes et l’export de vos listes.</span>
+                  </div>
+                  <Link href="/pro" className="btn btn-secondary">Voir ce que Pro change</Link>
+                </aside>
+              )}
               </>
             )}
           </div>
