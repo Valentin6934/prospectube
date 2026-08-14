@@ -3,7 +3,6 @@ import { getServerSession } from 'next-auth'
 import { Prisma } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { SEND_MODE } from '@/lib/gmail'
 import { buildDisconnectedGmailStatus, buildGmailStatus } from '@/lib/gmailStatus'
 import { canUseGmailIntegration } from '@/lib/campaignAccess'
 import { isGmailPublicOAuthAvailable } from '@/lib/gmailPublicAccess'
@@ -41,7 +40,7 @@ export async function GET() {
 
     if (!account) {
       return NextResponse.json({
-        ...buildDisconnectedGmailStatus(SEND_MODE),
+        ...buildDisconnectedGmailStatus(),
         accessAllowed,
         upgradeRequired: !accessAllowed,
         publicOAuthAvailable,
@@ -49,7 +48,7 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      ...buildGmailStatus(account, SEND_MODE, { accessAllowed }),
+      ...buildGmailStatus(account, { accessAllowed }),
       publicOAuthAvailable,
     }, { headers: NO_STORE_HEADERS })
   } catch (error) {
@@ -60,7 +59,7 @@ export async function GET() {
       (error.code === 'P2021' || error.code === 'P2022')
 
     return NextResponse.json(
-      buildGmailStatus(null, SEND_MODE, {
+      buildGmailStatus(null, {
         unavailable: !setupRequired,
         setupRequired,
       }),
@@ -88,5 +87,5 @@ export async function DELETE() {
     await prisma.googleAccount.delete({ where: { userId: user.id } })
   }
 
-  return NextResponse.json({ ok: true, gmail: buildDisconnectedGmailStatus(SEND_MODE) }, { headers: NO_STORE_HEADERS })
+  return NextResponse.json({ ok: true, gmail: buildDisconnectedGmailStatus() }, { headers: NO_STORE_HEADERS })
 }

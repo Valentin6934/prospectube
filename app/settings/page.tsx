@@ -19,7 +19,7 @@ type GmailStatus = {
   hasRefreshToken: boolean
   expiryDate: string | null
   updatedAt: string | null
-  sendMode: 'draft' | 'send'
+  sendMode: 'draft'
   message?: string
   reconnectRequired?: boolean
   unavailable?: boolean

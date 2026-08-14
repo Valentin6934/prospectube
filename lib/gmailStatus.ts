@@ -9,7 +9,7 @@ export type GmailStatusResponse = {
   hasRefreshToken: boolean
   expiryDate: string | null
   updatedAt: string | null
-  sendMode: 'draft' | 'send'
+  sendMode: 'draft'
   message?: string
   reconnectRequired?: boolean
   unavailable?: boolean
@@ -50,7 +50,7 @@ function toIso(value?: Date | string | null) {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null
 }
 
-export function buildDisconnectedGmailStatus(sendMode: 'draft' | 'send'): GmailStatusResponse {
+export function buildDisconnectedGmailStatus(): GmailStatusResponse {
   return {
     connected: false,
     status: 'disconnected',
@@ -60,18 +60,17 @@ export function buildDisconnectedGmailStatus(sendMode: 'draft' | 'send'): GmailS
     hasRefreshToken: false,
     expiryDate: null,
     updatedAt: null,
-    sendMode,
+    sendMode: 'draft',
   }
 }
 
 export function buildGmailStatus(
   account: AccountStatusInput | null,
-  sendMode: 'draft' | 'send',
   options: { unavailable?: boolean; setupRequired?: boolean; accessAllowed?: boolean } = {}
 ): GmailStatusResponse {
   if (!account) {
     return {
-      ...buildDisconnectedGmailStatus(sendMode),
+      ...buildDisconnectedGmailStatus(),
       state: options.unavailable ? 'unavailable' : 'disconnected',
       status: options.unavailable ? 'unavailable' : 'disconnected',
       canUseGmail: false,
@@ -97,7 +96,7 @@ export function buildGmailStatus(
     hasRefreshToken,
     expiryDate: toIso(account.expiryDate),
     updatedAt: toIso(account.updatedAt),
-    sendMode,
+    sendMode: 'draft',
     reconnectRequired: state === 'expired',
     accessAllowed,
     upgradeRequired: !accessAllowed,

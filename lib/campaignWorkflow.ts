@@ -84,17 +84,17 @@ export function hasCampaignDraftChanges(
   return persisted.subject !== current.subject || persisted.body !== current.body
 }
 
-export function getCampaignGmailActionLabel(sendMode?: 'draft' | 'send', count?: number): string {
+export function getCampaignGmailActionLabel(count?: number): string {
   const suffix = typeof count === 'number' ? ` (${Math.min(count, CAMPAIGN_SEND_LIMIT)})` : ''
-  return sendMode === 'send' ? `Envoyer${suffix}` : `Créer les brouillons${suffix}`
+  return `Créer les brouillons${suffix}`
 }
 
-export function getCampaignGmailSingleActionLabel(sendMode?: 'draft' | 'send'): string {
-  return sendMode === 'send' ? 'Envoyer' : 'Créer le brouillon'
+export function getCampaignGmailSingleActionLabel(): string {
+  return 'Créer le brouillon'
 }
 
-export function getCampaignGmailProgressLabel(sendMode?: 'draft' | 'send'): string {
-  return sendMode === 'send' ? 'Envoi...' : 'Création...'
+export function getCampaignGmailProgressLabel(): string {
+  return 'Création...'
 }
 
 export function getCampaignManualSendPlan<T extends CampaignSendProspect & { id: string }>(

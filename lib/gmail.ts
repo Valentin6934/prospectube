@@ -2,8 +2,6 @@ import { prisma } from '@/lib/prisma'
 import { getSafeGmailErrorMessage, REQUIRED_GMAIL_DRAFT_SCOPE } from '@/lib/gmailStatus'
 import { encodeGmailMessage, type GmailMessage } from '@/lib/gmailMessage'
 
-export const SEND_MODE = process.env.GMAIL_SEND_MODE === 'send' ? 'send' : 'draft'
-
 export type GmailErrorCode =
   | 'missing_account'
   | 'missing_refresh_token'
@@ -141,10 +139,8 @@ export async function deliverGmailMessage(accessToken: string, message: GmailMes
   } catch {
     throw new GmailError('Le brouillon est invalide : vérifiez le destinataire, le sujet et le message.', 400, 'draft_invalid')
   }
-  const endpoint = SEND_MODE === 'send'
-    ? 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'
-    : 'https://gmail.googleapis.com/gmail/v1/users/me/drafts'
-  const payload = SEND_MODE === 'send' ? { raw } : { message: { raw } }
+  const endpoint = 'https://gmail.googleapis.com/gmail/v1/users/me/drafts'
+  const payload = { message: { raw } }
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -161,6 +157,6 @@ export async function deliverGmailMessage(accessToken: string, message: GmailMes
     throw getGmailApiError(response.status, data, endpoint)
   }
 
-  const messageId = SEND_MODE === 'send' ? data.id : data.message?.id || data.id
-  return { id: String(messageId || ''), mode: SEND_MODE }
+  const messageId = data.message?.id || data.id
+  return { id: String(messageId || ''), mode: 'draft' as const }
 }

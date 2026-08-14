@@ -545,12 +545,9 @@ test('campaign AI is hidden in the V1 campaign interface without deleting server
 })
 
 test('campaign Gmail labels reflect draft mode instead of implying a real send', () => {
-  assert.equal(getCampaignGmailActionLabel('draft', 12), 'Créer les brouillons (12)')
-  assert.equal(getCampaignGmailSingleActionLabel('draft'), 'Créer le brouillon')
-  assert.equal(getCampaignGmailProgressLabel('draft'), 'Création...')
-  assert.equal(getCampaignGmailActionLabel('send', 21), 'Envoyer (20)')
-  assert.equal(getCampaignGmailSingleActionLabel('send'), 'Envoyer')
-  assert.equal(getCampaignGmailProgressLabel('send'), 'Envoi...')
+  assert.equal(getCampaignGmailActionLabel(12), 'Créer les brouillons (12)')
+  assert.equal(getCampaignGmailSingleActionLabel(), 'Créer le brouillon')
+  assert.equal(getCampaignGmailProgressLabel(), 'Création...')
 })
 
 
@@ -562,7 +559,7 @@ test('gmail status exposes connected accounts without leaking tokens', () => {
     scope: REQUIRED_GMAIL_DRAFT_SCOPE,
     expiryDate: new Date('2030-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  }, 'draft')
+  })
 
   assert.equal(status.connected, true)
   assert.equal(status.status, 'connected')
@@ -576,7 +573,7 @@ test('gmail status exposes connected accounts without leaking tokens', () => {
 })
 
 test('gmail status distinguishes disconnected and expired connections', () => {
-  const disconnected = buildDisconnectedGmailStatus('draft')
+  const disconnected = buildDisconnectedGmailStatus()
   assert.equal(disconnected.connected, false)
   assert.equal(disconnected.status, 'disconnected')
   assert.equal(disconnected.state, 'disconnected')
@@ -588,7 +585,7 @@ test('gmail status distinguishes disconnected and expired connections', () => {
     refreshToken: null,
     expiryDate: new Date('2025-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  }, 'draft')
+  })
 
   assert.equal(expired.connected, false)
   assert.equal(expired.status, 'expired')
@@ -750,7 +747,7 @@ test('gmail status requires the draft compose scope before enabling Gmail drafts
     scope: 'openid email profile',
     expiryDate: new Date('2030-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  }, 'draft')
+  })
 
   assert.equal(missingScope.connected, false)
   assert.equal(missingScope.status, 'expired')
@@ -767,7 +764,7 @@ test('settings and campaigns read the same uncached Gmail status endpoint', () =
   assert.match(settingsPage, /fetch\('\/api\/gmail', \{ cache: 'no-store' \}\)/)
   assert.match(campaignsPage, /fetch\('\/api\/gmail', \{ cache: 'no-store' \}\)/)
   assert.match(gmailRoute, /Cache-Control': 'no-store, max-age=0'/)
-  assert.match(gmailRoute, /buildGmailStatus\(account, SEND_MODE/)
+  assert.match(gmailRoute, /buildGmailStatus\(account, \{ accessAllowed \}\)/)
 })
 
 test('campaign V1 interface does not expose AI generation controls', () => {
@@ -2092,6 +2089,21 @@ test('Gmail OAuth uses the minimal compose scope and classifies safe failures', 
   assert.equal(classifyGoogleOAuthError('app not verified'), 'OAUTH_APP_UNVERIFIED')
   assert.equal(classifyGoogleOAuthError('test_user_not_allowed'), 'OAUTH_ACCOUNT_NOT_ALLOWED')
   assert.match(getSafeGmailOAuthMessage('OAUTH_APP_UNVERIFIED'), /pas encore disponible/)
+})
+
+test('Gmail delivery is locked to draft creation with no direct-send path', () => {
+  const gmail = fs.readFileSync('lib/gmail.ts', 'utf8')
+  const sendRoute = fs.readFileSync('app/api/campaigns/[id]/send/route.ts', 'utf8')
+  const gmailRoute = fs.readFileSync('app/api/gmail/route.ts', 'utf8')
+  const workflow = fs.readFileSync('lib/campaignWorkflow.ts', 'utf8')
+  const envExample = fs.readFileSync('.env.example', 'utf8')
+  const sources = [gmail, sendRoute, gmailRoute, workflow, envExample].join('\n')
+
+  assert.match(gmail, /https:\/\/gmail\.googleapis\.com\/gmail\/v1\/users\/me\/drafts/)
+  assert.match(gmail, /method:\s*'POST'/)
+  assert.match(gmail, /payload = \{ message: \{ raw \} \}/)
+  assert.doesNotMatch(sources, /GMAIL_SEND_MODE|messages\/send|users\.messages\.send|gmail\.send/)
+  assert.doesNotMatch(sources, /mode\s*===\s*['"]send['"]|mode:\s*['"]send['"]/)
 })
 
 test('Gmail public OAuth availability is explicit and documented for Production', () => {

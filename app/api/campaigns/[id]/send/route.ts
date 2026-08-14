@@ -7,7 +7,6 @@ import {
   deliverGmailMessage,
   getValidGmailAccessToken,
   GmailError,
-  SEND_MODE,
 } from '@/lib/gmail'
 import { isPro, requireProResponse } from '@/lib/plan'
 import { FREE_CAMPAIGN_PROSPECT_LIMIT, canUseFreeCampaign, freeCampaignLimitResponse, hasCompletedFreeCampaign, markFreeCampaignCompleted } from '@/lib/campaignAccess'
@@ -54,14 +53,7 @@ type CampaignDeliveryProspect = {
 
 type GmailDeliveryResult = {
   id: string
-  mode: 'draft' | 'send'
-}
-
-function toGmailDeliveryResult(delivery: { id: string; mode: string }): GmailDeliveryResult {
-  return {
-    id: delivery.id,
-    mode: delivery.mode === 'send' ? 'send' : 'draft',
-  }
+  mode: 'draft'
 }
 
 function getFunctionalGmailCode(error: GmailError) {
@@ -159,7 +151,7 @@ async function persistCampaignDeliveryStatus(input: {
   sentAt: Date | null
 }) {
   const gmailMessageId = input.delivery.id
-  const gmailDraftId = input.delivery.mode === 'draft' ? input.delivery.id : null
+  const gmailDraftId = input.delivery.id
   const prospectBelongsToCampaign = true
   const richUpdateQuery = {
     where: {
@@ -185,18 +177,6 @@ async function persistCampaignDeliveryStatus(input: {
           meta: { campaignId: input.campaignId, prospectId: input.prospect.id, count: result.count },
         }
       )
-    }
-
-    if (input.delivery.mode === 'send') {
-      await prisma.emailSent.create({
-        data: {
-          userId: input.userId,
-          channelName: input.prospect.name,
-          channelEmail: input.prospect.email as string,
-          content: input.prospect.generatedBody || '',
-          status: 'Envoyé',
-        },
-      })
     }
 
     return { recovered: false }
@@ -337,7 +317,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       results,
       ...getStructuredDraftState(results),
       ...summary,
-      mode: SEND_MODE,
+      mode: 'draft',
       limited: requestedIds.length > CAMPAIGN_SEND_LIMIT,
       message: results.some(result => result.code === 'DRAFT_ALREADY_CREATED')
         ? 'Tous les brouillons eligibles existent deja.'
@@ -377,17 +357,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }
       let delivery: GmailDeliveryResult
       try {
-        delivery = toGmailDeliveryResult(await deliverGmailMessage(accessToken, messagePayload))
+        delivery = await deliverGmailMessage(accessToken, messagePayload)
       } catch (error) {
         if (error instanceof GmailError && error.code === 'access_token_expired') {
           accessToken = await getValidGmailAccessToken(user.id, { forceRefresh: true })
-          delivery = toGmailDeliveryResult(await deliverGmailMessage(accessToken, messagePayload))
+          delivery = await deliverGmailMessage(accessToken, messagePayload)
         } else {
           throw error
         }
       }
-      const sendStatus = delivery.mode === 'send' ? 'Envoyé' : 'Brouillon créé'
-      const sentAt = delivery.mode === 'send' ? new Date() : null
+      const sendStatus = 'Brouillon créé'
+      const sentAt = null
 
       const persistResult = await persistCampaignDeliveryStatus({
         campaignId: campaign.id,
@@ -406,7 +386,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           error: 'Le brouillon a ete cree dans Gmail, mais le statut n’a pas pu etre enregistre dans ProspectTube.',
           code: 'DRAFT_CREATED_STATUS_NOT_SAVED',
           gmailMessageId: delivery.id,
-          gmailDraftId: delivery.mode === 'draft' ? delivery.id : undefined,
+          gmailDraftId: delivery.id,
           prismaCode: persistResult.prismaCode,
           prismaMessage: persistResult.prismaMessage,
           failingOperation: persistResult.failingOperation,
@@ -420,7 +400,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         status: sendStatus,
         code: persistResult.recovered ? 'DRAFT_CREATED_STATUS_RECOVERED' : 'DRAFT_CREATED',
         gmailMessageId: delivery.id,
-        gmailDraftId: delivery.mode === 'draft' ? delivery.id : undefined,
+        gmailDraftId: delivery.id,
       })
     } catch (error) {
       const message = error instanceof GmailError ? error.message : 'Google Gmail a refusé la requête.'
@@ -462,7 +442,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     results,
     ...getStructuredDraftState(results),
     ...summary,
-    mode: SEND_MODE,
+    mode: 'draft',
     limited: requestedIds.length > CAMPAIGN_SEND_LIMIT,
   })
 }
