@@ -42,10 +42,10 @@ const steps = [
   {
     number: '03',
     title: 'Organise ta campagne',
-    description: 'Ajoute tes prospects, personnalise tes messages et crée tes brouillons Gmail.',
+    description: 'Ajoute tes prospects, personnalise tes messages et ouvre-les dans ta messagerie.',
     visual: (
       <div className={styles.campaignMini} aria-hidden="true">
-        <span><i />5 prospects</span><span><i />3 messages prêts</span><b>Brouillons Gmail</b>
+        <span><i />5 prospects</span><span><i />3 messages prêts</span><b>Prêts à contacter</b>
       </div>
     ),
   },
@@ -57,7 +57,7 @@ const faqs = [
   ['Pourquoi certains prospects n’ont-ils pas d’email ?', 'Certains créateurs ne publient aucune adresse ou utilisent une adresse protégée par YouTube. ProspectTube ne contourne jamais ces protections.'],
   ['Comment fonctionne le score ?', 'Il aide à prioriser selon les performances récentes, l’activité, la fréquence, la pertinence et le potentiel de montage estimé. La contactabilité reste séparée.'],
   ['Combien de recherches sont incluses ?', `Le plan Gratuit comprend ${PRODUCT_LIMITS.freeLifetimeSearches} recherches réussies à vie. Le plan Pro comprend ${PRODUCT_LIMITS.proDailySearches} recherches réussies par jour.`],
-  ['Est-ce que Gmail envoie les messages automatiquement ?', 'Non. ProspectTube crée uniquement les brouillons que tu as rédigés. Tu gardes la main dans Gmail avant tout envoi.'],
+  ['ProspectTube se connecte-t-il à ma boîte mail ?', 'Non. ProspectTube ouvre simplement Gmail ou ton client mail avec le message prérempli. Tu gardes la main avant tout envoi.'],
   ['Puis-je annuler mon abonnement ?', 'Oui. Le Plan Pro est sans engagement et peut être annulé depuis le portail Stripe.'],
   ['À qui s’adresse ProspectTube ?', 'ProspectTube est conçu pour les MiniMakers et monteurs vidéo qui cherchent des YouTubers actifs à prospecter pour proposer leurs services.'],
 ]
@@ -136,7 +136,7 @@ export default function LandingPage() {
           <div className={styles.sectionHeading}>
             <span>Un parcours simple</span>
             <h2>De votre spécialité à une liste de YouTubers à prospecter.</h2>
-            <p>Vous gardez le contrôle sur la cible, les contacts retenus et chaque brouillon Gmail.</p>
+            <p>Vous gardez le contrôle sur la cible, les contacts retenus et chaque message.</p>
           </div>
           <div className={styles.stepGrid}>
             {steps.map(step => (
@@ -196,14 +196,14 @@ export default function LandingPage() {
             <div className={styles.campaignProgress}><span className={styles.done}>1</span><i /><span className={styles.done}>2</span><i /><span>3</span></div>
             <div className={styles.editorRow}><div className={styles.resultAvatar}>CL</div><div><strong>Creator Lab</strong><span>contact@creator.fr</span></div><b>Message prêt</b></div>
             <div className={styles.editorFields}><span>Objet : Une idée pour tes prochains montages</span><p>Bonjour, j’ai regardé tes dernières vidéos et préparé une approche personnalisée…</p></div>
-            <div className={styles.draftButton}>Créer le brouillon Gmail</div>
+            <div className={styles.draftButton}>Ouvrir dans Gmail</div>
           </div>
           <div className={styles.showcaseCopy}>
             <span className={styles.kicker}>Campagnes</span>
             <h2>Prépare ta prospection sans perdre le contrôle du message.</h2>
-            <p>Ajoute les prospects sélectionnés et personnalise chaque message. La connexion Google reste facultative : ProspectTube utilise Gmail uniquement pour créer les brouillons que tu choisis.</p>
-            <ol className={styles.workflowList}><li><span>1</span>Ajouter les prospects</li><li><span>2</span>Personnaliser les messages</li><li><span>3</span>Créer les brouillons Gmail</li><li><span>4</span>Suivre l’organisation de la campagne</li></ol>
-            <p className={styles.highlightText}>Aucun envoi automatique : tu relis et envoies depuis Gmail.</p>
+            <p>Ajoute les prospects sélectionnés et personnalise chaque message. Aucune connexion Google n’est nécessaire : ProspectTube ouvre simplement ta messagerie avec les champs préremplis.</p>
+            <ol className={styles.workflowList}><li><span>1</span>Ajouter les prospects</li><li><span>2</span>Personnaliser les messages</li><li><span>3</span>Ouvrir dans sa messagerie</li><li><span>4</span>Suivre l’organisation de la campagne</li></ol>
+            <p className={styles.highlightText}>Aucun envoi automatique : tu relis et envoies toi-même.</p>
           </div>
         </div>
       </section>
@@ -219,7 +219,7 @@ export default function LandingPage() {
             </article>
             <article className={`${styles.priceCard} ${styles.priceFeatured}`}>
               <div className={styles.popularBadge}>Plan recommandé</div><div className={styles.priceName}>Pro</div><div className={styles.price}><strong>{PRO_MONTHLY_PRICE_LABEL}</strong><span>/mois</span></div><p>Pour prospecter régulièrement et organiser plusieurs campagnes.</p>
-              <ul><li>{PRODUCT_LIMITS.proDailySearches} recherches réussies par jour</li><li>Campagnes supplémentaires</li><li>Rotation vers de nouveaux prospects</li><li>Score orienté montage et emails publics</li><li>Brouillons Gmail, favoris et historique</li></ul>
+              <ul><li>{PRODUCT_LIMITS.proDailySearches} recherches réussies par jour</li><li>Campagnes supplémentaires</li><li>Rotation vers de nouveaux prospects</li><li>Score orienté montage et emails publics</li><li>Passage à la messagerie, favoris et historique</li></ul>
               <button onClick={openPro} className={styles.pricePrimary}>{isPro(plan) ? 'Accéder au dashboard' : 'Découvrir le Plan Pro'}</button>
             </article>
           </div>

@@ -1,12 +1,9 @@
 import { Prisma, PrismaClient } from '@prisma/client'
-import { isPro } from './plan'
-import { isGmailIntegrationAllowed } from './gmailStatus'
 import { PRODUCT_LIMITS } from './product'
 
 export const FREE_LIFETIME_CAMPAIGN_LIMIT = PRODUCT_LIMITS.freeCampaigns
 export const FREE_CAMPAIGN_PROSPECT_LIMIT = PRODUCT_LIMITS.freeCampaignProspects
 export const FREE_CAMPAIGN_MARKER_PERIOD = 'free-campaign'
-export const FREE_CAMPAIGN_COMPLETED_PERIOD = 'free-campaign-completed'
 
 type DbClient = PrismaClient | Prisma.TransactionClient
 
@@ -28,34 +25,6 @@ export async function markFreeCampaignUsed(db: DbClient, userId: string, campaig
     status: 'succeeded',
     completedAt: new Date(),
   } })
-}
-
-export async function markFreeCampaignCompleted(db: DbClient, userId: string, campaignId: string) {
-  await db.searchUsage.upsert({
-    where: { requestId: `free-campaign-completed:${userId}` },
-    update: { cacheKey: campaignId, status: 'succeeded', completedAt: new Date() },
-    create: {
-      userId,
-      requestId: `free-campaign-completed:${userId}`,
-      cacheKey: campaignId,
-      plan: 'Gratuit',
-      periodKey: FREE_CAMPAIGN_COMPLETED_PERIOD,
-      status: 'succeeded',
-      completedAt: new Date(),
-    },
-  })
-}
-
-export async function hasCompletedFreeCampaign(db: DbClient, userId: string): Promise<boolean> {
-  const completed = await db.searchUsage.count({
-    where: { userId, periodKey: FREE_CAMPAIGN_COMPLETED_PERIOD, status: 'succeeded' },
-  })
-  return completed > 0
-}
-
-export async function canUseGmailIntegration(db: DbClient, user: { id: string; plan?: string | null }): Promise<boolean> {
-  if (isPro(user.plan)) return true
-  return isGmailIntegrationAllowed(user.plan, await hasCompletedFreeCampaign(db, user.id))
 }
 
 export async function canUseFreeCampaign(db: DbClient, userId: string, campaignId: string): Promise<boolean> {

@@ -31,8 +31,6 @@ export async function GET() {
           channelId: true,
           email: true,
           generatedBody: true,
-          sendStatus: true,
-          sendError: true,
         },
       },
     },

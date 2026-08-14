@@ -64,7 +64,6 @@ export default async function DashboardHomePage({
     recentFavorites,
     recentCampaigns,
     recentGeneratedCampaigns,
-    recentGeneratedIndividuals,
   ] = await Promise.all([
     prisma.search.count({ where: { userId: user.id } }),
     prisma.favorite.count({ where: { userId: user.id } }),
@@ -93,12 +92,6 @@ export default async function DashboardHomePage({
       orderBy: { createdAt: 'desc' },
       take: 5,
       select: { id: true, name: true, createdAt: true },
-    }),
-    prisma.emailSent.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      select: { id: true, channelName: true, createdAt: true },
     }),
   ])
 
@@ -129,13 +122,6 @@ export default async function DashboardHomePage({
       icon: '✨',
       title: 'Message préparé',
       detail: item.name,
-      date: item.createdAt,
-    })),
-    ...recentGeneratedIndividuals.map(item => ({
-      id: `message-${item.id}`,
-      icon: '✨',
-      title: 'Message préparé',
-      detail: item.channelName,
       date: item.createdAt,
     })),
   ]

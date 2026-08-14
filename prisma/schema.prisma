@@ -20,25 +20,9 @@ model User {
   active               Boolean        @default(true)
   createdAt            DateTime       @default(now())
   searches             Search[]
-  emailsSent           EmailSent[]
   favorites            Favorite[]
   campaigns            Campaign[]
-  googleAccount        GoogleAccount?
   searchUsages         SearchUsage[]
-}
-
-model GoogleAccount {
-  id                String    @id @default(cuid())
-  userId            String    @unique
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  providerAccountId String    @unique
-  email             String?
-  accessToken       String    @map("access_token")
-  refreshToken      String?   @map("refresh_token")
-  expiryDate        DateTime? @map("expiry_date")
-  scope             String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
 }
 
 model Search {
@@ -51,17 +35,6 @@ model Search {
   subsMax   String
   results   String
   createdAt DateTime @default(now())
-}
-
-model EmailSent {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id])
-  channelName  String
-  channelEmail String
-  content      String
-  status       String   @default("Envoyé")
-  createdAt    DateTime @default(now())
 }
 
 model Favorite {
@@ -166,10 +139,6 @@ model CampaignProspect {
   generatedSubject String?
   generatedBody    String?
   status           String    @default("À contacter")
-  sendStatus       String    @default("Non envoyé")
-  sentAt           DateTime?
-  sendError        String?
-  gmailMessageId   String?
   createdAt        DateTime  @default(now())
 
   @@unique([campaignId, channelId])

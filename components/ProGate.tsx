@@ -55,8 +55,8 @@ const benefits = [
     text: 'Dépassez la campagne d’essai limitée à cinq prospects et organisez votre prospection régulière.',
   },
   {
-    title: 'Gmail',
-    text: 'Créez des lots de brouillons plus importants tout en conservant la protection anti-doublon.',
+    title: 'Passage à la messagerie',
+    text: 'Ouvrez vos messages préparés dans Gmail ou votre client mail, sans connecter votre boîte.',
   },
   {
     title: 'Export CSV',

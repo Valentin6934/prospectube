@@ -14,16 +14,7 @@ require.extensions['.ts'] = function transpile(module, filename) {
 const { selectDiverseProspectPreview } = require('../lib/freePreview.ts')
 const { getPlanName, isFree, isPro, requireProResponse } = require('../lib/plan.ts')
 const {
-  getCampaignProspectSkipReason,
-  getCampaignDraftCreationPlan,
-  getCampaignProspectWithDraft,
-  getCampaignGmailActionLabel,
-  getCampaignGmailProgressLabel,
-  getCampaignGmailSingleActionLabel,
-  getCampaignManualSendPlan,
-  getCampaignSendSummary,
   hasCampaignDraftChanges,
-  isCampaignProspectSendEligible,
   limitUniqueCampaignSelection,
   normalizeCampaignMessage,
 } = require('../lib/campaignWorkflow.ts')
@@ -44,22 +35,7 @@ const {
   getCampaignAiConfigError,
   parseCampaignAiText,
 } = require('../lib/campaignMessaging.ts')
-const { encodeGmailMessage } = require('../lib/gmailMessage.ts')
-const {
-  buildDisconnectedGmailStatus,
-  buildGmailStatus,
-  getSafeGmailErrorMessage,
-  REQUIRED_GMAIL_DRAFT_SCOPE,
-  shouldDisableGmailDrafts,
-  isGmailIntegrationAllowed,
-} = require('../lib/gmailStatus.ts')
-const {
-  classifyGoogleOAuthError,
-  getSafeGmailOAuthMessage,
-  isConnectedOAuthReplay,
-  logSafeGmailOAuthFailure,
-} = require('../lib/gmailOAuthErrors.ts')
-const { getGmailPublicOAuthStatus, isGmailPublicOAuthAvailable } = require('../lib/gmailPublicAccess.ts')
+const { buildClipboardMessage, buildGmailComposeUrl, buildMailtoUrl, normalizeRecipient } = require('../lib/emailHandoff.ts')
 const {
   extractPublicEmails,
   normalizeObfuscatedEmail,
@@ -68,15 +44,6 @@ const {
   selectBestPublicEmail,
 } = require('../lib/publicContactExtraction.ts')
 const { PRODUCT_LIMITS, PRO_MONTHLY_PRICE_LABEL } = require('../lib/product.ts')
-const {
-  buildGmailOAuthStatusRedirect,
-  createGmailOAuthState,
-  getRequestOriginFromParts,
-  getSafeGmailOAuthReturnPath,
-  getStableGmailOAuthCallbackUrl,
-  isAllowedProspectTubeReturnOrigin,
-  verifyGmailOAuthState,
-} = require('../lib/gmailOAuthUrl.ts')
 const {
   STRIPE_CLIENT_ERROR_MESSAGE,
   StripeConfigError,
@@ -124,7 +91,7 @@ const {
 } = require('../lib/searchPolicy.ts')
 const { filterYouTubeCatalog, mergeCatalogChannels } = require('../lib/youtubeCatalog.ts')
 const { getReleasedSearchQuotaSnapshot, getSearchQuotaSnapshot, releaseSearchQuota, reserveSearchQuota } = require('../lib/searchQuota.ts')
-const { FREE_LIFETIME_CAMPAIGN_LIMIT, FREE_CAMPAIGN_PROSPECT_LIMIT, FREE_CAMPAIGN_MARKER_PERIOD, FREE_CAMPAIGN_COMPLETED_PERIOD } = require('../lib/campaignAccess.ts')
+const { FREE_LIFETIME_CAMPAIGN_LIMIT, FREE_CAMPAIGN_PROSPECT_LIMIT, FREE_CAMPAIGN_MARKER_PERIOD } = require('../lib/campaignAccess.ts')
 const { NICHE_CONFIG, validateSearchTarget, buildTargetQuery, getSubnicheVocabulary, getPrimarySearchFocus, getSearchFocusVariant, getSearchFocusVariants } = require('../lib/searchTargeting.ts')
 const { buildExposureTargetKey, buildUserTargetKey, countGlobalChannelExposure, diversifyProspects, extractChannelIdsFromSearchResults, getUserTargetExposure, markSearchResultsForTarget, sortProspectsByQuality, sortProspectsForRotation } = require('../lib/resultDiversification.ts')
 const { buildDiscoveryFallbackQueries, calculateQueryVariantYield, classifyQueryBreadth, rankQueryVariants, selectComplementaryVariant, selectNextDiscoveryVariant, updateVariantPerformance } = require('../lib/discoveryVariants.ts')
@@ -252,95 +219,11 @@ test('requireProResponse stays aligned with isPro free denial', async () => {
   assert.equal(body.upgrade, true)
 })
 
-test('campaign send eligibility requires email, subject, body and unsent status', () => {
-  assert.equal(isCampaignProspectSendEligible({
-    email: 'creator@example.com',
-    generatedSubject: 'Collaboration',
-    generatedBody: 'Bonjour',
-    sendStatus: 'Non envoyé',
-  }), true)
-
-  assert.equal(isCampaignProspectSendEligible({
-    email: null,
-    generatedSubject: 'Collaboration',
-    generatedBody: 'Bonjour',
-    sendStatus: 'Non envoyé',
-  }), false)
-
-  assert.equal(isCampaignProspectSendEligible({
-    email: 'creator@example.com',
-    generatedSubject: '',
-    generatedBody: 'Bonjour',
-    sendStatus: 'Non envoyé',
-  }), false)
-
-  assert.equal(isCampaignProspectSendEligible({
-    email: 'creator@example.com',
-    generatedSubject: 'Collaboration',
-    generatedBody: '   ',
-    sendStatus: 'Non envoyé',
-  }), false)
-
-  assert.equal(isCampaignProspectSendEligible({
-    email: 'creator@example.com',
-    generatedSubject: 'Collaboration',
-    generatedBody: 'Bonjour',
-    sendStatus: 'Envoyé',
-  }), false)
-
-  assert.equal(isCampaignProspectSendEligible({
-    email: 'creator@example.com',
-    generatedSubject: 'Collaboration',
-    generatedBody: 'Bonjour',
-    sendStatus: 'Non envoye',
-    gmailMessageId: 'gmail_draft_123',
-  }), false)
-})
-
-test('campaign manual message drafts are trimmed before persistence and send eligibility', () => {
-  const normalized = normalizeCampaignMessage({
-    subject: '  Collaboration ProspectTube  ',
-    body: '\nBonjour Thomas\n',
-  })
-
-  assert.deepEqual(normalized, {
-    subject: 'Collaboration ProspectTube',
-    body: 'Bonjour Thomas',
-  })
-  assert.equal(isCampaignProspectSendEligible({
-    email: 'creator@example.com',
-    generatedSubject: normalized.subject,
-    generatedBody: normalized.body,
-    sendStatus: 'Non envoye',
-  }), true)
-})
-
-test('campaign send eligibility uses the current manual draft instead of stale persisted message fields', () => {
-  const persistedProspect = {
-    email: 'creator@example.com',
-    generatedSubject: '',
-    generatedBody: '',
-    sendStatus: 'Non envoye',
-  }
-
-  assert.equal(isCampaignProspectSendEligible(persistedProspect), false)
-
-  const prospectWithDraft = getCampaignProspectWithDraft(persistedProspect, {
-    subject: '  Collaboration  ',
-    body: '  Bonjour, je vous contacte pour une campagne.  ',
-  })
-
-  assert.equal(prospectWithDraft.generatedSubject, 'Collaboration')
-  assert.equal(prospectWithDraft.generatedBody, 'Bonjour, je vous contacte pour une campagne.')
-  assert.equal(isCampaignProspectSendEligible(prospectWithDraft), true)
-})
-
 test('campaign manual autosave targets only selected prospects with changed drafts', () => {
   const persistedProspect = {
     email: 'creator@example.com',
     generatedSubject: 'Collaboration',
     generatedBody: 'Bonjour',
-    sendStatus: 'Non envoye',
   }
 
   assert.equal(hasCampaignDraftChanges(persistedProspect, {
@@ -354,116 +237,51 @@ test('campaign manual autosave targets only selected prospects with changed draf
   }), true)
 })
 
-test('campaign manual send plan waits for changed selected drafts before Gmail and excludes invalid prospects', () => {
-  const prospects = [
-    {
-      id: 'p1',
-      email: 'one@example.com',
-      generatedSubject: '',
-      generatedBody: '',
-      sendStatus: 'Non envoye',
-    },
-    {
-      id: 'p2',
-      email: 'two@example.com',
-      generatedSubject: 'Sujet existant',
-      generatedBody: 'Message existant',
-      sendStatus: 'Non envoye',
-    },
-    {
-      id: 'p3',
-      email: null,
-      generatedSubject: '',
-      generatedBody: '',
-      sendStatus: 'Non envoye',
-    },
+test('email handoff builds encoded Gmail and mailto links without sending', () => {
+  const input = {
+    email: ' Creator@Example.com ',
+    subject: 'Collaboration & montage',
+    body: 'Bonjour Léa,\nVoici une idée : 50% + créatif.',
+  }
+  const gmail = new URL(buildGmailComposeUrl(input))
+  const mailto = buildMailtoUrl(input)
+
+  assert.equal(normalizeRecipient(input.email), 'creator@example.com')
+  assert.equal(gmail.origin, 'https://mail.google.com')
+  assert.equal(gmail.searchParams.get('view'), 'cm')
+  assert.equal(gmail.searchParams.get('to'), 'creator@example.com')
+  assert.equal(gmail.searchParams.get('su'), input.subject)
+  assert.equal(gmail.searchParams.get('body'), input.body)
+  assert.match(mailto, /^mailto:creator%40example\.com\?/)
+  assert.equal(new URLSearchParams(mailto.split('?')[1]).get('body'), input.body)
+})
+
+test('email handoff handles missing content and rejects missing recipients', () => {
+  assert.equal(buildGmailComposeUrl({ email: '' }), null)
+  assert.equal(buildMailtoUrl({ email: null }), null)
+  assert.equal(buildGmailComposeUrl({ email: 'invalid' }), null)
+  assert.equal(buildClipboardMessage({ subject: '', body: '' }), '')
+  assert.equal(buildClipboardMessage({ subject: ' Sujet ', body: ' Message ' }), 'Objet : Sujet\n\nMessage')
+  assert.match(buildGmailComposeUrl({ email: 'a@b.fr' }), /mail\.google\.com/)
+})
+
+test('Gmail OAuth and server-side delivery paths are absent', () => {
+  const removedPaths = [
+    'app/api/gmail/connect/route.ts',
+    'app/api/gmail/callback/route.ts',
+    'app/api/gmail/route.ts',
+    'app/api/campaigns/[id]/send/route.ts',
+    'lib/gmail.ts',
   ]
+  for (const path of removedPaths) assert.equal(fs.existsSync(path), false, path)
 
-  const plan = getCampaignManualSendPlan(prospects, {
-    p1: { subject: ' Nouveau sujet ', body: ' Nouveau message ' },
-    p2: { subject: ' Sujet existant ', body: ' Message existant ' },
-    p3: { subject: 'Sujet', body: 'Message' },
-  }, ['p1', 'p2', 'p3'])
-
-  assert.deepEqual(plan.prospectsWithDrafts.map(prospect => prospect.generatedSubject), [
-    'Nouveau sujet',
-    'Sujet existant',
-    'Sujet',
-  ])
-  assert.deepEqual(plan.eligibleProspects.map(prospect => prospect.id), ['p1', 'p2'])
-  assert.deepEqual(plan.prospectsToSave.map(prospect => prospect.id), ['p1'])
-})
-
-test('campaign draft CTA counts only selected prospects that are ready for Gmail drafts', () => {
-  const prospects = [
-    { id: 'ready', email: 'ready@example.com', generatedSubject: 'Sujet', generatedBody: 'Message', sendStatus: 'Non envoye' },
-    { id: 'no_email', email: null, generatedSubject: 'Sujet', generatedBody: 'Message', sendStatus: 'Non envoye' },
-    { id: 'no_subject', email: 'subject@example.com', generatedSubject: '', generatedBody: 'Message', sendStatus: 'Non envoye' },
-    { id: 'no_body', email: 'body@example.com', generatedSubject: 'Sujet', generatedBody: '   ', sendStatus: 'Non envoye' },
-    { id: 'processed', email: 'done@example.com', generatedSubject: 'Sujet', generatedBody: 'Message', sendStatus: 'Non envoye', gmailMessageId: 'gmail_draft_123' },
-    { id: 'unselected_ready', email: 'other@example.com', generatedSubject: 'Sujet', generatedBody: 'Message', sendStatus: 'Non envoye' },
-  ]
-
-  const plan = getCampaignDraftCreationPlan(prospects, {}, [
-    'ready',
-    'no_email',
-    'no_subject',
-    'no_body',
-    'processed',
-    'missing',
-  ])
-
-  assert.equal(plan.selectedProspects.length, 5)
-  assert.equal(plan.readyCount, 1)
-  assert.deepEqual(plan.readyIds, ['ready'])
-})
-
-test('campaign manual message eligibility reports the exact missing field', () => {
-  assert.equal(getCampaignProspectSkipReason({
-    email: 'creator@example.com',
-    generatedSubject: '   ',
-    generatedBody: 'Bonjour',
-    sendStatus: 'Non envoye',
-  }), 'no_subject')
-
-  assert.equal(getCampaignProspectSkipReason({
-    email: 'creator@example.com',
-    generatedSubject: 'Collaboration',
-    generatedBody: '   ',
-    sendStatus: 'Non envoye',
-  }), 'no_body')
-
-  assert.equal(getCampaignProspectSkipReason({
-    email: 'creator@example.com',
-    generatedSubject: 'Collaboration',
-    generatedBody: 'Bonjour',
-    sendStatus: 'Non envoye',
-    gmailMessageId: 'gmail_draft_123',
-  }), 'already_processed')
-})
-
-test('campaign send summary counts successes, failures and skipped prospects', () => {
-  const summary = getCampaignSendSummary([
-    { success: true },
-    { success: false },
-    { success: false, skippedReason: 'no_email' },
-    { success: false, skippedReason: 'no_subject' },
-    { success: false, skippedReason: 'no_body' },
-  ])
-
-  assert.equal(summary.successCount, 1)
-  assert.equal(summary.failureCount, 1)
-  assert.equal(summary.skippedNoEmailCount, 1)
-  assert.equal(summary.skippedNoSubjectCount, 1)
-  assert.equal(summary.skippedNoBodyCount, 1)
-  assert.equal(summary.errorCount, 4)
-  assert.equal(summary.campaignResultStatus, 'Partiellement envoyee')
-})
-
-test('campaign send summary exposes final status labels', () => {
-  assert.equal(getCampaignSendSummary([{ success: true }]).campaignResultStatus, 'Envoyee')
-  assert.equal(getCampaignSendSummary([{ success: true }, { success: false }]).campaignResultStatus, 'Partiellement envoyee')
-  assert.equal(getCampaignSendSummary([{ success: false, skippedReason: 'no_email' }]).campaignResultStatus, 'Aucun email envoye')
+  const sources = [
+    fs.readFileSync('lib/emailHandoff.ts', 'utf8'),
+    fs.readFileSync('app/campaigns/page.tsx', 'utf8'),
+    fs.readFileSync('.env.example', 'utf8'),
+  ].join('\n')
+  assert.doesNotMatch(sources, /gmail\.googleapis\.com|messages\/send|users\.messages\.send|gmail\.compose|GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET/)
+  assert.doesNotMatch(sources, /fetch\([^)]*gmail/i)
 })
 
 test('campaign selection is deduplicated and limited to 20 prospects', () => {
@@ -544,229 +362,6 @@ test('campaign AI is hidden in the V1 campaign interface without deleting server
   assert.equal(CAMPAIGN_AI_ENABLED, false)
 })
 
-test('campaign Gmail labels reflect draft mode instead of implying a real send', () => {
-  assert.equal(getCampaignGmailActionLabel(12), 'Créer les brouillons (12)')
-  assert.equal(getCampaignGmailSingleActionLabel(), 'Créer le brouillon')
-  assert.equal(getCampaignGmailProgressLabel(), 'Création...')
-})
-
-
-test('gmail status exposes connected accounts without leaking tokens', () => {
-  const status = buildGmailStatus({
-    email: 'creator@gmail.com',
-    accessToken: 'access-token-should-not-leak',
-    refreshToken: 'refresh-token-should-not-leak',
-    scope: REQUIRED_GMAIL_DRAFT_SCOPE,
-    expiryDate: new Date('2030-01-01T00:00:00.000Z'),
-    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  })
-
-  assert.equal(status.connected, true)
-  assert.equal(status.status, 'connected')
-  assert.equal(status.state, 'connected')
-  assert.equal(status.canUseGmail, true)
-  assert.equal(status.email, 'creator@gmail.com')
-  assert.equal(status.hasRefreshToken, true)
-  assert.equal(shouldDisableGmailDrafts(status), false)
-  assert.equal(Object.prototype.hasOwnProperty.call(status, 'accessToken'), false)
-  assert.equal(Object.prototype.hasOwnProperty.call(status, 'refreshToken'), false)
-})
-
-test('gmail status distinguishes disconnected and expired connections', () => {
-  const disconnected = buildDisconnectedGmailStatus()
-  assert.equal(disconnected.connected, false)
-  assert.equal(disconnected.status, 'disconnected')
-  assert.equal(disconnected.state, 'disconnected')
-  assert.equal(disconnected.canUseGmail, false)
-  assert.equal(shouldDisableGmailDrafts(disconnected), true)
-
-  const expired = buildGmailStatus({
-    email: 'creator@gmail.com',
-    refreshToken: null,
-    expiryDate: new Date('2025-01-01T00:00:00.000Z'),
-    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  })
-
-  assert.equal(expired.connected, false)
-  assert.equal(expired.status, 'expired')
-  assert.equal(expired.state, 'expired')
-  assert.equal(expired.canUseGmail, false)
-  assert.equal(expired.reconnectRequired, true)
-  assert.match(expired.message, /connexion Gmail a expir/)
-  assert.equal(shouldDisableGmailDrafts(expired), true)
-})
-
-test('gmail user-facing errors stay safe for refresh token failures', () => {
-  assert.match(getSafeGmailErrorMessage('invalid_refresh_token'), /connexion Gmail a expir/)
-  assert.match(getSafeGmailErrorMessage('missing_refresh_token'), /connexion Gmail a expir/)
-  assert.match(getSafeGmailErrorMessage('revoked_access'), /Reconnectez votre compte/)
-  assert.match(getSafeGmailErrorMessage('google_temporary'), /Google est temporairement indisponible/)
-})
-
-test('gmail OAuth reconnect and disconnect routes preserve ownership and replace tokens', () => {
-  const connectRoute = fs.readFileSync('app/api/gmail/connect/route.ts', 'utf8')
-  const callbackRoute = fs.readFileSync('app/api/gmail/callback/route.ts', 'utf8')
-  const gmailRoute = fs.readFileSync('app/api/gmail/route.ts', 'utf8')
-
-  assert.match(connectRoute, /access_type:\s*'offline'/)
-  assert.match(connectRoute, /prompt:\s*'consent'/)
-  assert.match(connectRoute, /REQUIRED_GMAIL_DRAFT_SCOPE/)
-  assert.doesNotMatch(connectRoute, /gmail\.send/)
-  assert.match(connectRoute, /getServerSession\(authOptions\)/)
-  assert.match(connectRoute, /createGmailOAuthState/)
-  assert.match(connectRoute, /getStableGmailOAuthCallbackUrl\(\)/)
-  assert.doesNotMatch(connectRoute, /code_challenge/)
-  assert.doesNotMatch(connectRoute, /authorizationUrl\.toString\(\)/)
-  assert.doesNotMatch(callbackRoute, /getServerSession\(authOptions\)/)
-  assert.match(callbackRoute, /verifyGmailOAuthState\(state\)/)
-  assert.match(callbackRoute, /getStableGmailOAuthCallbackUrl\(\)/)
-  assert.match(callbackRoute, /where:\s*\{\s*id:\s*payload\.userId\s*\}/)
-  assert.match(callbackRoute, /prisma\.googleAccount\.upsert/)
-  assert.match(callbackRoute, /accessToken:\s*tokens\.access_token/)
-  assert.match(callbackRoute, /refreshToken,/)
-  assert.match(gmailRoute, /export async function DELETE/)
-  assert.match(gmailRoute, /where:\s*\{\s*userId:\s*user\.id\s*\}/)
-  assert.match(gmailRoute, /scope:\s*true/)
-  assert.match(gmailRoute, /buildDisconnectedGmailStatus/)
-})
-
-test('gmail OAuth uses a stable Google callback for production and previews', () => {
-  const productionEnv = {
-    NODE_ENV: 'production',
-    NEXTAUTH_URL: 'https://prospectube.vercel.app',
-    NEXTAUTH_SECRET: 'test-secret',
-  }
-  const previewEnv = {
-    NODE_ENV: 'production',
-    NEXTAUTH_URL: 'https://prospectube-37ukqp2rr-llow.vercel.app',
-    NEXTAUTH_SECRET: 'test-secret',
-  }
-
-  assert.equal(
-    getStableGmailOAuthCallbackUrl(productionEnv),
-    'https://prospectube.vercel.app/api/gmail/callback'
-  )
-  assert.equal(
-    getStableGmailOAuthCallbackUrl(previewEnv),
-    'https://prospectube.vercel.app/api/gmail/callback'
-  )
-})
-
-test('gmail OAuth token exchange uses the exact same stable redirect uri', () => {
-  const connectRoute = fs.readFileSync('app/api/gmail/connect/route.ts', 'utf8')
-  const callbackRoute = fs.readFileSync('app/api/gmail/callback/route.ts', 'utf8')
-
-  assert.match(connectRoute, /const redirectUri = getStableGmailOAuthCallbackUrl\(\)/)
-  assert.match(callbackRoute, /const redirectUri = getStableGmailOAuthCallbackUrl\(\)/)
-  assert.match(connectRoute, /redirect_uri:\s*redirectUri/)
-  assert.match(callbackRoute, /redirect_uri:\s*redirectUri/)
-})
-
-test('gmail OAuth signed state preserves preview, production, campaign and localhost returns', () => {
-  const env = { NODE_ENV: 'production', NEXTAUTH_SECRET: 'test-secret' }
-  const previewState = createGmailOAuthState({
-    userId: 'user_preview',
-    origin: 'https://prospectube-37ukqp2rr-llow.vercel.app',
-    returnPath: '/campaigns?campaignId=campaign_123',
-  }, env)
-  const previewPayload = verifyGmailOAuthState(previewState, env)
-  assert.equal(previewPayload.userId, 'user_preview')
-  assert.equal(previewPayload.origin, 'https://prospectube-37ukqp2rr-llow.vercel.app')
-  assert.equal(previewPayload.returnPath, '/campaigns?campaignId=campaign_123')
-  assert.equal(
-    buildGmailOAuthStatusRedirect('connected', previewPayload, env).toString(),
-    'https://prospectube-37ukqp2rr-llow.vercel.app/campaigns?campaignId=campaign_123&gmail=connected'
-  )
-
-  const productionState = createGmailOAuthState({
-    userId: 'user_prod',
-    origin: 'https://prospectube.vercel.app',
-    returnPath: '/settings',
-  }, env)
-  const productionPayload = verifyGmailOAuthState(productionState, env)
-  assert.equal(
-    buildGmailOAuthStatusRedirect('connected', productionPayload, env).toString(),
-    'https://prospectube.vercel.app/settings?gmail=connected'
-  )
-
-  const localEnv = { NODE_ENV: 'development', NEXTAUTH_SECRET: 'test-secret' }
-  const localState = createGmailOAuthState({
-    userId: 'user_local',
-    origin: 'http://localhost:3000',
-    returnPath: '/settings',
-  }, localEnv)
-  const localPayload = verifyGmailOAuthState(localState, localEnv)
-  assert.equal(
-    buildGmailOAuthStatusRedirect('connected', localPayload, localEnv).toString(),
-    'http://localhost:3000/settings?gmail=connected'
-  )
-})
-
-test('gmail OAuth return validation blocks open redirects and fake domains', () => {
-  const productionEnv = { NODE_ENV: 'production', NEXTAUTH_SECRET: 'test-secret' }
-  const devEnv = { NODE_ENV: 'development', NEXTAUTH_SECRET: 'test-secret' }
-
-  assert.equal(isAllowedProspectTubeReturnOrigin('https://prospectube.vercel.app', productionEnv), true)
-  assert.equal(isAllowedProspectTubeReturnOrigin('https://prospectube-37ukqp2rr-llow.vercel.app', productionEnv), true)
-  assert.equal(isAllowedProspectTubeReturnOrigin('http://localhost:3000', devEnv), true)
-  assert.equal(isAllowedProspectTubeReturnOrigin('https://evil.com', productionEnv), false)
-  assert.equal(isAllowedProspectTubeReturnOrigin('javascript:alert(1)', productionEnv), false)
-  assert.equal(isAllowedProspectTubeReturnOrigin('data:text/html,hi', productionEnv), false)
-  assert.equal(isAllowedProspectTubeReturnOrigin('https://prospectube.vercel.app.evil.com', productionEnv), false)
-  assert.equal(isAllowedProspectTubeReturnOrigin('https://evil-prospectube.vercel.app', productionEnv), false)
-  assert.equal(getSafeGmailOAuthReturnPath('https://evil.com/settings'), '/settings')
-  assert.equal(getSafeGmailOAuthReturnPath('//evil.com/settings'), '/settings')
-})
-
-test('gmail OAuth state rejects tampering and stale payloads', () => {
-  const env = { NODE_ENV: 'production', NEXTAUTH_SECRET: 'test-secret' }
-  const state = createGmailOAuthState({
-    userId: 'user_123',
-    origin: 'https://prospectube.vercel.app',
-    returnPath: '/settings',
-  }, env)
-
-  assert.equal(verifyGmailOAuthState(`${state}tampered`, env), null)
-  assert.equal(verifyGmailOAuthState(state, { ...env, NEXTAUTH_SECRET: 'other-secret' }), null)
-  assert.equal(verifyGmailOAuthState(state, env, Date.now() + 11 * 60 * 1000), null)
-})
-
-test('gmail OAuth request origin keeps the initial Vercel preview origin', () => {
-  assert.equal(getRequestOriginFromParts({
-    forwardedHost: 'prospectube-37ukqp2rr-llow.vercel.app',
-    forwardedProto: 'https',
-    host: 'internal.vercel.app',
-    fallbackOrigin: 'https://internal.vercel.app',
-  }), 'https://prospectube-37ukqp2rr-llow.vercel.app')
-})
-
-test('gmail status requires the draft compose scope before enabling Gmail drafts', () => {
-  const missingScope = buildGmailStatus({
-    email: 'creator@gmail.com',
-    refreshToken: 'refresh-token',
-    scope: 'openid email profile',
-    expiryDate: new Date('2030-01-01T00:00:00.000Z'),
-    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
-  })
-
-  assert.equal(missingScope.connected, false)
-  assert.equal(missingScope.status, 'expired')
-  assert.equal(missingScope.canUseGmail, false)
-  assert.match(missingScope.message, /autorisation Gmail actuelle/)
-  assert.equal(shouldDisableGmailDrafts(missingScope), true)
-})
-
-test('settings and campaigns read the same uncached Gmail status endpoint', () => {
-  const settingsPage = fs.readFileSync('app/settings/page.tsx', 'utf8')
-  const campaignsPage = fs.readFileSync('app/campaigns/page.tsx', 'utf8')
-  const gmailRoute = fs.readFileSync('app/api/gmail/route.ts', 'utf8')
-
-  assert.match(settingsPage, /fetch\('\/api\/gmail', \{ cache: 'no-store' \}\)/)
-  assert.match(campaignsPage, /fetch\('\/api\/gmail', \{ cache: 'no-store' \}\)/)
-  assert.match(gmailRoute, /Cache-Control': 'no-store, max-age=0'/)
-  assert.match(gmailRoute, /buildGmailStatus\(account, \{ accessAllowed \}\)/)
-})
-
 test('campaign V1 interface does not expose AI generation controls', () => {
   const campaignsPage = fs.readFileSync('app/campaigns/page.tsx', 'utf8')
 
@@ -781,51 +376,10 @@ test('campaign V1 interface does not expose AI generation controls', () => {
   assert.match(campaignsPage, /Aucune adresse email disponible/)
   assert.match(campaignsPage, /À compléter/)
   assert.match(campaignsPage, /Prospects sans adresse email/)
-  assert.match(campaignsPage, /Créer les brouillons Gmail/)
+  assert.match(campaignsPage, /Ouvrir dans Gmail/)
+  assert.match(campaignsPage, /Ouvrir dans mon client mail/)
   assert.match(campaignsPage, /noEmailProspects\.map/)
   assert.match(campaignsPage, /<ProspectPresentation/)
-})
-
-test('gmail MIME uses required headers and base64url encoding', () => {
-  const raw = encodeGmailMessage({
-    to: 'creator@example.com',
-    subject: 'Collaboration vidéo',
-    body: 'Bonjour Thomas',
-  })
-
-  assert.doesNotMatch(raw, /[+/=]/)
-  const decoded = Buffer.from(raw.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
-  assert.match(decoded, /To: creator@example\.com/)
-  assert.match(decoded, /Subject: =\?UTF-8\?B\?/)
-  assert.match(decoded, /MIME-Version: 1\.0/)
-  assert.match(decoded, /Content-Type: text\/plain; charset="UTF-8"/)
-  assert.match(decoded, /Bonjour Thomas/)
-})
-
-test('gmail draft validation rejects invalid payloads before calling Gmail', () => {
-  assert.throws(() => encodeGmailMessage({ to: '', subject: 'Sujet', body: 'Message' }), /GMAIL_DRAFT_INVALID/)
-  assert.throws(() => encodeGmailMessage({ to: 'creator@example.com', subject: '', body: 'Message' }), /GMAIL_DRAFT_INVALID/)
-  assert.throws(() => encodeGmailMessage({ to: 'creator@example.com', subject: 'Sujet', body: '   ' }), /GMAIL_DRAFT_INVALID/)
-})
-
-test('campaign send route returns functional Gmail error codes', () => {
-  const sendRoute = fs.readFileSync('app/api/campaigns/[id]/send/route.ts', 'utf8')
-
-  for (const code of [
-    'GMAIL_NOT_CONNECTED',
-    'GMAIL_CONNECTION_EXPIRED',
-    'GMAIL_SCOPE_MISSING',
-    'GMAIL_API_NOT_ENABLED',
-    'GMAIL_RATE_LIMITED',
-    'GMAIL_DRAFT_INVALID',
-    'GMAIL_API_REJECTED',
-    'GMAIL_TEMPORARY_ERROR',
-  ]) {
-    assert.match(sendRoute, new RegExp(code))
-  }
-
-  assert.match(sendRoute, /forceRefresh: true/)
-  assert.doesNotMatch(sendRoute, /Erreur Gmail/)
 })
 
 test('prospect presentation normalizes media, contacts and fallback identity', () => {
@@ -905,54 +459,6 @@ test('main app navigation uses the shared premium labels and emojis', () => {
   assert.match(nav, /Découvrir Pro/)
 
   assert.match(signOut, /🚪 Déconnexion/)
-})
-
-test('gmail send summary stays clear when Gmail is not needed for ineligible prospects', () => {
-  const summary = getCampaignSendSummary([
-    { success: false, skippedReason: 'no_email' },
-    { success: false, skippedReason: 'incomplete_message' },
-    { success: false, skippedReason: 'already_processed' },
-  ])
-
-  assert.equal(summary.successCount, 0)
-  assert.equal(summary.skippedNoEmailCount, 1)
-  assert.equal(summary.skippedIncompleteCount, 1)
-  assert.equal(summary.skippedAlreadyProcessedCount, 1)
-  assert.equal(summary.campaignResultStatus, 'Aucun email envoye')
-})
-
-test('campaign send route returns structured draft states and avoids duplicate Gmail drafts', () => {
-  const sendRoute = fs.readFileSync('app/api/campaigns/[id]/send/route.ts', 'utf8')
-
-  assert.match(sendRoute, /gmailMessageId:\s*true/)
-  assert.match(sendRoute, /DRAFT_CREATED/)
-  assert.match(sendRoute, /DRAFT_CREATED_STATUS_RECOVERED/)
-  assert.match(sendRoute, /DRAFT_ALREADY_CREATED/)
-  assert.match(sendRoute, /DRAFT_CREATED_STATUS_NOT_SAVED/)
-  assert.match(sendRoute, /getStructuredDraftState\(results\)/)
-  assert.match(sendRoute, /alreadyProcessed \? undefined : getSkipMessage/)
-  assert.match(sendRoute, /Tous les brouillons eligibles existent deja/)
-})
-
-test('campaign send route logs Prisma persistence failures and retries a minimal status update', () => {
-  const sendRoute = fs.readFileSync('app/api/campaigns/[id]/send/route.ts', 'utf8')
-
-  assert.match(sendRoute, /Prisma\.PrismaClientKnownRequestError/)
-  assert.match(sendRoute, /prismaCode/)
-  assert.match(sendRoute, /prismaMessage/)
-  assert.match(sendRoute, /failingOperation/)
-  assert.match(sendRoute, /stack/)
-  assert.match(sendRoute, /gmailDraftId/)
-  assert.match(sendRoute, /gmailMessageId/)
-  assert.match(sendRoute, /campaignProspect\.updateMany/)
-  assert.match(sendRoute, /campaignId:\s*input\.campaignId/)
-  assert.match(sendRoute, /campaignProspect\.updateMany\.deliveryStatusFull/)
-  assert.match(sendRoute, /campaignProspect\.updateMany\.deliveryStatusMinimal/)
-  assert.match(sendRoute, /sendError:\s*null/)
-  assert.match(sendRoute, /sentAt:\s*input\.sentAt/)
-  assert.match(sendRoute, /data:\s*\{\s*sendStatus:\s*input\.sendStatus,\s*gmailMessageId/s)
-  assert.match(sendRoute, /DRAFT_CREATED_STATUS_NOT_SAVED/)
-  assert.doesNotMatch(sendRoute, /where:\s*\{\s*id:\s*prospect\.id\s*\},\s*data:\s*\{\s*sendStatus,\s*sentAt/s)
 })
 
 test('stripe config accepts price ids and trims spaces', () => {
@@ -1725,17 +1231,15 @@ test('free campaign discovery is limited and durable without enabling campaign A
   assert.equal(FREE_LIFETIME_CAMPAIGN_LIMIT, 1)
   assert.equal(FREE_CAMPAIGN_PROSPECT_LIMIT, 5)
   assert.equal(FREE_CAMPAIGN_MARKER_PERIOD, 'free-campaign')
-  assert.equal(FREE_CAMPAIGN_COMPLETED_PERIOD, 'free-campaign-completed')
   const campaignRoute = fs.readFileSync('app/api/campaigns/route.ts', 'utf8')
   const prospectRoute = fs.readFileSync('app/api/campaigns/[id]/prospects/route.ts', 'utf8')
   const generateRoute = fs.readFileSync('app/api/campaigns/[id]/generate/route.ts', 'utf8')
-  const sendRoute = fs.readFileSync('app/api/campaigns/[id]/send/route.ts', 'utf8')
   const dashboard = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
   assert.match(campaignRoute, /hasUsedFreeCampaign/)
   assert.match(campaignRoute, /markFreeCampaignUsed/)
   assert.match(prospectRoute, /FREE_CAMPAIGN_PROSPECT_LIMIT/)
   assert.match(generateRoute, /requireProResponse/)
-  assert.match(sendRoute, /markFreeCampaignCompleted/)
+  assert.equal(fs.existsSync('app/api/campaigns/[id]/send/route.ts'), false)
   assert.doesNotMatch(dashboard.match(/const addToCampaign[\s\S]*?const toggleSelected/)?.[0] || '', /setUpgradeOpen/)
 })
 
@@ -2065,65 +1569,6 @@ test('standard Pro pricing has no launch offer route, coupon or discount wiring'
   assert.doesNotMatch(sources, /offre de lancement|Offre de lancement|5 places/)
 })
 
-test('free Gmail access lasts until the trial campaign succeeds while Pro stays allowed', () => {
-  assert.equal(isGmailIntegrationAllowed('Gratuit', false), true)
-  assert.equal(isGmailIntegrationAllowed('Gratuit', true), false)
-  assert.equal(isGmailIntegrationAllowed(' Pro ', true), true)
-
-  const connectRoute = fs.readFileSync('app/api/gmail/connect/route.ts', 'utf8')
-  const callbackRoute = fs.readFileSync('app/api/gmail/callback/route.ts', 'utf8')
-  const sendRoute = fs.readFileSync('app/api/campaigns/[id]/send/route.ts', 'utf8')
-  assert.match(connectRoute, /canUseGmailIntegration/)
-  assert.match(callbackRoute, /canUseGmailIntegration/)
-  assert.match(sendRoute, /hasCompletedFreeCampaign/)
-  assert.match(sendRoute, /results\.some\(result => result\.success\)/)
-  assert.match(sendRoute, /markFreeCampaignCompleted/)
-})
-
-test('Gmail OAuth uses the minimal compose scope and classifies safe failures', () => {
-  const connectRoute = fs.readFileSync('app/api/gmail/connect/route.ts', 'utf8')
-  assert.equal(REQUIRED_GMAIL_DRAFT_SCOPE, 'https://www.googleapis.com/auth/gmail.compose')
-  assert.doesNotMatch(connectRoute, /https:\/\/mail\.google\.com|gmail\.modify|gmail\.readonly/)
-  assert.equal(classifyGoogleOAuthError('access_denied'), 'OAUTH_ACCESS_DENIED')
-  assert.equal(classifyGoogleOAuthError('redirect_uri_mismatch'), 'OAUTH_REDIRECT_MISMATCH')
-  assert.equal(classifyGoogleOAuthError('app not verified'), 'OAUTH_APP_UNVERIFIED')
-  assert.equal(classifyGoogleOAuthError('test_user_not_allowed'), 'OAUTH_ACCOUNT_NOT_ALLOWED')
-  assert.match(getSafeGmailOAuthMessage('OAUTH_APP_UNVERIFIED'), /pas encore disponible/)
-})
-
-test('Gmail delivery is locked to draft creation with no direct-send path', () => {
-  const gmail = fs.readFileSync('lib/gmail.ts', 'utf8')
-  const sendRoute = fs.readFileSync('app/api/campaigns/[id]/send/route.ts', 'utf8')
-  const gmailRoute = fs.readFileSync('app/api/gmail/route.ts', 'utf8')
-  const workflow = fs.readFileSync('lib/campaignWorkflow.ts', 'utf8')
-  const envExample = fs.readFileSync('.env.example', 'utf8')
-  const sources = [gmail, sendRoute, gmailRoute, workflow, envExample].join('\n')
-
-  assert.match(gmail, /https:\/\/gmail\.googleapis\.com\/gmail\/v1\/users\/me\/drafts/)
-  assert.match(gmail, /method:\s*'POST'/)
-  assert.match(gmail, /payload = \{ message: \{ raw \} \}/)
-  assert.doesNotMatch(sources, /GMAIL_SEND_MODE|messages\/send|users\.messages\.send|gmail\.send/)
-  assert.doesNotMatch(sources, /mode\s*===\s*['"]send['"]|mode:\s*['"]send['"]/)
-})
-
-test('Gmail public OAuth availability is explicit and documented for Production', () => {
-  assert.equal(getGmailPublicOAuthStatus('testing'), 'testing')
-  assert.equal(isGmailPublicOAuthAvailable('testing'), false)
-  assert.equal(getGmailPublicOAuthStatus('production'), 'production')
-  assert.equal(isGmailPublicOAuthAvailable('production'), true)
-  assert.equal(isGmailPublicOAuthAvailable(undefined), true)
-
-  const connectRoute = fs.readFileSync('app/api/gmail/connect/route.ts', 'utf8')
-  const settings = fs.readFileSync('app/settings/page.tsx', 'utf8')
-  const documentation = fs.readFileSync('docs/google-oauth-production-checklist.md', 'utf8')
-  assert.match(connectRoute, /isGmailPublicOAuthAvailable/)
-  assert.match(settings, /Connexion Gmail momentanément limitée pendant la validation Google/)
-  assert.match(documentation, /scope restreint/)
-  assert.match(documentation, /https:\/\/prospectube\.vercel\.app\/api\/gmail\/callback/)
-  assert.match(documentation, /GMAIL_PUBLIC_OAUTH_STATUS/)
-  assert.doesNotMatch(connectRoute, /gmail\.modify|gmail\.readonly|https:\/\/mail\.google\.com/)
-})
-
 test('creator activity follows recency bands without inventing sparse frequency', () => {
   const now = new Date('2026-08-09T12:00:00.000Z')
   const daysAgo = days => new Date(now.getTime() - days * 86400000).toISOString()
@@ -2184,23 +1629,6 @@ test('visible product copy uses MiniMaker and contains no legacy target wording'
   const copy = visibleFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n')
   assert.doesNotMatch(copy, /graphistes?|mediamakers?/i)
   assert.match(fs.readFileSync('app/LandingPage.tsx', 'utf8'), /MiniMakers et monteurs vidéo/)
-})
-
-test('Gmail OAuth diagnostics and replay handling do not leak secrets', () => {
-  const calls = []
-  const previous = console.error
-  console.error = value => calls.push(value)
-  try {
-    logSafeGmailOAuthFailure({ code: 'GMAIL_INTERNAL_ERROR', step: 'callback', error: new Error('token=secret@example.com') })
-  } finally {
-    console.error = previous
-  }
-  const serialized = JSON.stringify(calls)
-  assert.match(serialized, /gmail_oauth_failed/)
-  assert.doesNotMatch(serialized, /secret@example\.com|token=/)
-  assert.equal(isConnectedOAuthReplay('invalid_grant', 'refresh-token-present'), true)
-  assert.equal(isConnectedOAuthReplay('invalid_grant', null), false)
-  assert.equal(isConnectedOAuthReplay('access_denied', 'refresh-token-present'), false)
 })
 
 test('public email extraction supports direct and safely obfuscated channel emails', () => {
@@ -2267,7 +1695,7 @@ test('landing page matches current free and Pro product limits without AI promis
   assert.match(landing, /PRODUCT_LIMITS\.freeLifetimeSearches/)
   assert.match(landing, /PRODUCT_LIMITS\.proDailySearches/)
   assert.match(landing, /campagne d’essai/)
-  assert.match(landing, /brouillons Gmail/)
+  assert.match(landing, /ouvre-les dans ta messagerie/)
   assert.match(landing, /ne sont pas garanties/)
   assert.match(landing, /<h1>ProspectTube aide les MiniMakers et monteurs vidéo à trouver des YouTubers actifs à prospecter\.<\/h1>/)
   assert.match(landing, /Ne perdez plus des heures à chercher manuellement/)
@@ -2288,7 +1716,7 @@ test('landing production polish keeps honest CTAs, responsive structure and lega
   assert.match(landing, /Prospect Score/)
   assert.match(landing, /Contactabilité/)
   assert.match(landing, /Il ne garantit ni un besoin, ni une réponse, ni une vente/)
-  assert.match(landing, /crée uniquement les brouillons/)
+  assert.match(landing, /Aucune connexion Google n’est nécessaire/)
   assert.doesNotMatch(landing, /message.? IA|intelligence artificielle|illimitée?s?/i)
 
   for (const breakpoint of ['1024px', '768px', '480px', '340px']) {
@@ -2319,7 +1747,7 @@ test('all upgrade discovery paths lead to the dedicated Pro page before Stripe',
   assert.match(proCheckout, /api\/stripe\/checkout/)
   assert.match(proCheckout, /Passer à Pro — 4,90 €\/mois/)
   assert.match(proPage, /MiniMakers et monteurs vidéo/)
-  assert.match(proPage, /aucun envoi automatique|uniquement les brouillons Gmail que vous choisissez/i)
+  assert.match(proPage, /aucun envoi automatique|ouvrez vos messages dans Gmail/i)
   assert.match(sitemap, /path: '\/pro'/)
 })
 
@@ -2342,56 +1770,4 @@ test('final product polish keeps discovery focused and Pro contextual', () => {
   assert.match(proPage, /Aucun envoi automatique/)
   assert.doesNotMatch(proPage, /<table|styles\.comparison|styles\.workflow/)
   assert.doesNotMatch(proStyles, /tableWrap|\.workflow/)
-})
-
-test('public legal pages accurately disclose the Gmail OAuth integration', () => {
-  const privacy = fs.readFileSync('app/privacy/page.tsx', 'utf8')
-  const terms = fs.readFileSync('app/terms/page.tsx', 'utf8')
-  const footer = fs.readFileSync('components/LegalFooter.tsx', 'utf8')
-  const sitemap = fs.readFileSync('app/sitemap.ts', 'utf8')
-
-  assert.match(privacy, /https:\/\/www\.googleapis\.com\/auth\/gmail\.compose/)
-  assert.match(privacy, /jetons OAuth d’accès et de renouvellement/)
-  assert.match(privacy, /n’utilise pas cet accès pour lire votre boîte de réception/)
-  assert.match(privacy, /Google API Services User Data Policy/)
-  assert.match(privacy, /Limited Use/)
-  assert.match(privacy, /Déconnecter Gmail/)
-  assert.match(terms, /n’envoie pas automatiquement les brouillons/)
-  assert.match(terms, /Prospection responsable/)
-  assert.match(footer, /href: '\/privacy'/)
-  assert.match(footer, /href: '\/terms'/)
-  assert.match(sitemap, /path: '\/privacy'/)
-  assert.match(sitemap, /path: '\/terms'/)
-  assert.equal(fs.existsSync('app/privacy/layout.tsx'), false)
-  assert.equal(fs.existsSync('app/terms/layout.tsx'), false)
-})
-
-test('public Google OAuth branding uses one canonical ProspectTube identity', () => {
-  const landing = fs.readFileSync('app/LandingPage.tsx', 'utf8')
-  const page = fs.readFileSync('app/page.tsx', 'utf8')
-  const layout = fs.readFileSync('app/layout.tsx', 'utf8')
-  const privacy = fs.readFileSync('app/privacy/page.tsx', 'utf8')
-  const terms = fs.readFileSync('app/terms/page.tsx', 'utf8')
-  const footer = fs.readFileSync('components/LegalFooter.tsx', 'utf8')
-  const robots = fs.readFileSync('app/robots.ts', 'utf8')
-  const sitemap = fs.readFileSync('app/sitemap.ts', 'utf8')
-  const publicCopy = [landing, page, privacy, terms, footer].join('\n')
-
-  assert.match(page, /ProspectTube — Prospection YouTube pour MiniMakers et monteurs vidéo/)
-  assert.match(landing, /<h1>ProspectTube aide les MiniMakers et monteurs vidéo à trouver des YouTubers actifs à prospecter\.<\/h1>/)
-  assert.match(landing, /informations publiques/)
-  assert.match(landing, /YouTubers selon leur activité/)
-  assert.match(landing, /organiser une liste de prospects/)
-  assert.match(landing, /ProspectTube utilise Gmail uniquement pour créer les brouillons/)
-  assert.match(landing, /Aucun envoi automatique/)
-  assert.match(layout, /applicationName: 'ProspectTube'/)
-  assert.match(layout, /metadataBase: new URL\('https:\/\/www\.prospectube\.fr'\)/)
-  assert.match(page, /canonical: '\/'/)
-  assert.match(privacy, /canonical: '\/privacy'/)
-  assert.match(terms, /canonical: '\/terms'/)
-  assert.match(robots, /https:\/\/www\.prospectube\.fr\/sitemap\.xml/)
-  assert.match(sitemap, /https:\/\/www\.prospectube\.fr/)
-  assert.doesNotMatch(`${layout}\n${robots}\n${sitemap}`, /prospectube\.vercel\.app/)
-  assert.doesNotMatch(publicCopy, /Prospect Tube|Prospecttube|>prospectube</)
-  assert.doesNotMatch(landing, /envoie automatiquement|lit votre boîte de réception|accède aux données privées/i)
 })

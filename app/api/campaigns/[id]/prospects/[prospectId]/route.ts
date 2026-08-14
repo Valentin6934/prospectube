@@ -26,10 +26,6 @@ const prospectSelect = {
   generatedSubject: true,
   generatedBody: true,
   status: true,
-  sendStatus: true,
-  sentAt: true,
-  sendError: true,
-  gmailMessageId: true,
   createdAt: true,
 }
 
@@ -101,7 +97,6 @@ export async function PATCH(
     generatedSubject: subject,
     generatedBody: message,
     status: 'Message pret',
-    sendError: null,
   }
 
   try {
