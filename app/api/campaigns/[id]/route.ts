@@ -32,10 +32,6 @@ const campaignProspectSelect = {
   generatedSubject: true,
   generatedBody: true,
   status: true,
-  sendStatus: true,
-  sentAt: true,
-  sendError: true,
-  gmailMessageId: true,
   createdAt: true,
 }
 

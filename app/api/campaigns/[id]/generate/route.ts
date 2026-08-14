@@ -122,7 +122,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           generatedSubject: result.subject,
           generatedBody: result.body,
           status: 'Message pret',
-          sendError: null,
         },
       })
       generated.push(updated)
