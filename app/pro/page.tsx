@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 const proBenefits = [
   ['Chercher chaque jour', `${PRODUCT_LIMITS.proDailySearches} recherches quotidiennes pour alimenter régulièrement votre prospection.`],
   ['Construire plusieurs listes', 'Organisez vos prospects dans plusieurs campagnes, au-delà de la campagne d’essai.'],
-  ['Préparer vos prises de contact', 'Créez les brouillons Gmail que vous choisissez. Aucun envoi automatique.'],
+  ['Préparer vos prises de contact', 'Ouvrez vos messages dans Gmail ou votre client mail. Aucun envoi automatique.'],
   ['Emporter votre suivi', 'Exportez vos prospects en CSV pour poursuivre le travail dans vos propres outils.'],
 ] as const
 
@@ -77,7 +77,7 @@ export default async function ProPage() {
           <article className={styles.proSummary}>
             <span>Pro</span>
             <strong>Pour prospecter chaque semaine</strong>
-            <p>{PRODUCT_LIMITS.proDailySearches} recherches par jour · campagnes supplémentaires · brouillons Gmail · export CSV</p>
+            <p>{PRODUCT_LIMITS.proDailySearches} recherches par jour · campagnes supplémentaires · passage à la messagerie · export CSV</p>
           </article>
         </div>
       </section>
