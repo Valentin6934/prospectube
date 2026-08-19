@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import styles from '../auth.module.css'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -25,37 +26,40 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0A0812', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-      <div style={{ width: '100%', maxWidth: '400px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <Link href="/">
-            <div className="font-display" style={{ fontWeight: 800, fontSize: '1.5rem', marginBottom: '0.5rem', cursor: 'pointer' }}>
-              Prospect<span className="grad-text">Tube</span>
-            </div>
-          </Link>
-          <p style={{ color: '#A89FCC', fontSize: '0.9rem' }}>Connecte-toi à ton compte</p>
+    <main className={styles.page}>
+      <section className={styles.context} aria-label="Présentation de ProspectTube">
+        <Link href="/" className={styles.logo}>Prospect<span>Tube</span></Link>
+        <div className={styles.promise}>
+          <p className={styles.eyebrow}>Prospection YouTube ciblée</p>
+          <h1>Trouvez les créateurs qui méritent votre prochain message.</h1>
+          <p>ProspectTube aide les MiniMakers et monteurs vidéo à repérer des chaînes actives, comparer leur potentiel et organiser leur prospection.</p>
         </div>
-        <div className="card" style={{ padding: '2rem' }}>
+        <div className={styles.proof}><span>Chaînes actives</span><span>Contacts publics</span><span>Messages sous votre contrôle</span></div>
+      </section>
+      <section className={styles.formSide}>
+        <div className={styles.formWrap}>
+          <div className={styles.formHeading}><h2>Bon retour parmi nous</h2><p>Connectez-vous pour reprendre votre prospection.</p></div>
+          <div className={styles.formCard}>
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="toi@email.com" required />
+            <div className={styles.field}>
+              <label htmlFor="login-email">Email</label>
+              <input id="login-email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="vous@exemple.fr" autoComplete="email" required />
             </div>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Mot de passe</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
+            <div className={styles.field}>
+              <label htmlFor="login-password">Mot de passe</label>
+              <input id="login-password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" required />
             </div>
-            {error && <p style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '1rem', textAlign: 'center' }}>{error}</p>}
-            <button type="submit" className="btn-primary" style={{ width: '100%', padding: '0.85rem', fontSize: '0.95rem' }} disabled={loading}>
-              {loading ? 'Connexion...' : 'Se connecter →'}
+            {error && <p className={styles.error} role="alert">{error}</p>}
+            <button type="submit" className={`btn-primary ${styles.submit}`} disabled={loading} aria-busy={loading}>
+              {loading ? <span className="button-loader"><span className="app-spinner" /> Connexion…</span> : 'Se connecter'}
             </button>
           </form>
-          <p style={{ textAlign: 'center', color: '#6B5F96', fontSize: '0.85rem', marginTop: '1.5rem' }}>
-            Pas encore de compte ?{' '}
-            <Link href="/register" style={{ color: '#a78bfa', textDecoration: 'none' }}>S'inscrire</Link>
+          <p className={styles.switch}>
+            Pas encore de compte ? <Link href="/register">Tester gratuitement</Link>
           </p>
         </div>
       </div>
-    </div>
+      </section>
+    </main>
   )
 }

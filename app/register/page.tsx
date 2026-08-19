@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import styles from '../auth.module.css'
 
 export default function RegisterPage() {
   const [name, setName] = useState('')
@@ -27,18 +28,18 @@ export default function RegisterPage() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setError(data.error || "Une erreur est survenue pendant l'inscription. Reessayez.")
+        setError(data.error || "Une erreur est survenue pendant l'inscription. Réessayez.")
         return
       }
       const login = await signIn('credentials', { email, password, redirect: false })
       if (login?.error) {
-        setError('Le compte a ete cree, mais la connexion a echoue. Connectez-vous depuis la page de connexion.')
+        setError('Le compte a été créé, mais la connexion a échoué. Connectez-vous depuis la page de connexion.')
         return
       }
       router.push('/dashboard/home')
       router.refresh()
     } catch {
-      setError("Une erreur est survenue pendant l'inscription. Reessayez.")
+      setError("Une erreur est survenue pendant l'inscription. Réessayez.")
     } finally {
       setLoading(false)
       submittingRef.current = false
@@ -46,41 +47,44 @@ export default function RegisterPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0A0812', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-      <div style={{ width: '100%', maxWidth: '400px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <Link href="/">
-            <div className="font-display" style={{ fontWeight: 800, fontSize: '1.5rem', marginBottom: '0.5rem', cursor: 'pointer' }}>
-              Prospect<span className="grad-text">Tube</span>
-            </div>
-          </Link>
-          <p style={{ color: '#A89FCC', fontSize: '0.9rem' }}>Crée ton compte gratuitement</p>
+    <main className={styles.page}>
+      <section className={styles.context} aria-label="Présentation de ProspectTube">
+        <Link href="/" className={styles.logo}>Prospect<span>Tube</span></Link>
+        <div className={styles.promise}>
+          <p className={styles.eyebrow}>3 recherches gratuites</p>
+          <h1>Passez moins de temps à chercher. Plus de temps à convaincre.</h1>
+          <p>Ciblez des YouTubers actifs, comparez leurs signaux publics et gardez vos meilleurs prospects au même endroit.</p>
         </div>
-        <div className="card" style={{ padding: '2rem' }}>
+        <div className={styles.proof}><span>Sans carte bancaire</span><span>1 campagne d’essai</span><span>Jusqu’à 5 prospects</span></div>
+      </section>
+      <section className={styles.formSide}>
+        <div className={styles.formWrap}>
+          <div className={styles.formHeading}><h2>Commencer gratuitement</h2><p>Créez votre compte et lancez votre première recherche.</p></div>
+          <div className={styles.formCard}>
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Ton prénom</label>
-              <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Thomas" required />
+            <div className={styles.field}>
+              <label htmlFor="register-name">Prénom</label>
+              <input id="register-name" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Thomas" autoComplete="given-name" required />
             </div>
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="toi@email.com" required />
+            <div className={styles.field}>
+              <label htmlFor="register-email">Email</label>
+              <input id="register-email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="vous@exemple.fr" autoComplete="email" required />
             </div>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Mot de passe</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" minLength={6} required />
+            <div className={styles.field}>
+              <label htmlFor="register-password">Mot de passe</label>
+              <input id="register-password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="6 caractères minimum" autoComplete="new-password" minLength={6} required />
             </div>
-            {error && <p style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '1rem', textAlign: 'center' }}>{error}</p>}
-            <button type="submit" className="btn-primary" style={{ width: '100%', padding: '0.85rem', fontSize: '0.95rem' }} disabled={loading}>
-              {loading ? 'Création...' : 'Créer mon compte gratuit →'}
+            {error && <p className={styles.error} role="alert">{error}</p>}
+            <button type="submit" className={`btn-primary ${styles.submit}`} disabled={loading} aria-busy={loading}>
+              {loading ? <span className="button-loader"><span className="app-spinner" /> Création…</span> : 'Créer mon compte gratuit'}
             </button>
           </form>
-          <p style={{ textAlign: 'center', color: '#6B5F96', fontSize: '0.85rem', marginTop: '1.5rem' }}>
-            Déjà un compte ?{' '}
-            <Link href="/login" style={{ color: '#a78bfa', textDecoration: 'none' }}>Se connecter</Link>
+          <p className={styles.switch}>
+            Déjà un compte ? <Link href="/login">Se connecter</Link>
           </p>
         </div>
       </div>
-    </div>
+      </section>
+    </main>
   )
 }
