@@ -14,6 +14,7 @@ import { NICHE_CONFIG, SEARCH_LANGUAGES } from '@/lib/searchTargeting'
 import { getPlanName, isFree, isPro as isProPlan } from '@/lib/plan'
 import { buildCampaignProspectPayload, getCampaignIdFromCreateResponse } from '@/lib/campaignClient'
 import { FREE_LIFETIME_SEARCH_LIMIT, PRO_DAILY_SEARCH_LIMIT } from '@/lib/searchPolicy'
+import { getContactChannels } from '@/lib/contactChannels'
 
 const LANGS = SEARCH_LANGUAGES
 const SUBS_LABELS = ['1K', '10K', '50K', '100K', '500K', '1M', '5M+']
@@ -136,7 +137,7 @@ export default function Dashboard() {
       return
     }
 
-    const headers = ['Nom', 'Abonnés', 'Score', 'Email', 'YouTube', 'Instagram', 'TikTok', 'Twitch', 'Site web']
+    const headers = ['Nom', 'Abonnés', 'Score', 'Email', 'YouTube', 'Instagram', 'TikTok', 'Facebook', 'X', 'Twitch', 'Site web']
     headers.splice(3, 0, 'Score Label', 'Score Reason', 'Vues totales', 'Nombre de videos', 'Date creation')
     const rows = results.map(ch => [
       ch.name || '',
@@ -151,6 +152,8 @@ export default function Dashboard() {
       ch.channelUrl || '',
       ch.instagram || '',
       ch.tiktok || '',
+      ch.facebook || '',
+      ch.twitter || '',
       ch.twitch || '',
       ch.website || '',
     ])
@@ -226,7 +229,9 @@ export default function Dashboard() {
         : 'Vous avez utilisé vos 3 recherches gratuites. Passez au Plan Pro pour obtenir 5 recherches par jour.')
     setPlan(data.plan)
     setSearched(true)
-    if (data.results?.length && data.plan !== 'Pro') {
+    if (data.searchFeedback) {
+      setSearchFeedback({ type: 'info', message: data.searchFeedback })
+    } else if (data.results?.length && data.plan !== 'Pro') {
       setSearchFeedback({ type: 'info', message: `Vous venez de trouver ${data.results.length} prospect${data.results.length > 1 ? 's' : ''}. Il vous reste ${data.searchesRemaining} recherche${data.searchesRemaining > 1 ? 's' : ''} gratuite${data.searchesRemaining > 1 ? 's' : ''}.` })
     }
 
@@ -590,13 +595,7 @@ export default function Dashboard() {
                   {(() => {
                     const isExpanded = expandedAnalysisIds.includes(ch.id)
                     const reasons = String(ch.scoreReason || "Peu d'informations exploitables").split(' • ').filter(Boolean)
-                    const contacts = [
-                      ch.email ? { label: '📧 Email trouvé', href: `mailto:${ch.email}`, color: '#22c55e' } : null,
-                      ch.instagram ? { label: '📱 Instagram', href: ch.instagram, color: '#e879f9' } : null,
-                      ch.tiktok ? { label: '🎵 TikTok', href: ch.tiktok, color: '#f472b6' } : null,
-                      ch.twitch ? { label: '🎮 Twitch', href: ch.twitch, color: '#9146FF' } : null,
-                      ch.website ? { label: '🌍 Site', href: ch.website, color: '#38bdf8' } : null,
-                    ].filter(Boolean) as { label: string; href: string; color: string }[]
+                    const contacts = getContactChannels(ch)
                     const statBadges = [
                       `👥 ${ch.subs || formatCompactNumber(ch.subsNum || 0)}`,
                       ch.recentMedianViews ? `👁 ${formatCompactNumber(ch.recentMedianViews)} vues médianes` : 'Données limitées',
@@ -636,12 +635,15 @@ export default function Dashboard() {
                               </p>
 
                               {contacts.length > 0 && (
-                                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'grid', gap: '0.35rem' }}>
+                                  <span style={{ color: '#777181', fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase' }}>Contacter · {contacts.length} canal{contacts.length > 1 ? 'aux' : ''}</span>
+                                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                                   {contacts.map(contact => (
-                                    <a key={contact.label} href={contact.href} target={contact.href.startsWith('http') ? '_blank' : undefined} rel={contact.href.startsWith('http') ? 'noopener noreferrer' : undefined} style={{ fontSize: '0.75rem', color: contact.color, background: `${contact.color}1F`, border: `1px solid ${contact.color}3D`, borderRadius: '999px', padding: '0.22rem 0.55rem', textDecoration: 'none', fontWeight: 600 }}>
+                                    <a key={contact.key} href={contact.href} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.75rem', color: contact.color, background: `${contact.color}1F`, border: `1px solid ${contact.color}3D`, borderRadius: '7px', padding: '0.25rem 0.55rem', textDecoration: 'none', fontWeight: 700 }}>
                                       {contact.label}
                                     </a>
                                   ))}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -679,10 +681,12 @@ export default function Dashboard() {
                                 <div>
                                   <div style={{ fontWeight: 700, color: '#F0EDF8', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Contacts</div>
                                   <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8rem' }}>
-                                    {ch.email && <a href={`mailto:${ch.email}`} style={{ color: '#22c55e', textDecoration: 'none' }}>📧 {ch.email}</a>}
+                                    {ch.email && <a href={contacts.find(contact => contact.key === 'email')?.href} target="_blank" rel="noopener noreferrer" style={{ color: '#22c55e', textDecoration: 'none' }}>Gmail · {ch.email}</a>}
                                     {ch.channelUrl && <a href={ch.channelUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', textDecoration: 'none' }}>▶ YouTube</a>}
                                     {ch.instagram && <a href={ch.instagram} target="_blank" rel="noopener noreferrer" style={{ color: '#e879f9', textDecoration: 'none' }}>📱 Instagram</a>}
                                     {ch.tiktok && <a href={ch.tiktok} target="_blank" rel="noopener noreferrer" style={{ color: '#f472b6', textDecoration: 'none' }}>🎵 TikTok</a>}
+                                    {ch.facebook && <a href={ch.facebook} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'none' }}>Facebook</a>}
+                                    {ch.twitter && <a href={ch.twitter} target="_blank" rel="noopener noreferrer" style={{ color: '#d4d4d8', textDecoration: 'none' }}>X</a>}
                                     {ch.twitch && <a href={ch.twitch} target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF', textDecoration: 'none' }}>🎮 Twitch</a>}
                                     {ch.website && <a href={ch.website} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>🌍 Site</a>}
                                     {!ch.email && !ch.channelUrl && contacts.length === 0 && <span style={{ color: '#6B5F96' }}>Aucun contact public trouvé</span>}

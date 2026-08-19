@@ -14,6 +14,7 @@ import {
   shouldRunNextYouTubeQuery,
 } from '@/lib/youtubeSearchParams'
 import { extractPublicEmails, selectBestPublicEmail } from '@/lib/publicContactExtraction'
+import { extractPublicContactLinks } from '@/lib/contactChannels'
 
 const YOUTUBE_REQUEST_TIMEOUT_MS = 12_000
 const YOUTUBE_SEARCH_FIELDS = 'items(id/videoId,snippet(channelId,title,description,publishedAt,thumbnails/default/url))'
@@ -97,45 +98,6 @@ function formatCompactNumber(n: number): string {
   return String(n)
 }
 
-function decodeHtml(text: string): string {
-  return text
-    .replace(/\\u0026/g, '&')
-    .replace(/\\\//g, '/')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-}
-
-function normalizeUrl(url: string | null): string | null {
-  if (!url) return null
-  const cleaned = url.replace(/\\u0026/g, '&').replace(/&amp;/g, '&')
-  return cleaned.startsWith('http') ? cleaned : `https://${cleaned}`
-}
-
-function extractSocialLinks(text: string) {
-  const decoded = decodeHtml(text)
-
-  const instagram =
-    decoded.match(/(?:https?:\/\/)?(?:www\.)?instagram\.com\/[A-Za-z0-9._-]+/i)?.[0] || null
-
-  const tiktok =
-    decoded.match(/(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@[A-Za-z0-9._-]+/i)?.[0] || null
-
-  const twitch =
-    decoded.match(/(?:https?:\/\/)?(?:www\.)?twitch\.tv\/[A-Za-z0-9_]+/i)?.[0] || null
-
-  const website =
-    decoded.match(/https?:\/\/(?!.*(?:instagram|tiktok|twitch|youtube|youtu\.be|facebook|twitter|x\.com|google))[^\s"'<>)}]+/i)?.[0] ||
-    null
-
-  return {
-    instagram: normalizeUrl(instagram),
-    tiktok: normalizeUrl(tiktok),
-    twitch: normalizeUrl(twitch),
-    website: normalizeUrl(website),
-  }
-}
-
 export type YouTubeCallMetrics = {
   searchList: number
   channelsList: number
@@ -206,7 +168,8 @@ export async function discoverYouTubeCatalog(
   const variantPerformance = { ...(existingCatalog?.variantPerformance || {}) }
   let duplicateVideoResults = 0
 
-  for (const variant of orderedVariants) {
+  for (let variantIndex = 0; variantIndex < orderedVariants.length; variantIndex += 1) {
+    const variant = orderedVariants[variantIndex]
     const query = variant.query
     if (!query) continue
     const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search')
@@ -216,6 +179,7 @@ export async function discoverYouTubeCatalog(
       maxResults: 50,
       fields: YOUTUBE_SEARCH_FIELDS,
       type: 'video',
+      order: variantIndex === 0 ? 'relevance' : variantIndex === 1 ? 'date' : 'viewCount',
     })
     searchUrl.search = searchParams.toString()
     searchUrl.searchParams.set('key', apiKey)
@@ -349,7 +313,8 @@ export async function discoverYouTubeCatalog(
         })),
       ]))
       const email = publicEmail?.email || null
-      const socials = extractSocialLinks(fullDesc)
+      const contactText = `${fullDesc}\n${recentVideos.map(video => video.description || '').join('\n')}`
+      const socials = extractPublicContactLinks(contactText)
 
       const channel = {
         id: ch.id,
@@ -374,6 +339,8 @@ export async function discoverYouTubeCatalog(
         email,
         instagram: socials.instagram,
         tiktok: socials.tiktok,
+        facebook: socials.facebook,
+        twitter: socials.twitter,
         twitch: socials.twitch,
         website: socials.website,
         channelUrl: `https://www.youtube.com/channel/${ch.id}`,

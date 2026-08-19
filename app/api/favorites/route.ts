@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,10 +37,17 @@ export async function GET() {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
 
-  const favorites = await prisma.favorite.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: 'desc' },
-  })
+  let favorites
+  try {
+    favorites = await prisma.favorite.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'desc' } })
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2022') throw error
+    favorites = await prisma.favorite.findMany({
+      where: { userId: user.id }, orderBy: { createdAt: 'desc' },
+      select: { id: true, userId: true, channelId: true, name: true, subs: true, subsNum: true, niche: true, lang: true, score: true, scoreLabel: true, scoreReason: true, email: true, instagram: true, tiktok: true, twitch: true, website: true, channelUrl: true, aboutUrl: true, desc: true, avatar: true, color: true, thumbnail: true, totalViews: true, videoCount: true, channelCreatedAt: true, createdAt: true },
+    })
+    favorites = favorites.map(favorite => ({ ...favorite, facebook: null, twitter: null }))
+  }
 
   return NextResponse.json({ favorites })
 }
@@ -55,15 +63,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Chaîne invalide' }, { status: 400 })
   }
 
-  const favorite = await prisma.favorite.upsert({
-    where: {
-      userId_channelId: {
-        userId: user.id,
-        channelId,
-      },
-    },
-    update: {},
-    create: {
+  const createData = {
       userId: user.id,
       channelId,
       name: toNullableString(channel.name) || 'Chaîne inconnue',
@@ -77,6 +77,8 @@ export async function POST(req: NextRequest) {
       email: toNullableString(channel.email),
       instagram: toNullableString(channel.instagram),
       tiktok: toNullableString(channel.tiktok),
+      facebook: toNullableString(channel.facebook),
+      twitter: toNullableString(channel.twitter),
       twitch: toNullableString(channel.twitch),
       website: toNullableString(channel.website),
       channelUrl: toNullableString(channel.channelUrl),
@@ -88,8 +90,24 @@ export async function POST(req: NextRequest) {
       totalViews: toNullableNumber(channel.totalViews),
       videoCount: toNullableInt(channel.videoCount),
       channelCreatedAt: toNullableDate(channel.createdAt),
+  }
+  let favorite
+  try {
+    favorite = await prisma.favorite.upsert({
+    where: {
+      userId_channelId: {
+        userId: user.id,
+        channelId,
+      },
     },
-  })
+    update: {},
+      create: createData,
+    })
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2022') throw error
+    const { facebook: _facebook, twitter: _twitter, ...legacyCreateData } = createData
+    favorite = await prisma.favorite.upsert({ where: { userId_channelId: { userId: user.id, channelId } }, update: {}, create: legacyCreateData })
+  }
 
   return NextResponse.json({ favorite })
 }

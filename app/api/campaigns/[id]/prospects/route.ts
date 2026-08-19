@@ -43,6 +43,8 @@ const prospectSelect = {
 
 const prospectSelectWithMedia = {
   ...prospectSelect,
+  facebook: true,
+  twitter: true,
   avatar: true,
   thumbnail: true,
 }
@@ -88,6 +90,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     email: toNullableString(channel.email),
     instagram: toNullableString(channel.instagram),
     tiktok: toNullableString(channel.tiktok),
+    facebook: toNullableString(channel.facebook),
+    twitter: toNullableString(channel.twitter),
     twitch: toNullableString(channel.twitch),
     website: toNullableString(channel.website),
     channelUrl: toNullableString(channel.channelUrl),
@@ -124,7 +128,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       campaignId: campaign.id,
       userId: user.id,
     })
-    const { avatar: _avatar, thumbnail: _thumbnail, ...fallbackData } = prospectData
+    const { avatar: _avatar, thumbnail: _thumbnail, facebook: _facebook, twitter: _twitter, ...fallbackData } = prospectData
     result = await prisma.campaignProspect.createMany({
       data: [fallbackData],
       skipDuplicates: true,
@@ -160,7 +164,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   return NextResponse.json({
-    prospect: prospect ? { avatar: null, thumbnail: null, ...prospect } : null,
+    prospect: prospect ? { avatar: null, thumbnail: null, facebook: null, twitter: null, ...prospect } : null,
     added: result.count === 1,
   })
 }

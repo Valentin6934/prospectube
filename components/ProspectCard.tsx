@@ -18,6 +18,8 @@ export type ProspectChannel = {
   email?: string | null
   instagram?: string | null
   tiktok?: string | null
+  facebook?: string | null
+  twitter?: string | null
   twitch?: string | null
   website?: string | null
   channelUrl?: string | null

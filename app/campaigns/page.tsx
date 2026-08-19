@@ -14,10 +14,17 @@ import { isPro } from '@/lib/plan'
 import { buildCampaignDetailUrl, getCampaignFromApiResponse } from '@/lib/campaignClient'
 import { normalizeCampaignMessage } from '@/lib/campaignWorkflow'
 import { buildClipboardMessage, buildGmailComposeUrl, buildMailtoUrl, normalizeRecipient } from '@/lib/emailHandoff'
+import { getContactChannels } from '@/lib/contactChannels'
 
 type CampaignSummaryProspect = {
   channelId: string
   email: string | null
+  instagram?: string | null
+  tiktok?: string | null
+  facebook?: string | null
+  twitter?: string | null
+  twitch?: string | null
+  website?: string | null
   generatedBody: string | null
 }
 
@@ -38,6 +45,8 @@ type CampaignProspect = {
   email: string | null
   instagram: string | null
   tiktok: string | null
+  facebook: string | null
+  twitter: string | null
   twitch: string | null
   website: string | null
   channelUrl: string | null
@@ -73,16 +82,6 @@ function formatDate(date: string): string {
   }).format(new Date(date))
 }
 
-function isValidUrl(value: string | null) {
-  if (!value) return false
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
-  } catch {
-    return false
-  }
-}
-
 function hasValidEmail(email: string | null) {
   return Boolean(normalizeRecipient(email))
 }
@@ -103,16 +102,17 @@ function getScoreBucket(prospect: Pick<CampaignProspect, 'score' | 'scoreLabel'>
 function getCampaignRollup(prospects: CampaignSummaryProspect[] | CampaignProspect[] = []) {
   const total = prospects.length
   const withEmail = prospects.filter(prospect => Boolean(prospect.email)).length
+  const contactable = prospects.filter(prospect => getContactChannels(prospect).length > 0).length
   const withoutEmail = total - withEmail
   const messagesReady = prospects.filter(prospect => Boolean(prospect.generatedBody)).length
 
   let status = 'Brouillon'
   if (total === 0) status = 'Brouillon'
-  else if (messagesReady > 0 && messagesReady === withEmail && withEmail > 0) status = 'Prête'
+  else if (messagesReady > 0 && messagesReady === contactable && contactable > 0) status = 'Prête'
   else if (messagesReady > 0) status = 'À préparer'
   else status = 'À préparer'
 
-  return { total, withEmail, withoutEmail, messagesReady, status }
+  return { total, withEmail, contactable, withoutEmail, messagesReady, status }
 }
 
 function getDetailedStats(prospects: CampaignProspect[]) {
@@ -129,13 +129,7 @@ function getDetailedStats(prospects: CampaignProspect[]) {
 }
 
 function externalLinks(prospect: CampaignProspect) {
-  return [
-    prospect.channelUrl && isValidUrl(prospect.channelUrl) ? { label: 'Voir la chaîne YouTube', href: prospect.channelUrl } : null,
-    prospect.instagram && isValidUrl(prospect.instagram) ? { label: 'Ouvrir Instagram', href: prospect.instagram } : null,
-    prospect.tiktok && isValidUrl(prospect.tiktok) ? { label: 'Ouvrir TikTok', href: prospect.tiktok } : null,
-    prospect.twitch && isValidUrl(prospect.twitch) ? { label: 'Ouvrir Twitch', href: prospect.twitch } : null,
-    prospect.website && isValidUrl(prospect.website) ? { label: 'Ouvrir le site', href: prospect.website } : null,
-  ].filter(Boolean) as Array<{ label: string; href: string }>
+  return getContactChannels(prospect).filter(channel => channel.key !== 'email')
 }
 
 export default function CampaignsPage() {
@@ -514,7 +508,7 @@ export default function CampaignsPage() {
                           <div style={{ minWidth: 0 }}>
                             <div style={{ color: '#F0EDF8', fontWeight: 800, marginBottom: '0.3rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{campaign.name}</div>
                             <div style={{ color: '#A89FCC', fontSize: '0.8rem' }}>
-                              {rollup.total} prospects · {rollup.withEmail} avec email · {rollup.withoutEmail} sans email
+                              {rollup.total} prospects · {rollup.contactable} contactables · {rollup.withEmail} avec email
                             </div>
                             <div style={{ color: '#6B5F96', fontSize: '0.75rem', marginTop: '0.25rem' }}>{formatDate(campaign.updatedAt || campaign.createdAt)}</div>
                           </div>
@@ -523,8 +517,8 @@ export default function CampaignsPage() {
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.4rem', marginTop: '0.75rem' }}>
                           {[
                             ['Messages', rollup.messagesReady],
+                            ['Contactables', rollup.contactable],
                             ['Avec email', rollup.withEmail],
-                            ['Sans email', rollup.withoutEmail],
                           ].map(([label, value]) => (
                             <div key={label} style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.45rem' }}>
                               <div style={{ color: '#6B5F96', fontSize: '0.68rem' }}>{label}</div>
@@ -575,8 +569,8 @@ export default function CampaignsPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))', gap: '0.55rem', marginBottom: '1rem' }}>
                       {[
                         ['Prospects', campaignStats.total],
+                        ['Contactables', campaignStats.contactable],
                         ['Avec email', campaignStats.withEmail],
-                        ['Sans email', campaignStats.withoutEmail],
                         ['Score moyen', `${campaignStats.averageScore}/100`],
                         ['Messages prêts', campaignStats.messagesReady],
                         ['Excellent', campaignStats.excellent],
@@ -679,6 +673,7 @@ export default function CampaignsPage() {
                       <div style={{ display: 'grid', gap: '0.55rem' }}>
                         {noEmailProspects.map(prospect => {
                           const links = externalLinks(prospect)
+                          const draft = draftMessages[prospect.id] || { subject: '', body: '' }
                           return (
                             <div key={prospect.id} style={{ display: 'grid', gap: '0.7rem', background: 'rgba(10,8,18,0.42)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.8rem', overflow: 'hidden' }}>
                               <ProspectPresentation
@@ -690,12 +685,21 @@ export default function CampaignsPage() {
                                   </span>
                                 )}
                               />
+                              <div className="campaign-message-editor">
+                                <label style={{ color: '#F0EDF8', fontSize: '0.78rem', fontWeight: 800 }}>
+                                  Message pour DM
+                                  <textarea value={draft.body} onChange={event => updateDraft(prospect.id, 'body', event.target.value)} placeholder="Rédigez un message court et personnalisé." rows={4} style={{ marginTop: '0.35rem', width: '100%', minWidth: 0, resize: 'vertical' }} />
+                                </label>
+                                <p style={{ margin: 0, color: '#918B9B', fontSize: '0.74rem' }}>Pour un DM, privilégiez un message plus court qu’un email.</p>
+                              </div>
                               <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', minWidth: 0 }}>
                                 {links.length === 0 ? (
                                   <span style={{ color: '#A89FCC', fontSize: '0.78rem' }}>Aucun lien public.</span>
                                 ) : links.map(link => (
-                                  <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ textDecoration: 'none', fontSize: '0.76rem' }}>{link.label}</a>
+                                  <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ textDecoration: 'none', fontSize: '0.76rem' }}>Ouvrir {link.label}</a>
                                 ))}
+                                <button onClick={() => copyMessage(prospect)} disabled={!draft.body.trim()} className="btn btn-secondary">Copier le message</button>
+                                <button onClick={() => saveProspectMessage(prospect.id)} disabled={savingIds.includes(prospect.id) || !draft.body.trim()} className="btn btn-ghost">{savingIds.includes(prospect.id) ? 'Sauvegarde…' : 'Enregistrer'}</button>
                               </div>
                             </div>
                           )

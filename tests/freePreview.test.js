@@ -36,6 +36,8 @@ const {
   parseCampaignAiText,
 } = require('../lib/campaignMessaging.ts')
 const { buildClipboardMessage, buildGmailComposeUrl, buildMailtoUrl, normalizeRecipient } = require('../lib/emailHandoff.ts')
+const { extractPublicContactLinks, getContactChannels, normalizePublicUrl } = require('../lib/contactChannels.ts')
+const { assessSearchValue } = require('../lib/searchValue.ts')
 const {
   extractPublicEmails,
   normalizeObfuscatedEmail,
@@ -80,6 +82,8 @@ const {
   PRO_DAILY_SEARCH_LIMIT,
   SEARCH_CACHE_VERSION,
   SEARCH_CACHE_TTL_HOURS,
+  MIN_BILLABLE_SEARCH_RESULTS,
+  SEARCH_RESULT_LIMIT,
   SEARCH_CATALOG_POOR_REFRESH_HOURS,
   SEARCH_NEGATIVE_CACHE_TTL_HOURS,
   buildSearchCacheKey,
@@ -828,7 +832,7 @@ test('discovery catalog keys are shared across subscriber ranges and remain vers
   assert.equal(first, second)
   assert.equal(first, different)
   assert.match(first, new RegExp(`^${SEARCH_CACHE_VERSION}:`))
-  assert.equal(SEARCH_CACHE_VERSION, 'youtube-search-v8')
+  assert.equal(SEARCH_CACHE_VERSION, 'youtube-search-v9')
   assert.equal(normalizeSearchText('  Création   vidéo  '), 'creation-video')
 })
 
@@ -1369,7 +1373,7 @@ test('campaign prospects are strongly deferred without becoming globally unavail
 test('search route persists and returns only the twenty selected rotation results', () => {
   const route = fs.readFileSync('app/api/search/route.ts', 'utf8')
   assert.match(route, /getUserTargetExposure\(userSearches, userTargetKey\)/)
-  assert.match(route, /limit: Math\.min\(20, channels\.length\)/)
+  assert.match(route, /limit: Math\.min\(SEARCH_RESULT_LIMIT, channels\.length\)/)
   assert.match(route, /JSON\.stringify\(markSearchResultsForTarget\(input\.results, input\.targetKey\)\)/)
   assert.equal((route.match(/return NextResponse\.json\(\{\s*results: visibleResults,\s*resultMeta:/g) || []).length, 2)
 })
@@ -1770,4 +1774,78 @@ test('final product polish keeps discovery focused and Pro contextual', () => {
   assert.match(proPage, /Aucun envoi automatique/)
   assert.doesNotMatch(proPage, /<table|styles\.comparison|styles\.workflow/)
   assert.doesNotMatch(proStyles, /tableWrap|\.workflow/)
+})
+
+test('search value protects free quota for empty, poor and non-contactable results', () => {
+  assert.equal(MIN_BILLABLE_SEARCH_RESULTS, 5)
+  assert.deepEqual(assessSearchValue([]), {
+    resultCount: 0, contactableCount: 0, consumeQuota: false,
+    message: 'Aucun créateur ne correspond exactement à cette cible. Cette recherche n’a pas été décomptée.',
+  })
+  assert.equal(assessSearchValue(Array.from({ length: 4 }, (_, index) => ({ email: `creator${index}@example.com` }))).consumeQuota, false)
+  assert.equal(assessSearchValue(Array.from({ length: 8 }, () => ({}))).consumeQuota, false)
+  const useful = assessSearchValue([
+    { instagram: 'https://instagram.com/creator' },
+    ...Array.from({ length: 4 }, () => ({})),
+  ])
+  assert.equal(useful.consumeQuota, true)
+  assert.equal(useful.contactableCount, 1)
+})
+
+test('contact channels include only real validated public destinations', () => {
+  const links = extractPublicContactLinks(`
+    Instagram https://instagram.com/creator
+    TikTok https://www.tiktok.com/@creator
+    Facebook https://facebook.com/creator.page
+    X https://x.com/creator
+    Twitch https://twitch.tv/creator
+    Site https://creator.example/contact
+  `)
+  const channels = getContactChannels({ name: 'Creator', email: 'hello@creator.example', ...links })
+  assert.deepEqual(channels.map(channel => channel.key), ['email', 'instagram', 'tiktok', 'facebook', 'twitter', 'twitch', 'website'])
+  assert.match(channels[0].href, /^https:\/\/mail\.google\.com\/mail\//)
+  assert.match(channels[0].href, /to=hello%40creator\.example/)
+  assert.equal(normalizePublicUrl('javascript:alert(1)'), null)
+  assert.equal(normalizePublicUrl('https://instagram.com/login', ['instagram.com']), null)
+  assert.equal(normalizePublicUrl('https://malicious.example/creator', ['instagram.com']), null)
+  assert.deepEqual(getContactChannels({}), [])
+})
+
+test('YouTube discovery diversifies existing calls and keeps a dynamic 20-result ceiling', () => {
+  const youtube = fs.readFileSync('lib/youtube.ts', 'utf8')
+  const searchRoute = fs.readFileSync('app/api/search/route.ts', 'utf8')
+  assert.equal(MAX_SEARCH_LIST_CALLS, 3)
+  assert.equal(SEARCH_RESULT_LIMIT, 20)
+  assert.match(youtube, /variantIndex === 0 \? 'relevance' : variantIndex === 1 \? 'date' : 'viewCount'/)
+  assert.match(searchRoute, /limit: Math\.min\(SEARCH_RESULT_LIMIT, channels\.length\)/)
+  assert.doesNotMatch(searchRoute, /limit:\s*3\b/)
+  assert.equal((youtube.match(/fetchYouTubeJson\(searchUrl, 'search\.list'\)/g) || []).length, 1)
+})
+
+test('social contact enrichment reuses collected descriptions and never changes Prospect Score', () => {
+  const youtube = fs.readFileSync('lib/youtube.ts', 'utf8')
+  const scoring = fs.readFileSync('lib/prospectScoring.ts', 'utf8')
+  assert.match(youtube, /recentVideos\.map\(video => video\.description/)
+  assert.match(youtube, /extractPublicContactLinks\(contactText\)/)
+  const scoreFunction = scoring.slice(scoring.indexOf('export function calculateProspectScore'))
+  assert.doesNotMatch(scoreFunction, /email|website|instagram|tiktok|facebook|twitter|twitch/i)
+})
+
+test('prospect and campaign UI expose compact contact actions and social message handoff', () => {
+  const presentation = fs.readFileSync('components/ProspectPresentation.tsx', 'utf8')
+  const dashboard = fs.readFileSync('app/dashboard/page.tsx', 'utf8')
+  const campaigns = fs.readFileSync('app/campaigns/page.tsx', 'utf8')
+  assert.match(presentation, /Contacter/)
+  assert.match(presentation, /prospect\.contacts\.map/)
+  assert.match(dashboard, /getContactChannels/)
+  assert.match(campaigns, /Copier le message/)
+  assert.match(campaigns, /Pour un DM, privilégiez un message plus court qu’un email/)
+  assert.match(campaigns, /getContactChannels\(prospect\)/)
+})
+
+test('multi-channel persistence migration is additive only', () => {
+  const migration = fs.readFileSync('prisma/migrations/20260819190000_add_multichannel_contacts/migration.sql', 'utf8')
+  assert.match(migration, /ADD COLUMN\s+"facebook"/)
+  assert.match(migration, /ADD COLUMN\s+"twitter"/)
+  assert.doesNotMatch(migration, /DROP|DELETE|TRUNCATE/i)
 })

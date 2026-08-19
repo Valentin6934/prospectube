@@ -198,8 +198,10 @@ select:focus-visible {
 .prospect-stat { border: 1px solid rgba(255,255,255,.075); border-radius: 6px; background: rgba(255,255,255,.025); padding: .26rem .42rem; color: #aaa4b3; font-size: .69rem; }
 .prospect-reason { max-width: 680px; margin: 0 0 0.55rem; overflow: hidden; color: #918b9b; font-size: 0.75rem; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
 .prospect-contacts { display: flex; gap: 0.42rem; flex-wrap: wrap; }
-.prospect-contact { color: #b9a8ed; font-size: 0.72rem; font-weight: 740; text-decoration: none; }
-.prospect-contact:hover { color: #fff !important; }
+.prospect-contact-zone { display: grid; gap: 0.38rem; }
+.prospect-contact-title { color: #777181; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; }
+.prospect-contact { border: 1px solid rgba(255,255,255,.1); border-radius: 7px; background: rgba(255,255,255,.035); padding: .28rem .48rem; color: #b9a8ed; font-size: 0.7rem; font-weight: 760; text-decoration: none; }
+.prospect-contact:hover { border-color: currentColor; background: rgba(255,255,255,.07); color: #fff !important; }
 .prospect-right-slot { flex: 0 1 auto; max-width: 100%; margin-left: auto; }
 
 .prospect-actions {

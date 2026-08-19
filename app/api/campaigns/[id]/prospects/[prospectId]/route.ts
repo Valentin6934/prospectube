@@ -31,6 +31,8 @@ const prospectSelect = {
 
 const prospectSelectWithMedia = {
   ...prospectSelect,
+  facebook: true,
+  twitter: true,
   avatar: true,
   thumbnail: true,
 }
@@ -118,6 +120,6 @@ export async function PATCH(
       data: updateData,
       select: prospectSelect,
     })
-    return NextResponse.json({ prospect: { ...updated, avatar: null, thumbnail: null } })
+    return NextResponse.json({ prospect: { ...updated, avatar: null, thumbnail: null, facebook: null, twitter: null } })
   }
 }

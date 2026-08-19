@@ -1,3 +1,5 @@
+import { getContactChannels } from './contactChannels'
+
 export type ProspectPresentationInput = {
   id?: string | null
   channelId?: string | null
@@ -10,6 +12,8 @@ export type ProspectPresentationInput = {
   email?: string | null
   instagram?: string | null
   tiktok?: string | null
+  facebook?: string | null
+  twitter?: string | null
   twitch?: string | null
   website?: string | null
   channelUrl?: string | null
@@ -43,7 +47,7 @@ export type ProspectPresentationInput = {
 }
 
 export type ProspectPresentationContact = {
-  key: 'email' | 'instagram' | 'tiktok' | 'twitch' | 'website'
+  key: 'email' | 'instagram' | 'tiktok' | 'facebook' | 'twitter' | 'twitch' | 'website'
   label: string
   href: string
   color: string
@@ -134,18 +138,12 @@ export function normalizeProspectPresentation(channel: ProspectPresentationInput
   const lastPublication = formatProspectLastPublication(channel.lastPublishedAt)
   const activityLabel = channel.activityLabel || channel.publishingFrequency || null
 
-  const contacts = [
-    channel.email ? {
-      key: 'email' as const,
-      label: channel.publicEmailConfidence === 'low' ? 'Email public possible' : 'Email public trouvé',
-      href: `mailto:${channel.email}`,
-      color: '#22c55e',
-    } : null,
-    channel.instagram ? { key: 'instagram' as const, label: 'Instagram', href: channel.instagram, color: '#e879f9' } : null,
-    channel.tiktok ? { key: 'tiktok' as const, label: 'TikTok', href: channel.tiktok, color: '#f472b6' } : null,
-    channel.twitch ? { key: 'twitch' as const, label: 'Twitch', href: channel.twitch, color: '#9146FF' } : null,
-    channel.website ? { key: 'website' as const, label: 'Site', href: channel.website, color: '#38bdf8' } : null,
-  ].filter(Boolean) as ProspectPresentationContact[]
+  const contacts = getContactChannels(channel).map(contact => ({
+    key: contact.key,
+    label: contact.label,
+    href: contact.href,
+    color: contact.color,
+  })) as ProspectPresentationContact[]
 
   return {
     name,
