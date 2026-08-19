@@ -53,6 +53,8 @@ model Favorite {
   email            String?
   instagram        String?
   tiktok           String?
+  facebook         String?
+  twitter          String?
   twitch           String?
   website          String?
   channelUrl       String?
@@ -128,6 +130,8 @@ model CampaignProspect {
   email            String?
   instagram        String?
   tiktok           String?
+  facebook         String?
+  twitter          String?
   twitch           String?
   website          String?
   channelUrl       String?

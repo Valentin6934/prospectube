@@ -129,6 +129,7 @@ export function buildYouTubeSearchParams(input: {
   pageToken?: string | null
   fields: string
   type?: 'channel' | 'video'
+  order?: 'relevance' | 'date' | 'viewCount'
 }): URLSearchParams {
   const query = String(input.query || '').trim()
   const maxResults = input.maxResults ?? 50
@@ -143,7 +144,7 @@ export function buildYouTubeSearchParams(input: {
   params.set('type', input.type || 'channel')
   params.set('q', query)
   params.set('maxResults', String(maxResults))
-  params.set('order', 'relevance')
+  params.set('order', input.order || 'relevance')
   params.set('fields', input.fields)
 
   const relevanceLanguage = normalizeYouTubeLanguage(input.language)

@@ -70,7 +70,9 @@ export default function ProspectPresentation({ channel, compact = false, selecte
           )}
 
           {prospect.contacts.length > 0 && (
-            <div className="prospect-contacts">
+            <div className="prospect-contact-zone">
+              <span className="prospect-contact-title">Contacter · {prospect.contacts.length} canal{prospect.contacts.length > 1 ? 'aux' : ''}</span>
+              <div className="prospect-contacts">
               {prospect.contacts.map(contact => (
                 <a
                   key={contact.key}
@@ -83,11 +85,7 @@ export default function ProspectPresentation({ channel, compact = false, selecte
                   {contact.label}
                 </a>
               ))}
-              {prospect.youtubeUrl && (
-                <a href={prospect.youtubeUrl} target="_blank" rel="noopener noreferrer" className="prospect-contact">
-                  YouTube
-                </a>
-              )}
+              </div>
             </div>
           )}
         </div>

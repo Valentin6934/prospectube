@@ -37,6 +37,8 @@ const campaignProspectSelect = {
 
 const campaignProspectSelectWithMedia = {
   ...campaignProspectSelect,
+  facebook: true,
+  twitter: true,
   avatar: true,
   thumbnail: true,
 }

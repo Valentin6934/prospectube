@@ -160,7 +160,7 @@ export function classifyPublishingFrequency(videos: RecentVideo[], now = new Dat
 }
 
 export function getContactability(channel: any) {
-  const channels = [channel.email, channel.website, channel.instagram, channel.tiktok, channel.twitch].filter(Boolean).length
+  const channels = [channel.email, channel.website, channel.instagram, channel.tiktok, channel.facebook, channel.twitter, channel.twitch].filter(Boolean).length
   return { level: channel.email && channels >= 2 ? 'Élevée' : channels >= 1 ? 'Moyenne' : 'Faible', channels }
 }
 

@@ -17,6 +17,7 @@ import {
   getSearchLimit,
   getSearchQuotaMessage,
   SEARCH_NEGATIVE_CACHE_TTL_HOURS,
+  SEARCH_RESULT_LIMIT,
   SEARCH_CACHE_TTL_HOURS,
   SEARCH_CACHE_VERSION,
   SEARCH_LOCK_TTL_MS,
@@ -32,6 +33,7 @@ import {
   releaseSearchQuota,
   reserveSearchQuota,
 } from '@/lib/searchQuota'
+import { assessSearchValue } from '@/lib/searchValue'
 
 export const dynamic = 'force-dynamic'
 
@@ -214,7 +216,7 @@ export async function POST(req: NextRequest) {
       globalExposure,
       userSeed: user.id,
       targetKey: userTargetKey,
-      limit: Math.min(20, channels.length),
+      limit: Math.min(SEARCH_RESULT_LIMIT, channels.length),
     })
     const coverage = calculateCatalogCoverage({
       channels: sourceCatalog.channels,
@@ -320,6 +322,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           results: [], source: 'catalog', cached: true, emptyResult: true,
           searchesRemaining: emptyQuota.remaining, quota: emptyQuota, plan,
+          quotaConsumed: false,
+          poorResult: true,
+          searchFeedback: assessSearchValue([]).message,
+          contactableResults: 0,
           canGenerateEmail: limits.emailAI,
         })
       }
@@ -327,7 +333,12 @@ export async function POST(req: NextRequest) {
       catalog.coverage = selection.coverage
       const visibleResults = selection.results
       metrics.acceptedResults = visibleResults.length
-      await completeSearchQuota(prisma, parsed.requestId, true)
+      const valueAssessment = assessSearchValue(visibleResults)
+      const responseQuota = valueAssessment.consumeQuota
+        ? reservation.snapshot
+        : getReleasedSearchQuotaSnapshot(reservation.snapshot)
+      if (valueAssessment.consumeQuota) await completeSearchQuota(prisma, parsed.requestId, true)
+      else await releaseSearchQuota(prisma, parsed.requestId)
       reserved = false
       await saveSearchHistory({
         userId: user.id,
@@ -346,7 +357,7 @@ export async function POST(req: NextRequest) {
         channelCatalogCandidates: catalog.channels.length,
         strictSubnicheMatches: catalogResults.filter(item => item.matchMode !== 'nearby').length,
         nearbySubnicheMatches: catalogResults.filter(item => item.matchMode === 'nearby').length,
-        displayedResults: Math.min(20, visibleResults.length),
+        displayedResults: Math.min(SEARCH_RESULT_LIMIT, visibleResults.length),
         userNewResults: selection.newCount,
         userSeenResults: selection.seenCount,
         ...getCatalogLogDetails(catalog),
@@ -356,8 +367,12 @@ export async function POST(req: NextRequest) {
         resultMeta: buildResultMeta(visibleResults),
         source: 'catalog',
         cached: true,
-        searchesRemaining: reservation.snapshot.remaining,
-        quota: reservation.snapshot,
+        searchesRemaining: responseQuota.remaining,
+        quota: responseQuota,
+        quotaConsumed: valueAssessment.consumeQuota,
+        poorResult: !valueAssessment.consumeQuota,
+        searchFeedback: valueAssessment.message,
+        contactableResults: valueAssessment.contactableCount,
         plan,
         canGenerateEmail: limits.emailAI,
       })
@@ -416,6 +431,10 @@ export async function POST(req: NextRequest) {
         emptyResult: true,
         searchesRemaining: emptyQuota.remaining,
         quota: emptyQuota,
+        quotaConsumed: false,
+        poorResult: true,
+        searchFeedback: assessSearchValue([]).message,
+        contactableResults: 0,
         plan,
         canGenerateEmail: limits.emailAI,
       })
@@ -451,7 +470,12 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    await completeSearchQuota(prisma, parsed.requestId, false)
+    const valueAssessment = assessSearchValue(visibleResults)
+    const responseQuota = valueAssessment.consumeQuota
+      ? reservation.snapshot
+      : getReleasedSearchQuotaSnapshot(reservation.snapshot)
+    if (valueAssessment.consumeQuota) await completeSearchQuota(prisma, parsed.requestId, false)
+    else await releaseSearchQuota(prisma, parsed.requestId)
     reserved = false
     await saveSearchHistory({
       userId: user.id,
@@ -470,7 +494,7 @@ export async function POST(req: NextRequest) {
       channelCatalogCandidates: catalog.channels.length,
       strictSubnicheMatches: catalogResults.filter(item => item.matchMode !== 'nearby').length,
       nearbySubnicheMatches: catalogResults.filter(item => item.matchMode === 'nearby').length,
-      displayedResults: Math.min(20, visibleResults.length),
+      displayedResults: Math.min(SEARCH_RESULT_LIMIT, visibleResults.length),
       userNewResults: selection.newCount,
       userSeenResults: selection.seenCount,
       ...getCatalogLogDetails(catalog),
@@ -480,8 +504,12 @@ export async function POST(req: NextRequest) {
       resultMeta: buildResultMeta(visibleResults),
       source: 'youtube',
       cached: false,
-      searchesRemaining: reservation.snapshot.remaining,
-      quota: reservation.snapshot,
+      searchesRemaining: responseQuota.remaining,
+      quota: responseQuota,
+      quotaConsumed: valueAssessment.consumeQuota,
+      poorResult: !valueAssessment.consumeQuota,
+      searchFeedback: valueAssessment.message,
+      contactableResults: valueAssessment.contactableCount,
       plan,
       canGenerateEmail: limits.emailAI,
     })

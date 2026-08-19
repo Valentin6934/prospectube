@@ -46,7 +46,7 @@ function getReasonParts(reason: string | null | undefined): string[] {
 function getWeaknesses(channel: ProspectChannel, viewsPerSubscriber: number): string[] {
   const weaknesses: string[] = []
   if (!channel.email) weaknesses.push('Email direct non trouvé')
-  if (!channel.instagram && !channel.tiktok && !channel.twitch && !channel.website) weaknesses.push('Peu de contacts publics')
+  if (!channel.instagram && !channel.tiktok && !channel.facebook && !channel.twitter && !channel.twitch && !channel.website) weaknesses.push('Peu de contacts publics')
   if ((channel.videoCount || 0) < 50) weaknesses.push('Volume de vidéos limité')
   if (viewsPerSubscriber > 0 && viewsPerSubscriber < 5) weaknesses.push('Ratio vues/abonnés modéré')
   if (weaknesses.length === 0) weaknesses.push('Aucune faiblesse majeure détectée')
@@ -55,7 +55,7 @@ function getWeaknesses(channel: ProspectChannel, viewsPerSubscriber: number): st
 
 function getProspectingAdvice(channel: ProspectChannel, score: number): string {
   if (channel.email && score >= 80) return 'Contacte directement par email avec une proposition courte et personnalisée.'
-  if (channel.instagram || channel.tiktok) return 'Approche via réseau social avec un message léger avant de proposer une collaboration.'
+  if (channel.instagram || channel.tiktok || channel.facebook || channel.twitter) return 'Approche via réseau social avec un message léger avant de proposer une collaboration.'
   if (channel.website) return 'Utilise le site web pour identifier le bon contact avant de pitcher.'
   return 'Commence par interagir avec le contenu avant une approche commerciale.'
 }
@@ -164,10 +164,12 @@ export default function CreatorDetails({
             )}
             {channel.instagram && <a href={channel.instagram} target="_blank" rel="noopener noreferrer" style={{ color: '#e879f9', textDecoration: 'none' }}>📱 Instagram</a>}
             {channel.tiktok && <a href={channel.tiktok} target="_blank" rel="noopener noreferrer" style={{ color: '#f472b6', textDecoration: 'none' }}>🎵 TikTok</a>}
+            {channel.facebook && <a href={channel.facebook} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa', textDecoration: 'none' }}>Facebook</a>}
+            {channel.twitter && <a href={channel.twitter} target="_blank" rel="noopener noreferrer" style={{ color: '#d4d4d8', textDecoration: 'none' }}>X</a>}
             {channel.twitch && <a href={channel.twitch} target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF', textDecoration: 'none' }}>🎮 Twitch</a>}
             {channel.website && <a href={channel.website} target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'none' }}>🌍 Site</a>}
             {channel.channelUrl && <a href={channel.channelUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', textDecoration: 'none' }}>▶ YouTube</a>}
-            {!channel.email && !channel.instagram && !channel.tiktok && !channel.twitch && !channel.website && <span style={{ color: '#6B5F96' }}>Aucun contact public trouvé</span>}
+            {!channel.email && !channel.instagram && !channel.tiktok && !channel.facebook && !channel.twitter && !channel.twitch && !channel.website && <span style={{ color: '#6B5F96' }}>Aucun contact public trouvé</span>}
           </div>
         </section>
 

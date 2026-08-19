@@ -19,22 +19,40 @@ export async function GET() {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Non connecté' }, { status: 401 })
 
-  const campaignRecords = await prisma.campaign.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: 'desc' },
-    include: {
-      _count: {
-        select: { prospects: true },
-      },
-      prospects: {
-        select: {
-          channelId: true,
-          email: true,
-          generatedBody: true,
+  const baseQuery = { where: { userId: user.id }, orderBy: { createdAt: 'desc' as const } }
+  let campaignRecords
+  try {
+    campaignRecords = await prisma.campaign.findMany({
+      ...baseQuery,
+      include: {
+        _count: { select: { prospects: true } },
+        prospects: {
+          select: {
+            channelId: true, email: true, instagram: true, tiktok: true, facebook: true,
+            twitter: true, twitch: true, website: true, generatedBody: true,
+          },
         },
       },
-    },
-  })
+    })
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2022') throw error
+    const legacyRecords = await prisma.campaign.findMany({
+      ...baseQuery,
+      include: {
+        _count: { select: { prospects: true } },
+        prospects: {
+          select: {
+            channelId: true, email: true, instagram: true, tiktok: true,
+            twitch: true, website: true, generatedBody: true,
+          },
+        },
+      },
+    })
+    campaignRecords = legacyRecords.map(campaign => ({
+      ...campaign,
+      prospects: campaign.prospects.map(prospect => ({ ...prospect, facebook: null, twitter: null })),
+    }))
+  }
 
   const campaigns = campaignRecords.map(({ prospects, ...campaign }) => ({
     ...campaign,
