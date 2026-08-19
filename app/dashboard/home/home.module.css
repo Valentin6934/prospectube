@@ -96,6 +96,15 @@
   font-weight: 700;
 }
 
+.quotaBadge {
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  padding-left: 0.85rem;
+  color: #a9a2b3;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .signOut {
   border: 0;
   background: transparent;
@@ -580,6 +589,9 @@
     padding: 0.52rem 0.65rem;
     font-size: 0.72rem;
   }
+
+  .settingsLink,
+  .quotaBadge { display: none; }
 
   .statsGrid,
   .actionsGrid {

@@ -654,14 +654,14 @@ export default function CampaignsPage() {
                             </div>
 
                             <div className="campaign-prospect-footer">
-                              <div style={{ color: '#A89FCC', fontSize: '0.76rem', lineHeight: 1.45 }}>Aucun email n’est envoyé par ProspectTube.</div>
+                              <div style={{ color: '#918B9B', fontSize: '0.76rem', lineHeight: 1.45 }}>ProspectTube prépare le message. Vous le relisez et l’envoyez depuis votre messagerie.</div>
                               <div className="campaign-prospect-actions">
-                                <button onClick={() => saveProspectMessage(prospect.id)} disabled={savingIds.includes(prospect.id)} className="btn btn-secondary">
-                                  {savingIds.includes(prospect.id) ? 'Sauvegarde...' : 'Enregistrer'}
-                                </button>
-                                <button onClick={() => copyMessage(prospect)} disabled={!draft.subject.trim() && !draft.body.trim()} className="btn btn-secondary">Copier le message</button>
+                                <button onClick={() => openEmailHandoff(prospect, 'gmail')} className="btn-primary">Ouvrir dans Gmail</button>
                                 <button onClick={() => openEmailHandoff(prospect, 'mailto')} className="btn btn-secondary">Ouvrir dans mon client mail</button>
-                                <button onClick={() => openEmailHandoff(prospect, 'gmail')} className="btn-primary" style={{ padding: '0.6rem 0.85rem', fontSize: '0.8rem' }}>Ouvrir dans Gmail</button>
+                                <button onClick={() => copyMessage(prospect)} disabled={!draft.subject.trim() && !draft.body.trim()} className="btn btn-secondary">Copier</button>
+                                <button onClick={() => saveProspectMessage(prospect.id)} disabled={savingIds.includes(prospect.id)} className="btn btn-ghost">
+                                  {savingIds.includes(prospect.id) ? 'Sauvegarde…' : 'Enregistrer'}
+                                </button>
                               </div>
                             </div>
                           </div>

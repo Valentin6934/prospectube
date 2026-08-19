@@ -23,65 +23,68 @@ export default function ProspectPresentation({ channel, compact = false, selecte
   const avatarSize = compact ? 46 : 54
 
   return (
-    <div style={{ width: '100%', maxWidth: '100%', display: 'flex', justifyContent: 'space-between', gap: '0.8rem', alignItems: 'flex-start', flexWrap: 'wrap', minWidth: 0, flex: '1 1 0', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', gap: compact ? '0.65rem' : '0.9rem', minWidth: 0, flex: '1 1 260px', maxWidth: '100%' }}>
+    <div className="prospect-identity">
+      <div className="prospect-main" style={{ gap: compact ? '0.65rem' : undefined }}>
         {prospect.imageUrl ? (
           <img
             src={prospect.imageUrl}
             alt={`Photo de ${prospect.name}`}
-            style={{ width: `${avatarSize}px`, height: `${avatarSize}px`, borderRadius: '50%', objectFit: 'cover', border: selected ? '2px solid rgba(167,139,250,0.75)' : '2px solid rgba(83,58,183,0.35)', flexShrink: 0 }}
+            className="prospect-avatar"
+            style={{ width: `${avatarSize}px`, height: `${avatarSize}px`, border: selected ? '2px solid rgba(167,139,250,0.75)' : '2px solid rgba(83,58,183,0.35)' }}
           />
         ) : (
           <div
             aria-hidden="true"
-            style={{ width: `${avatarSize}px`, height: `${avatarSize}px`, borderRadius: '50%', background: `${prospect.color}33`, border: selected ? '2px solid rgba(167,139,250,0.75)' : `2px solid ${prospect.color}66`, display: 'grid', placeItems: 'center', fontWeight: 900, fontSize: compact ? '0.78rem' : '0.9rem', color: prospect.color, flexShrink: 0 }}
+            className="prospect-avatar"
+            style={{ width: `${avatarSize}px`, height: `${avatarSize}px`, background: `${prospect.color}33`, border: selected ? '2px solid rgba(167,139,250,0.75)' : `2px solid ${prospect.color}66`, display: 'grid', placeItems: 'center', fontWeight: 900, fontSize: compact ? '0.78rem' : '0.9rem', color: prospect.color }}
           >
             {prospect.initials}
           </div>
         )}
 
-        <div style={{ minWidth: 0, flex: '1 1 0', maxWidth: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
-            <div style={{ fontWeight: 800, fontSize: compact ? '0.95rem' : '1rem', color: '#F0EDF8', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prospect.name}</div>
+        <div className="prospect-copy">
+          <div className="prospect-title-row">
+            <div className="prospect-name" style={{ fontSize: compact ? '0.95rem' : '1rem' }}>{prospect.name}</div>
             {prospect.activityLabel && (
-              <span style={{ color: prospect.activityColor, fontSize: '0.68rem', fontWeight: 800 }}>
+              <span className="prospect-activity" style={{ color: prospect.activityColor }}>
                 {prospect.activityLabel}
               </span>
             )}
-            <span style={{ ...getScoreStyles(prospect.score), fontSize: '0.72rem', fontWeight: 800 }}>
+            <span className="prospect-score-label" style={getScoreStyles(prospect.score)}>
               {prospect.scoreLabel}
             </span>
-            <span style={{ color: '#F0EDF8', fontWeight: 900, fontSize: compact ? '0.84rem' : '0.9rem' }}>{prospect.score}/100</span>
+            <span className="prospect-score" style={{ fontSize: compact ? '0.82rem' : undefined }}>{prospect.score}/100</span>
             <ProspectScoreExplanation compact />
           </div>
 
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: prospect.contacts.length > 0 ? '0.55rem' : 0 }}>
+          <div className="prospect-stats" style={{ marginBottom: prospect.contacts.length > 0 ? undefined : 0 }}>
             {prospect.stats.map(stat => (
-              <span key={stat} style={{ fontSize: '0.75rem', color: '#AFA8BF', paddingRight: '0.45rem' }}>{stat}</span>
+              <span key={stat} className="prospect-stat">{stat}</span>
             ))}
           </div>
 
           {!compact && (
-            <p title={prospect.scoreReason} style={{ maxWidth: '680px', margin: prospect.contacts.length > 0 ? '0 0 0.5rem' : '0.45rem 0 0', color: '#9188AB', fontSize: '0.76rem', lineHeight: 1.45, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p title={prospect.scoreReason} className="prospect-reason" style={{ margin: prospect.contacts.length > 0 ? undefined : '0.45rem 0 0' }}>
               {prospect.scoreReason}
             </p>
           )}
 
           {prospect.contacts.length > 0 && (
-            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <div className="prospect-contacts">
               {prospect.contacts.map(contact => (
                 <a
                   key={contact.key}
                   href={contact.href}
                   target={contact.href.startsWith('http') ? '_blank' : undefined}
                   rel={contact.href.startsWith('http') ? 'noopener noreferrer' : undefined}
-                  style={{ fontSize: '0.75rem', color: contact.color, textDecoration: 'none', fontWeight: 700 }}
+                  className="prospect-contact"
+                  style={{ color: contact.color }}
                 >
                   {contact.label}
                 </a>
               ))}
               {prospect.youtubeUrl && (
-                <a href={prospect.youtubeUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.75rem', color: '#a78bfa', textDecoration: 'none', fontWeight: 700 }}>
+                <a href={prospect.youtubeUrl} target="_blank" rel="noopener noreferrer" className="prospect-contact">
                   YouTube
                 </a>
               )}
@@ -91,7 +94,7 @@ export default function ProspectPresentation({ channel, compact = false, selecte
       </div>
 
       {rightSlot && (
-        <div style={{ flex: '0 1 auto', maxWidth: '100%', marginLeft: 'auto' }}>
+        <div className="prospect-right-slot">
           {rightSlot}
         </div>
       )}

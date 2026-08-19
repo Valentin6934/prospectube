@@ -208,29 +208,29 @@ export default function ProspectCard({
   }
 
   return (
-    <div className="card prospect-card" style={{ padding: '1rem', marginBottom: '0.85rem', border: '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
+    <div className="card prospect-card">
       <ProspectPresentation channel={channel} />
 
-      <div className="prospect-actions" style={{ display: 'grid', gridTemplateColumns: `repeat(${actionColumns}, minmax(0, 1fr))`, gap: '0.55rem', marginTop: '0.9rem' }}>
+      <div className="prospect-actions" style={{ '--prospect-action-columns': actionColumns } as React.CSSProperties}>
+        <button onClick={openCampaignPicker} className="btn-primary">
+          Ajouter à une campagne
+        </button>
         {showFavoriteButton && (
-          <button onClick={() => onAddFavorite?.(channel)} disabled={isFavorite || favoriteLoading} style={{ background: isFavorite ? 'rgba(234,179,8,0.16)' : 'rgba(83,58,183,0.14)', color: isFavorite ? '#eab308' : '#A89FCC', border: '1px solid rgba(83,58,183,0.35)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: isFavorite ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+          <button onClick={() => onAddFavorite?.(channel)} disabled={isFavorite || favoriteLoading} className="btn btn-secondary">
             {isFavorite ? 'Favori' : favoriteLoading ? 'Ajout…' : 'Favori'}
           </button>
         )}
         {showRemoveButton && (
-          <button onClick={() => onRemoveFavorite?.(channel)} disabled={removing} style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: removing ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+          <button onClick={() => onRemoveFavorite?.(channel)} disabled={removing} className="btn btn-danger">
             {removing ? 'Suppression…' : 'Supprimer'}
           </button>
         )}
         {onGenerateEmail && (
-          <button onClick={() => onGenerateEmail(channel)} disabled={!canEmail} style={{ background: canEmail ? 'linear-gradient(135deg, #533AB7, #7B63D3)' : 'rgba(83,58,183,0.15)', color: canEmail ? 'white' : '#6B5F96', border: '1px solid rgba(83,58,183,0.22)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: canEmail ? 'pointer' : 'not-allowed', fontSize: '0.8rem', fontWeight: 700 }}>
+          <button onClick={() => onGenerateEmail(channel)} disabled={!canEmail} className="btn btn-secondary">
             {canEmail ? 'Préparer un message' : 'Message Pro'}
           </button>
         )}
-        <button onClick={openCampaignPicker} style={{ background: '#6d4bd1', color: '#fff', border: '1px solid #8062df', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 800 }}>
-          Ajouter à une campagne
-        </button>
-        <button onClick={() => setDetailsOpen(true)} style={{ background: 'rgba(255,255,255,0.04)', color: '#C4BCDF', border: '1px solid rgba(255,255,255,0.09)', padding: '0.55rem 0.65rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+        <button onClick={() => setDetailsOpen(true)} className="btn btn-ghost">
           Voir la fiche
         </button>
       </div>
