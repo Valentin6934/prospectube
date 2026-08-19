@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useSession, signOut } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import AppLoader from '@/components/AppLoader'
@@ -9,6 +9,7 @@ import ProspectSkeleton from '@/components/ProspectSkeleton'
 import Toast, { useToast } from '@/components/Toast'
 import ProGate from '@/components/ProGate'
 import ProspectScoreExplanation from '@/components/ProspectScoreExplanation'
+import MainAppNav from '@/components/MainAppNav'
 import { NICHE_CONFIG, SEARCH_LANGUAGES } from '@/lib/searchTargeting'
 import { getPlanName, isFree, isPro as isProPlan } from '@/lib/plan'
 import { buildCampaignProspectPayload, getCampaignIdFromCreateResponse } from '@/lib/campaignClient'
@@ -440,43 +441,13 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#0A0812' }}>
-      <nav className="app-nav" style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,8,18,0.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(83,58,183,0.2)', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px' }}>
-        <Link href="/dashboard/home" style={{ textDecoration: 'none' }}>
-          <div className="font-display" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#F0EDF8' }}>
-            Prospect<span className="grad-text">Tube</span>
-          </div>
-        </Link>
-        <div className="app-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Link href="/dashboard/home" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
-            🏠 Accueil
-          </Link>
-          <Link href="/favorites" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
-            ⭐ Favoris
-          </Link>
-          <Link href="/history" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
-            🕘 Historique
-          </Link>
-          <Link href="/campaigns" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
-            🎯 Campagnes
-          </Link>
-          <Link href="/settings" style={{ color: '#A89FCC', textDecoration: 'none', fontSize: '0.85rem' }}>
-            ⚙️ Paramètres
-          </Link>
-          <div style={{ background: 'rgba(83,58,183,0.2)', border: '1px solid rgba(83,58,183,0.4)', color: '#a78bfa', padding: '0.2rem 0.75rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 500 }}>
-            ⭐ Plan {plan}
-          </div>
-          {searchesLeft !== null && (
-            <div style={{ fontSize: '0.8rem', color: '#A89FCC' }}>
-              {plan === 'Pro'
-                ? `${searchesLeft}/${PRO_DAILY_SEARCH_LIMIT} aujourd'hui`
-                : `${searchesLeft}/${FREE_LIFETIME_SEARCH_LIMIT} disponible`}
-            </div>
-          )}
-          <button onClick={() => signOut({ callbackUrl: '/' })} style={{ background: 'none', border: '1px solid rgba(83,58,183,0.3)', color: '#A89FCC', padding: '0.4rem 1rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-            🚪 Déconnexion
-          </button>
-        </div>
-      </nav>
+      <MainAppNav
+        plan={plan}
+        active="search"
+        quotaLabel={searchesLeft === null ? undefined : plan === 'Pro'
+          ? `${searchesLeft}/${PRO_DAILY_SEARCH_LIMIT} aujourd’hui`
+          : `${searchesLeft}/${FREE_LIFETIME_SEARCH_LIMIT} gratuites`}
+      />
 
       <div style={{ maxWidth: '960px', margin: '0 auto', padding: '2rem 1.5rem 5rem' }}>
         {onboardingVisible && (
@@ -513,15 +484,15 @@ export default function Dashboard() {
 
           <div className="search-fields" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Niche *</label>
-              <select value={niche} onChange={e => { setNiche(e.target.value); setSubNiches([]) }}>
+              <label htmlFor="search-niche" style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Niche *</label>
+              <select id="search-niche" value={niche} onChange={e => { setNiche(e.target.value); setSubNiches([]) }}>
                 <option value="">Choisir une niche...</option>
                 {Object.keys(NICHE_CONFIG).map(n => <option key={n}>{n}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Langue</label>
-              <select value={lang} onChange={e => setLang(e.target.value)}>
+              <label htmlFor="search-language" style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Langue</label>
+              <select id="search-language" value={lang} onChange={e => setLang(e.target.value)}>
                 {LANGS.map(l => <option key={l}>{l}</option>)}
               </select>
             </div>
@@ -538,8 +509,8 @@ export default function Dashboard() {
             </div>
           )}
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Mot-clé personnalisé</label>
-            <input value={customKeyword} maxLength={80} onChange={event => setCustomKeyword(event.target.value)} placeholder="Optionnel" />
+            <label htmlFor="search-keyword" style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Mot-clé personnalisé</label>
+            <input id="search-keyword" value={customKeyword} maxLength={80} onChange={event => setCustomKeyword(event.target.value)} placeholder="Ex. Fortnite compétitif (optionnel)" />
           </div>
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.6rem' }}>
@@ -552,8 +523,9 @@ export default function Dashboard() {
           </div>
 
           <div style={{ marginBottom: '1.25rem' }}>
-            <label style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Ton email de contact *</label>
-            <input type="email" value={editorEmail} onChange={e => setEditorEmail(e.target.value)} placeholder="toi@gmail.com" />
+            <label htmlFor="editor-email" style={{ display: 'block', fontSize: '0.8rem', color: '#A89FCC', marginBottom: '0.4rem' }}>Votre email professionnel *</label>
+            <input id="editor-email" type="email" value={editorEmail} onChange={e => setEditorEmail(e.target.value)} placeholder="vous@studio.fr" autoComplete="email" />
+            <p style={{ margin: '0.4rem 0 0', color: '#777183', fontSize: '0.72rem' }}>Utilisé uniquement pour personnaliser vos messages de prospection.</p>
           </div>
 
           <button className="btn-primary" onClick={handleSearch} disabled={loading || Date.now() < searchPausedUntil} style={{ width: '100%', padding: '0.85rem', fontSize: '0.95rem' }}>

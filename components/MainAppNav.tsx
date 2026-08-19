@@ -6,9 +6,10 @@ import { isPro } from '@/lib/plan'
 type MainAppNavProps = {
   plan: string
   active?: 'home' | 'favorites' | 'history' | 'campaigns' | 'settings' | 'search'
+  quotaLabel?: string
 }
 
-export default function MainAppNav({ plan, active }: MainAppNavProps) {
+export default function MainAppNav({ plan, active, quotaLabel }: MainAppNavProps) {
   return (
     <nav className={styles.nav} aria-label="Navigation principale">
       <div className={styles.navInner}>
@@ -24,6 +25,7 @@ export default function MainAppNav({ plan, active }: MainAppNavProps) {
           </div>
           <Link href="/dashboard" className={styles.searchButton} aria-current={active === 'search' ? 'page' : undefined}>🔍 Nouvelle recherche</Link>
           <Link href="/settings" className={styles.settingsLink} aria-current={active === 'settings' ? 'page' : undefined}>⚙️ Paramètres</Link>
+          {quotaLabel && <span className={styles.quotaBadge} aria-label={`Quota de recherche : ${quotaLabel}`}>{quotaLabel}</span>}
           {isPro(plan)
             ? <span className={styles.planBadge}>Plan Pro</span>
             : <Link href="/pro" className={styles.planBadge}>Découvrir Pro</Link>}

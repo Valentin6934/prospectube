@@ -20,8 +20,8 @@ const benefits = [
 const steps = [
   {
     number: '01',
-    title: 'Définis ta cible',
-    description: 'Choisis une niche, une sous-niche, une langue et une audience adaptée à ton offre.',
+    title: 'Définissez votre cible',
+    description: 'Choisissez une niche, une sous-niche, une langue et une audience adaptée à votre offre.',
     visual: (
       <div className={styles.targetMini} aria-hidden="true">
         <span>Gaming</span><span>Fortnite</span><span>Français</span><span>10K–100K</span>
@@ -30,8 +30,8 @@ const steps = [
   },
   {
     number: '02',
-    title: 'Analyse les prospects',
-    description: 'Compare les performances récentes, l’activité et le potentiel de production estimé.',
+    title: 'Analysez les prospects',
+    description: 'Comparez les performances récentes, l’activité et le potentiel de production estimé.',
     visual: (
       <div className={styles.prospectMini} aria-hidden="true">
         <div className={styles.miniAvatar}>MV</div>
@@ -41,8 +41,8 @@ const steps = [
   },
   {
     number: '03',
-    title: 'Organise ta campagne',
-    description: 'Ajoute tes prospects, personnalise tes messages et ouvre-les dans ta messagerie.',
+    title: 'Organisez votre campagne',
+    description: 'Ajoutez vos prospects, personnalisez vos messages et ouvrez-les dans votre messagerie.',
     visual: (
       <div className={styles.campaignMini} aria-hidden="true">
         <span><i />5 prospects</span><span><i />3 messages prêts</span><b>Prêts à contacter</b>
@@ -57,7 +57,7 @@ const faqs = [
   ['Pourquoi certains prospects n’ont-ils pas d’email ?', 'Certains créateurs ne publient aucune adresse ou utilisent une adresse protégée par YouTube. ProspectTube ne contourne jamais ces protections.'],
   ['Comment fonctionne le score ?', 'Il aide à prioriser selon les performances récentes, l’activité, la fréquence, la pertinence et le potentiel de montage estimé. La contactabilité reste séparée.'],
   ['Combien de recherches sont incluses ?', `Le plan Gratuit comprend ${PRODUCT_LIMITS.freeLifetimeSearches} recherches réussies à vie. Le plan Pro comprend ${PRODUCT_LIMITS.proDailySearches} recherches réussies par jour.`],
-  ['ProspectTube se connecte-t-il à ma boîte mail ?', 'Non. ProspectTube ouvre simplement Gmail ou ton client mail avec le message prérempli. Tu gardes la main avant tout envoi.'],
+  ['ProspectTube se connecte-t-il à ma boîte mail ?', 'Non. ProspectTube ouvre simplement Gmail ou votre client mail avec le message prérempli. Vous gardez la main avant tout envoi.'],
   ['Puis-je annuler mon abonnement ?', 'Oui. Le Plan Pro est sans engagement et peut être annulé depuis le portail Stripe.'],
   ['À qui s’adresse ProspectTube ?', 'ProspectTube est conçu pour les MiniMakers et monteurs vidéo qui cherchent des YouTubers actifs à prospecter pour proposer leurs services.'],
 ]
@@ -102,7 +102,7 @@ export default function LandingPage() {
             <div className={styles.eyebrow}><span /> Pour les MiniMakers et monteurs vidéo</div>
             <h1>ProspectTube aide les MiniMakers et monteurs vidéo à trouver des YouTubers actifs à prospecter.</h1>
             <p>
-              Ne perdez plus des heures à chercher manuellement des chaînes inactives ou peu pertinentes. ProspectTube analyse les informations publiques, classe les YouTubers selon leur activité et vous aide à organiser une liste de prospects plus rapide à évaluer.
+              Ciblez une niche, comparez l’activité récente et organisez vos meilleurs prospects sans parcourir YouTube pendant des heures.
             </p>
             <div className={styles.heroActions}>
               <button onClick={startFree} className={styles.primaryButton}>Commencer une recherche</button>
@@ -155,7 +155,7 @@ export default function LandingPage() {
           <div className={styles.showcaseCopy}>
             <span className={styles.kicker}>Recherche ciblée</span>
             <h2>Des critères simples. Des résultats réellement exploitables.</h2>
-            <p>Définis la niche, la sous-niche, la langue et la taille de chaîne. ProspectTube classe les résultats par score et fait tourner les profils pour t’aider à découvrir de nouveaux prospects.</p>
+            <p>Définissez la niche, la sous-niche, la langue et la taille de chaîne. ProspectTube classe les résultats par score et fait tourner les profils pour vous aider à découvrir de nouveaux prospects.</p>
             <p className={styles.highlightText}>ProspectTube ne se contente pas du nom de la chaîne : il s’appuie sur le contenu récent, l’activité et les performances publiques.</p>
             <ul className={styles.checkList}><li>Niche et sous-niche</li><li>Langue et abonnés</li><li>Rotation vers de nouveaux prospects</li><li>Résultats classés par score</li></ul>
           </div>
@@ -200,25 +200,25 @@ export default function LandingPage() {
           </div>
           <div className={styles.showcaseCopy}>
             <span className={styles.kicker}>Campagnes</span>
-            <h2>Prépare ta prospection sans perdre le contrôle du message.</h2>
-            <p>Ajoute les prospects sélectionnés et personnalise chaque message. Aucune connexion Google n’est nécessaire : ProspectTube ouvre simplement ta messagerie avec les champs préremplis.</p>
+            <h2>Préparez votre prospection sans perdre le contrôle du message.</h2>
+            <p>Ajoutez les prospects sélectionnés et personnalisez chaque message. Aucune connexion Google n’est nécessaire : ProspectTube ouvre simplement votre messagerie avec les champs préremplis.</p>
             <ol className={styles.workflowList}><li><span>1</span>Ajouter les prospects</li><li><span>2</span>Personnaliser les messages</li><li><span>3</span>Ouvrir dans sa messagerie</li><li><span>4</span>Suivre l’organisation de la campagne</li></ol>
-            <p className={styles.highlightText}>Aucun envoi automatique : tu relis et envoies toi-même.</p>
+            <p className={styles.highlightText}>Aucun envoi automatique : vous relisez et envoyez vous-même.</p>
           </div>
         </div>
       </section>
 
       <section id="tarifs" className={styles.section}>
         <div className={styles.sectionInner}>
-          <div className={`${styles.sectionHeading} ${styles.centerHeading}`}><span>Tarifs clairs</span><h2>Commence gratuitement. Passe Pro quand tu prospectes régulièrement.</h2></div>
+          <div className={`${styles.sectionHeading} ${styles.centerHeading}`}><span>Tarifs clairs</span><h2>Commencez gratuitement. Passez Pro quand vous prospectez régulièrement.</h2></div>
           <div className={styles.pricingGrid}>
             <article className={styles.priceCard}>
-              <div className={styles.priceName}>Gratuit</div><div className={styles.price}><strong>0 €</strong><span>/mois</span></div><p>Pour tester ta première recherche et organiser tes premiers prospects.</p>
+              <div className={styles.priceName}>Gratuit</div><div className={styles.price}><strong>0 €</strong><span>/mois</span></div><p>Pour tester votre première recherche et organiser vos premiers prospects.</p>
               <ul><li>{PRODUCT_LIMITS.freeLifetimeSearches} recherches réussies à vie</li><li>{PRODUCT_LIMITS.freeCampaigns} campagne d’essai</li><li>Jusqu’à {PRODUCT_LIMITS.freeCampaignProspects} prospects</li><li>Favoris et historique</li><li>Aucun paiement requis</li></ul>
               <button onClick={startFree} className={styles.priceSecondary}>Tester gratuitement</button>
             </article>
             <article className={`${styles.priceCard} ${styles.priceFeatured}`}>
-              <div className={styles.popularBadge}>Plan recommandé</div><div className={styles.priceName}>Pro</div><div className={styles.price}><strong>{PRO_MONTHLY_PRICE_LABEL}</strong><span>/mois</span></div><p>Pour prospecter régulièrement et organiser plusieurs campagnes.</p>
+              <div className={styles.popularBadge}>Pour prospecter chaque jour</div><div className={styles.priceName}>Pro</div><div className={styles.price}><strong>{PRO_MONTHLY_PRICE_LABEL}</strong><span>/mois</span></div><p>Pour prospecter régulièrement et organiser plusieurs campagnes.</p>
               <ul><li>{PRODUCT_LIMITS.proDailySearches} recherches réussies par jour</li><li>Campagnes supplémentaires</li><li>Rotation vers de nouveaux prospects</li><li>Score orienté montage et emails publics</li><li>Passage à la messagerie, favoris et historique</li></ul>
               <button onClick={openPro} className={styles.pricePrimary}>{isPro(plan) ? 'Accéder au dashboard' : 'Découvrir le Plan Pro'}</button>
             </article>
@@ -234,7 +234,7 @@ export default function LandingPage() {
       </section>
 
       <section className={styles.finalCta}>
-        <div><span>3 recherches gratuites · sans carte bancaire</span><h2>Transforme ta prochaine recherche YouTube en liste de prospection claire.</h2></div>
+        <div><span>3 recherches gratuites · sans carte bancaire</span><h2>Transformez votre prochaine recherche YouTube en liste de prospection claire.</h2></div>
         <button onClick={startFree} className={styles.primaryButton}>Essayer ProspectTube</button>
       </section>
 

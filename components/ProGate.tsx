@@ -47,10 +47,6 @@ const benefits = [
     text: 'Lancez jusqu’à cinq recherches par jour, avec réinitialisation à minuit UTC.',
   },
   {
-    title: 'Messages préparés',
-    text: 'Préparez des objets et messages adaptés à chaque créateur avant de les relire.',
-  },
-  {
     title: 'Campagnes',
     text: 'Dépassez la campagne d’essai limitée à cinq prospects et organisez votre prospection régulière.',
   },
@@ -61,10 +57,6 @@ const benefits = [
   {
     title: 'Export CSV',
     text: 'Exportez les prospects et leurs données pour les utiliser dans vos autres outils.',
-  },
-  {
-    title: 'Support prioritaire',
-    text: 'Obtenez une réponse plus rapide en cas de problème.',
   },
 ]
 
