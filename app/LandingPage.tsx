@@ -228,7 +228,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="methode" className={styles.methodSection} data-reveal="section">
+      <section
+        id="methode"
+        className={styles.methodSection}
+        data-reveal="section"
+      >
         <div className={styles.sectionInner}>
           <header className={styles.sectionHeading}>
             <p>Du ciblage au message</p>
@@ -237,33 +241,83 @@ export default function LandingPage() {
           <ol className={styles.methodList}>
             <li data-reveal="item">
               <span>01</span>
-              <div>
+              <div className={styles.methodCopy}>
                 <h3>Trouver</h3>
                 <p>Définissez niche, langue, audience et sous-niches.</p>
+              </div>
+              <div className={styles.searchMiniature} aria-hidden="true">
+                <small>RECHERCHE</small>
+                <div className={styles.miniSearchField}>
+                  <span>Niche · Langue</span>
+                  <b>⌕</b>
+                </div>
+                <div className={styles.miniFilters}>
+                  <span>Audience cible</span>
+                  <span>Activité récente</span>
+                </div>
               </div>
             </li>
             <li data-reveal="item">
               <span>02</span>
-              <div>
+              <div className={styles.methodCopy}>
                 <h3>Évaluer</h3>
                 <p>Comparez activité, performances et raison du score.</p>
+              </div>
+              <div className={styles.scoreMiniature} aria-hidden="true">
+                <div>
+                  <small>PROSPECT SCORE</small>
+                  <b>—/100</b>
+                </div>
+                <div className={styles.miniActivity}>
+                  <span>Activité</span>
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </div>
+                <p>Signaux détaillés</p>
               </div>
             </li>
             <li data-reveal="item">
               <span>03</span>
-              <div>
+              <div className={styles.methodCopy}>
                 <h3>Contacter</h3>
                 <p>Utilisez seulement les coordonnées publiques disponibles.</p>
+              </div>
+              <div className={styles.contactMiniature} aria-hidden="true">
+                <small>CANAUX DÉTECTÉS</small>
+                <div>
+                  <span>Gmail</span>
+                  <span>Instagram</span>
+                  <span>TikTok</span>
+                  <span>Autres</span>
+                </div>
+                <p>Uniquement s’ils sont publics</p>
               </div>
             </li>
             <li data-reveal="item">
               <span>04</span>
-              <div>
+              <div className={styles.methodCopy}>
                 <h3>Organiser</h3>
                 <p>
                   Regroupez les prospects et préparez vos messages avant de les
                   ouvrir dans votre messagerie.
                 </p>
+              </div>
+              <div className={styles.campaignMiniature} aria-hidden="true">
+                <div>
+                  <small>CAMPAGNE</small>
+                  <b>Prospects sélectionnés</b>
+                </div>
+                <ul>
+                  <li>
+                    <i />À contacter <span>Prêt</span>
+                  </li>
+                  <li>
+                    <i />À qualifier <span>Revue</span>
+                  </li>
+                </ul>
               </div>
             </li>
           </ol>
@@ -274,7 +328,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="tarifs" className={styles.pricingSection} data-reveal="section">
+      <section
+        id="tarifs"
+        className={styles.pricingSection}
+        data-reveal="section"
+      >
         <div className={styles.sectionInner}>
           <div className={styles.pricingIntro}>
             <p>Quand passer Pro ?</p>
@@ -287,7 +345,7 @@ export default function LandingPage() {
             </span>
           </div>
           <div className={styles.planTable}>
-            <div>
+            <div className={styles.freePlan}>
               <strong>Gratuit</strong>
               <b>0 €</b>
               <span>
@@ -298,8 +356,11 @@ export default function LandingPage() {
                 Tester le produit
               </button>
             </div>
-            <div>
-              <strong>Pro</strong>
+            <div className={styles.proPlan}>
+              <div className={styles.proHeading}>
+                <strong>Pro</strong>
+                <span>Pour prospecter régulièrement</span>
+              </div>
               <b>
                 {PRO_MONTHLY_PRICE_LABEL}
                 <small>/mois</small>
@@ -338,6 +399,9 @@ export default function LandingPage() {
         <div>
           <p>Commencer par une cible précise</p>
           <h2>Décrivez les chaînes que vous voulez contacter.</h2>
+          <span>
+            Lancez une première recherche et vérifiez la qualité du ciblage.
+          </span>
         </div>
         <button onClick={startFree} className={styles.primaryButton}>
           Lancer une recherche
