@@ -31,8 +31,8 @@ export default function LoginPage() {
         <Link href="/" className={styles.logo}>Prospect<span>Tube</span></Link>
         <div className={styles.promise}>
           <p className={styles.eyebrow}>Prospection YouTube ciblée</p>
-          <h1>Trouvez les créateurs qui méritent votre prochain message.</h1>
-          <p>ProspectTube aide les MiniMakers et monteurs vidéo à repérer des chaînes actives, comparer leur potentiel et organiser leur prospection.</p>
+          <h1>Reprenez votre liste là où vous l’avez laissée.</h1>
+          <p>Recherchez des chaînes actives, vérifiez les signaux qui expliquent leur score et retrouvez les coordonnées publiques détectées.</p>
         </div>
         <div className={styles.proof}><span>Chaînes actives</span><span>Contacts publics</span><span>Messages sous votre contrôle</span></div>
       </section>

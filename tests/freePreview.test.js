@@ -444,17 +444,17 @@ test('prospect presentation image fallback keeps campaign cards visually stable'
   assert.equal(fallback.initials, 'FC')
 })
 
-test('main app navigation uses the shared premium labels and emojis', () => {
+test('main app navigation uses sober product labels', () => {
   const nav = fs.readFileSync('components/MainAppNav.tsx', 'utf8')
   const signOut = fs.readFileSync('components/HomeSignOutButton.tsx', 'utf8')
 
   for (const label of [
-    '🏠 Accueil',
-    '⭐ Favoris',
-    '🕘 Historique',
-    '🎯 Campagnes',
-    '🔍 Nouvelle recherche',
-    '⚙️ Paramètres',
+    'Accueil',
+    'Favoris',
+    'Historique',
+    'Campagnes',
+    'Nouvelle recherche',
+    'Paramètres',
   ]) {
     assert.match(nav, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
@@ -1699,12 +1699,12 @@ test('landing page matches current free and Pro product limits without AI promis
   assert.match(landing, /PRODUCT_LIMITS\.freeLifetimeSearches/)
   assert.match(landing, /PRODUCT_LIMITS\.proDailySearches/)
   assert.match(landing, /campagne d’essai/)
-  assert.match(landing, /ouvrez-les dans votre messagerie/)
-  assert.match(landing, /ne sont pas garanties/)
-  assert.match(landing, /<h1>ProspectTube aide les MiniMakers et monteurs vidéo à trouver des YouTubers actifs à prospecter\.<\/h1>/)
-  assert.match(landing, /Ciblez une niche, comparez l’activité récente/)
-  assert.match(landing, /sans parcourir YouTube pendant des heures/)
-  assert.match(landing, /Aucun envoi automatique/)
+  assert.match(landing, /ouvrir dans votre messagerie/)
+  assert.match(landing, /n’est garantie/)
+  assert.match(landing, /Pour MiniMakers et monteurs vidéo/)
+  assert.match(landing, /activité récente/)
+  assert.match(landing, /Données publiques uniquement/)
+  assert.match(landing, /n’envoie rien à votre place/)
   assert.match(metadata, /MiniMakers et monteurs vidéo/)
   assert.doesNotMatch(landing, /message.? IA|grâce à l’IA|recherches? illimité/i)
   assert.doesNotMatch(`${landing}\n${metadata}`, /9,90|9\.90|emails? garantis?|résultats? garantis?/i)
@@ -1715,15 +1715,15 @@ test('landing production polish keeps honest CTAs, responsive structure and lega
   const styles = fs.readFileSync('app/landing.module.css', 'utf8')
   const footer = fs.readFileSync('components/LegalFooter.tsx', 'utf8')
 
-  assert.match(landing, /Commencer une recherche/)
-  assert.match(landing, /Essayer ProspectTube/)
+  assert.match(landing, /Lancer une recherche/)
+  assert.match(landing, /Essayer gratuitement/)
   assert.match(landing, /Prospect Score/)
   assert.match(landing, /Contactabilité/)
-  assert.match(landing, /Il ne garantit ni un besoin, ni une réponse, ni une vente/)
-  assert.match(landing, /Aucune connexion Google n’est nécessaire/)
+  assert.match(landing, /Il ne garantit ni besoin, ni réponse, ni vente/)
+  assert.match(landing, /ne se connecte pas à votre boîte mail/)
   assert.doesNotMatch(landing, /message.? IA|intelligence artificielle|illimitée?s?/i)
 
-  for (const breakpoint of ['1024px', '768px', '480px', '340px']) {
+  for (const breakpoint of ['900px', '680px']) {
     assert.match(styles, new RegExp(`@media \\(max-width: ${breakpoint.replace('.', '\\.')}\\)`))
   }
   assert.match(styles, /grid-template-columns: 1fr/)

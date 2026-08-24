@@ -467,10 +467,10 @@ export default function Dashboard() {
           <div style={{ maxWidth: '680px' }}>
             <p style={{ margin: '0 0 0.45rem', color: '#a78bfa', fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Nouvelle prospection</p>
             <h1 id="search-spotlight-title" className="font-display" style={{ margin: 0, fontSize: 'clamp(1.55rem, 3vw, 2.35rem)', lineHeight: 1.1, color: '#F0EDF8' }}>
-              Trouvez vos prochains créateurs YouTube à contacter.
+              Décrivez les chaînes YouTube que vous voulez contacter.
             </h1>
             <p style={{ margin: '0.75rem 0 1.2rem', color: '#B9B0D4', fontSize: '0.95rem', lineHeight: 1.65 }}>
-              Choisissez une niche, une langue et une taille de chaîne. ProspectTube analyse les contacts publics, les scores et les opportunités.
+              Choisissez une niche, une langue et une taille de chaîne. ProspectTube analyse l’activité récente, explique le score et affiche uniquement les contacts publics détectés.
             </p>
             <a href="#search-form" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: '46px', padding: '0.85rem 1.25rem', textDecoration: 'none', fontSize: '0.95rem', fontWeight: 800 }}>
               Rechercher des créateurs
@@ -597,8 +597,8 @@ export default function Dashboard() {
                     const reasons = String(ch.scoreReason || "Peu d'informations exploitables").split(' • ').filter(Boolean)
                     const contacts = getContactChannels(ch)
                     const statBadges = [
-                      `👥 ${ch.subs || formatCompactNumber(ch.subsNum || 0)}`,
-                      ch.recentMedianViews ? `👁 ${formatCompactNumber(ch.recentMedianViews)} vues médianes` : 'Données limitées',
+                      `${ch.subs || formatCompactNumber(ch.subsNum || 0)} abonnés`,
+                      ch.recentMedianViews ? `${formatCompactNumber(ch.recentMedianViews)} vues médianes` : 'Vues récentes limitées',
                       ch.activityLabel || ch.publishingFrequency || null,
                       ch.editingPotentialLabel ? `Montage estimé ${ch.editingPotentialLabel}` : null,
                     ].filter(Boolean)
