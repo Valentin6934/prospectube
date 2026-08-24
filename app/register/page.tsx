@@ -52,8 +52,8 @@ export default function RegisterPage() {
         <Link href="/" className={styles.logo}>Prospect<span>Tube</span></Link>
         <div className={styles.promise}>
           <p className={styles.eyebrow}>3 recherches gratuites</p>
-          <h1>Passez moins de temps à chercher. Plus de temps à convaincre.</h1>
-          <p>Ciblez des YouTubers actifs, comparez leurs signaux publics et gardez vos meilleurs prospects au même endroit.</p>
+          <h1>Commencez par une recherche réelle, pas par une promesse.</h1>
+          <p>Définissez votre cible, puis vérifiez l’activité, les performances et les contacts publics des chaînes trouvées.</p>
         </div>
         <div className={styles.proof}><span>Sans carte bancaire</span><span>1 campagne d’essai</span><span>Jusqu’à 5 prospects</span></div>
       </section>
