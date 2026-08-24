@@ -1689,6 +1689,7 @@ test('public email extraction is deduplicated and does not affect Prospect Score
 
 test('landing page matches current free and Pro product limits without AI promises', () => {
   const landing = fs.readFileSync('app/LandingPage.tsx', 'utf8')
+  const landingFlat = landing.replace(/\s+/g, ' ')
   const metadata = [
     fs.readFileSync('app/layout.tsx', 'utf8'),
     fs.readFileSync('app/page.tsx', 'utf8'),
@@ -1699,12 +1700,12 @@ test('landing page matches current free and Pro product limits without AI promis
   assert.match(landing, /PRODUCT_LIMITS\.freeLifetimeSearches/)
   assert.match(landing, /PRODUCT_LIMITS\.proDailySearches/)
   assert.match(landing, /campagne d’essai/)
-  assert.match(landing, /ouvrir dans votre messagerie/)
-  assert.match(landing, /n’est garantie/)
+  assert.match(landingFlat, /ouvrir dans votre messagerie/)
+  assert.match(landingFlat, /n’est garantie/)
   assert.match(landing, /Pour MiniMakers et monteurs vidéo/)
   assert.match(landing, /activité récente/)
   assert.match(landing, /Données publiques uniquement/)
-  assert.match(landing, /n’envoie rien à votre place/)
+  assert.match(landingFlat, /n’envoie rien à votre place/)
   assert.match(metadata, /MiniMakers et monteurs vidéo/)
   assert.doesNotMatch(landing, /message.? IA|grâce à l’IA|recherches? illimité/i)
   assert.doesNotMatch(`${landing}\n${metadata}`, /9,90|9\.90|emails? garantis?|résultats? garantis?/i)
@@ -1712,6 +1713,7 @@ test('landing page matches current free and Pro product limits without AI promis
 
 test('landing production polish keeps honest CTAs, responsive structure and legal links', () => {
   const landing = fs.readFileSync('app/LandingPage.tsx', 'utf8')
+  const landingFlat = landing.replace(/\s+/g, ' ')
   const styles = fs.readFileSync('app/landing.module.css', 'utf8')
   const footer = fs.readFileSync('components/LegalFooter.tsx', 'utf8')
 
@@ -1719,8 +1721,8 @@ test('landing production polish keeps honest CTAs, responsive structure and lega
   assert.match(landing, /Essayer gratuitement/)
   assert.match(landing, /Prospect Score/)
   assert.match(landing, /Contactabilité/)
-  assert.match(landing, /Il ne garantit ni besoin, ni réponse, ni vente/)
-  assert.match(landing, /ne se connecte pas à votre boîte mail/)
+  assert.match(landingFlat, /Il ne garantit ni besoin, ni réponse, ni vente/)
+  assert.match(landingFlat, /ne se connecte pas à votre boîte mail/)
   assert.doesNotMatch(landing, /message.? IA|intelligence artificielle|illimitée?s?/i)
 
   for (const breakpoint of ['900px', '680px']) {
@@ -1744,7 +1746,7 @@ test('all upgrade discovery paths lead to the dedicated Pro page before Stripe',
   const proCheckout = fs.readFileSync('app/pro/ProCheckoutButton.tsx', 'utf8')
   const sitemap = fs.readFileSync('app/sitemap.ts', 'utf8')
 
-  assert.match(landing, /router\.push\('\/pro'\)/)
+  assert.match(landing, /router\.push\(["']\/pro["']\)/)
   assert.match(subscriptionButton, /router\.push\('\/pro'\)/)
   assert.match(dashboard, /href="\/pro"/)
   assert.doesNotMatch(`${landing}\n${subscriptionButton}\n${dashboard}`, /api\/stripe\/checkout/)

@@ -59,7 +59,7 @@
 }
 
 .searchButton {
-  border-radius: 8px;
+  border-radius: 13px;
   background: #6d4ee5;
   color: white;
   padding: 0.58rem 0.85rem;
@@ -154,14 +154,15 @@
   overflow: hidden;
   margin: 1.2rem 0 1.35rem;
   border: 1px solid rgba(139, 92, 246, 0.32);
-  border-radius: 14px;
-  background: #14111d;
+  border-radius: 24px;
+  background: linear-gradient(145deg,rgba(23,20,31,.98),rgba(17,15,22,.98));
   padding: 1.35rem;
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr) auto;
   gap: 1rem;
   align-items: center;
   animation: enter 420ms ease both;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.055),0 24px 70px rgba(0,0,0,.18);
 }
 
 .searchHeroIcon {
@@ -309,7 +310,7 @@
   overflow: hidden;
   min-height: 112px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
+  border-radius: 18px;
   background: #14121c;
   padding: 1.15rem;
   display: flex;
@@ -394,7 +395,7 @@
 
 .activityPanel {
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
+  border-radius: 20px;
   background: #14121c;
 }
 
@@ -470,7 +471,7 @@
 .actionCard {
   min-height: 132px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
+  border-radius: 18px;
   background: #14121c;
   color: #f0edf8;
   padding: 1rem;
@@ -479,7 +480,8 @@
   grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: start;
   gap: 0.75rem;
-  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035),0 16px 45px rgba(0,0,0,.12);
+  transition: transform 180ms cubic-bezier(.22,1,.36,1), border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
 
 .actionCard:hover {

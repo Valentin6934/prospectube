@@ -620,7 +620,7 @@ export default function CampaignsPage() {
                         const statusColor = incompleteMessage ? '#eab308' : '#22c55e'
                         const statusBg = incompleteMessage ? 'rgba(234,179,8,0.10)' : 'rgba(34,197,94,0.12)'
                         return (
-                          <div key={prospect.id} className="prospect-card campaign-prospect-card" style={{ border: selected ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.24)', borderRadius: '12px', padding: '1rem', background: selected ? 'linear-gradient(135deg, rgba(83,58,183,0.18), rgba(255,255,255,0.035))' : 'rgba(255,255,255,0.03)', boxShadow: '0 16px 40px rgba(0,0,0,0.16)', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+                          <div key={prospect.id} className="prospect-card campaign-prospect-card" style={{ border: selected ? '1px solid rgba(167,139,250,0.52)' : '1px solid rgba(255,255,255,0.09)', borderRadius: '20px', padding: '1.2rem', background: selected ? 'linear-gradient(145deg, rgba(83,58,183,0.13), rgba(255,255,255,0.025))' : 'rgba(255,255,255,0.025)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035), 0 20px 56px rgba(0,0,0,0.16)', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
                             <div className="campaign-prospect-header">
                               <input type="checkbox" checked={selected} onChange={() => toggleSelectedProspect(prospect.id)} aria-label={`Sélectionner ${prospect.name}`} style={{ marginTop: '0.35rem', accentColor: '#7B63D3', cursor: 'pointer', flexShrink: 0 }} />
                               <ProspectPresentation
