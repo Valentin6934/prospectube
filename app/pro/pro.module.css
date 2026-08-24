@@ -25,7 +25,9 @@
   margin: 0 auto;
   padding: 7rem 0 6rem;
   text-align: center;
+  position: relative;
 }
+.hero::before { content: ''; position: absolute; inset: 8% 12% 0; z-index: -1; background: radial-gradient(ellipse,rgba(124,92,220,.11),transparent 68%); pointer-events: none; }
 
 .eyebrow, .sectionHeading p {
   margin: 0 0 1rem;
@@ -55,13 +57,14 @@
   min-height: 50px;
   padding: 0.8rem 1.35rem;
   border: 1px solid #8b5cf6;
-  border-radius: 8px;
+  border-radius: 14px;
   background: #7c3aed;
   color: white;
   font: inherit;
   font-weight: 850;
   cursor: pointer;
-  transition: transform 160ms ease, background 160ms ease;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 14px 36px rgba(92,55,190,.18);
+  transition: transform 180ms cubic-bezier(.22,1,.36,1), background 180ms ease, box-shadow 180ms ease;
 }
 .checkoutButton:hover:not(:disabled) { background: #8b5cf6; transform: translateY(-1px); }
 .checkoutButton:disabled { opacity: 0.65; cursor: wait; }
@@ -86,7 +89,7 @@
 .planSummary span { color: #a78bfa; font-size: 0.75rem; font-weight: 850; text-transform: uppercase; }
 .planSummary strong { font-size: 1rem; }
 .planSummary p { margin: 0; color: #978da9; line-height: 1.55; font-size: 0.87rem; }
-.planSummary .proSummary { border-left: 3px solid #8b5cf6; background: rgba(124,58,237,0.07); }
+.planSummary .proSummary { border-left: 1px solid rgba(159,135,242,.42); border-radius: 18px; background: linear-gradient(145deg,rgba(124,92,220,.09),rgba(255,255,255,.018)); box-shadow: inset 0 1px 0 rgba(255,255,255,.05),0 18px 54px rgba(0,0,0,.15); }
 
 .finalCta { width: min(1080px, calc(100% - 40px)); margin: 5rem auto 0; display: flex; align-items: center; justify-content: space-between; gap: 2rem; }
 .finalCta p { margin: 0 0 0.5rem; color: #a78bfa; font-weight: 800; }

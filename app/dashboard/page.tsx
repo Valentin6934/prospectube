@@ -463,7 +463,7 @@ export default function Dashboard() {
             </div>
           </section>
         )}
-        <section className="search-spotlight" aria-labelledby="search-spotlight-title" style={{ position: 'relative', overflow: 'hidden', marginBottom: '1.25rem', border: '1px solid rgba(139,92,246,0.28)', borderRadius: '14px', padding: '1.6rem', background: '#12101b' }}>
+        <section className="search-spotlight" aria-labelledby="search-spotlight-title" style={{ position: 'relative', overflow: 'hidden', marginBottom: '1.5rem', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '24px', padding: '1.8rem', background: 'linear-gradient(145deg, #17141f, #121017)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 24px 70px rgba(0,0,0,0.18)' }}>
           <div style={{ maxWidth: '680px' }}>
             <p style={{ margin: '0 0 0.45rem', color: '#a78bfa', fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Nouvelle prospection</p>
             <h1 id="search-spotlight-title" className="font-display" style={{ margin: 0, fontSize: 'clamp(1.55rem, 3vw, 2.35rem)', lineHeight: 1.1, color: '#F0EDF8' }}>
@@ -584,7 +584,7 @@ export default function Dashboard() {
               {results.slice(0, visibleResults).map((ch, index) => (
                 <div key={ch.id}>
                 {ch.matchMode === 'nearby' && (index === 0 || results[index - 1]?.matchMode !== 'nearby') && <div style={{ margin: '1.2rem 0 0.8rem', paddingTop: '1rem', borderTop: '1px solid rgba(234,179,8,0.25)', color: '#fde68a', fontSize: '0.85rem', fontWeight: 700 }}>Résultats proches ({resultMeta?.nearby || 0})</div>}
-                <div className="card prospect-card" style={{ position: 'relative', padding: '1rem', marginBottom: '0.85rem', display: 'block', border: selectedIds.includes(ch.id) ? '1px solid rgba(167,139,250,0.65)' : '1px solid rgba(83,58,183,0.24)', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
+                <div className="card prospect-card" style={{ position: 'relative', padding: '1.2rem', marginBottom: '1rem', display: 'block', border: selectedIds.includes(ch.id) ? '1px solid rgba(167,139,250,0.52)' : '1px solid rgba(255,255,255,0.09)' }}>
                   <input
                     type="checkbox"
                     checked={selectedIds.includes(ch.id)}
